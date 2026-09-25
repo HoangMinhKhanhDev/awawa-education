@@ -10,6 +10,13 @@ use App\Livewire\Auth\Register;
 use App\Livewire\Auth\ResetPassword;
 use App\Livewire\Dashboard;
 use App\Livewire\Profile\Show as ProfileShow;
+use App\Livewire\Teacher\AssessmentBuilder;
+use App\Livewire\Teacher\AssignmentsIndex;
+use App\Livewire\Teacher\DocumentsIndex;
+use App\Livewire\Teacher\ExamsIndex;
+use App\Livewire\Teacher\QuestionsIndex;
+use App\Livewire\Teacher\StudentsIndex;
+use App\Livewire\Teacher\Studio;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
@@ -72,15 +79,23 @@ Route::middleware('auth')->group(function () {
     |----------------------------------------------------------------------
     */
     Route::middleware('role:teacher')->group(function () {
-        Route::get('/studio', fn () => view('pages.placeholder', [
-            'title' => 'Studio',
-            'phase' => 'P2',
-        ]))->name('studio');
+        Route::get('/studio', Studio::class)->name('studio');
 
-        Route::get('/quan-ly-hoc-sinh', fn () => view('pages.placeholder', [
-            'title' => 'Quản lý học sinh',
-            'phase' => 'P2',
-        ]))->name('students');
+        Route::get('/studio/ngan-hang-cau-hoi', QuestionsIndex::class)
+            ->middleware('feature:question_bank')->name('studio.questions');
+
+        Route::get('/studio/de-thi', ExamsIndex::class)
+            ->middleware('feature:exams')->name('studio.exams');
+
+        Route::get('/studio/bai-tap', AssignmentsIndex::class)
+            ->middleware('feature:assignments')->name('studio.assignments');
+
+        Route::get('/studio/tai-lieu', DocumentsIndex::class)
+            ->middleware('feature:documents')->name('studio.documents');
+
+        Route::get('/studio/{exam}/soan', AssessmentBuilder::class)->name('studio.builder');
+
+        Route::get('/quan-ly-hoc-sinh', StudentsIndex::class)->name('students');
     });
 
     /*

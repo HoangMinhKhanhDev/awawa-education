@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnsureRole;
+use App\Http\Middleware\EnsureSubjectFeature;
 use App\Http\Middleware\EnsureTeamMember;
 use App\Http\Middleware\SetSubjectContext;
 use Illuminate\Foundation\Application;
@@ -22,6 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'role' => EnsureRole::class,
             'team' => EnsureTeamMember::class,
+            'feature' => EnsureSubjectFeature::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
