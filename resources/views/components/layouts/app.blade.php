@@ -18,6 +18,8 @@
     <meta name="theme-color" content="{{ config('awawa.brand.primary') }}">
     <meta name="vapid-public-key" content="{{ config('awawa.webpush.public_key') }}">
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="{{ $brand }}">
 
     <title>{{ $title ? $title.' · '.$brand : $brand.' — Đội tuyển học sinh giỏi' }}</title>

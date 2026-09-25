@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Support\SubjectContext;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 
@@ -21,9 +22,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Bắt buộc HTTPS ở môi trường production (Hostinger luôn có SSL).
-        if ($this->app->environment('production')) {
+        if ($this->app->isProduction()) {
+            // Hostinger luôn có SSL: bắt buộc HTTPS cho URL sinh ra.
             URL::forceScheme('https');
+
+            // Chặn migrate:fresh / db:wipe trên môi trường production.
+            DB::prohibitDestructiveCommands(true);
         }
     }
 }

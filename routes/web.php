@@ -1,6 +1,9 @@
 <?php
 
+use App\Http\Controllers\Admin\ApiKeysPageController;
 use App\Http\Controllers\Auth\GoogleController;
+use App\Http\Controllers\Auth\LogoutController;
+use App\Http\Controllers\HomeController;
 use App\Http\Controllers\PushSubscriptionController;
 use App\Livewire\Admin\Stats as AdminStats;
 use App\Livewire\Admin\Subjects\Index as AdminSubjects;
@@ -29,16 +32,9 @@ use App\Livewire\Teacher\GradingIndex;
 use App\Livewire\Teacher\QuestionsIndex;
 use App\Livewire\Teacher\StudentsIndex;
 use App\Livewire\Teacher\Studio;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', function () {
-    if (Auth::check()) {
-        return redirect()->route('dashboard');
-    }
-
-    return view('landing');
-})->name('home');
+Route::get('/', HomeController::class)->name('home');
 
 /*
 |--------------------------------------------------------------------------
@@ -57,13 +53,7 @@ Route::get('/auth/google/callback', [GoogleController::class, 'callback'])->name
 
 Route::get('/so-do/xem/{token}', MapsShared::class)->name('maps.shared');
 
-Route::post('/logout', function () {
-    Auth::logout();
-    request()->session()->invalidate();
-    request()->session()->regenerateToken();
-
-    return redirect()->route('login');
-})->middleware('auth')->name('logout');
+Route::post('/logout', LogoutController::class)->middleware('auth')->name('logout');
 
 /*
 |--------------------------------------------------------------------------
@@ -143,7 +133,7 @@ Route::middleware('auth')->group(function () {
 
         Route::get('/mon-hoc', AdminSubjects::class)->name('subjects');
 
-        Route::get('/api-key', fn () => view('admin.api-keys'))->name('api-keys');
+        Route::get('/api-key', ApiKeysPageController::class)->name('api-keys');
 
         Route::get('/thong-ke', AdminStats::class)->name('stats');
     });

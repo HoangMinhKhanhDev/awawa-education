@@ -7,6 +7,7 @@ use App\Enums\SubjectFeature as FeatureEnum;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Cache;
 
 class Subject extends Model
 {
@@ -61,26 +62,35 @@ class Subject extends Model
     }
 
     /**
-     * Danh sách feature đang bật của môn.
+     * Danh sách feature đang bật của môn (có cache để giảm truy vấn mỗi request).
      *
      * @return array<int, string>
      */
     public function enabledFeatureKeys(): array
     {
-        return $this->features()
-            ->where('is_enabled', true)
-            ->pluck('feature')
-            ->map(fn ($feature) => $feature instanceof FeatureEnum ? $feature->value : (string) $feature)
-            ->all();
+        return Cache::remember($this->featureCacheKey(), now()->addMinutes(15), function (): array {
+            return $this->features()
+                ->where('is_enabled', true)
+                ->pluck('feature')
+                ->map(fn ($feature) => $feature instanceof FeatureEnum ? $feature->value : (string) $feature)
+                ->all();
+        });
     }
 
     public function hasFeature(FeatureEnum|string $feature): bool
     {
         $key = $feature instanceof FeatureEnum ? $feature->value : $feature;
 
-        return $this->features()
-            ->where('feature', $key)
-            ->where('is_enabled', true)
-            ->exists();
+        return in_array($key, $this->enabledFeatureKeys(), true);
+    }
+
+    public function featureCacheKey(): string
+    {
+        return 'subject:'.$this->getKey().':features';
+    }
+
+    public function forgetFeatureCache(): void
+    {
+        Cache::forget($this->featureCacheKey());
     }
 }
