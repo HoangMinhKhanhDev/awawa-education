@@ -109,6 +109,18 @@
                         Đổi chế độ sáng / tối
                     </button>
 
+                    <div x-data="{ push: 'idle', init() { if (window.AwawaPush) { window.AwawaPush.status().then((s) => { this.push = s; }); } } }">
+                        <button type="button" class="btn btn-outline w-full justify-start"
+                            @click="if (push === 'enabled') { window.AwawaPush.disable().then(() => { push = 'disabled'; }); } else { window.AwawaPush.enable().then((r) => { push = r.ok ? 'enabled' : (r.reason || 'error'); }); }">
+                            <x-icon name="bell" class="h-5 w-5" />
+                            <span x-show="push !== 'enabled'">Bật thông báo đẩy</span>
+                            <span x-show="push === 'enabled'">Tắt thông báo đẩy</span>
+                        </button>
+                        <p x-show="push === 'denied'" x-cloak class="mt-1 text-xs text-amber-600 dark:text-amber-400">Trình duyệt đã chặn quyền thông báo.</p>
+                        <p x-show="push === 'not-configured'" x-cloak class="mt-1 text-xs text-slate-400">Máy chủ chưa cấu hình Web Push.</p>
+                        <p x-show="push === 'unsupported'" x-cloak class="mt-1 text-xs text-slate-400">Thiết bị hoặc trình duyệt không hỗ trợ.</p>
+                    </div>
+
                     <a href="{{ route('password.change') }}" wire:navigate class="btn btn-outline w-full justify-start">
                         <x-icon name="lock" class="h-5 w-5" />
                         Đổi mật khẩu

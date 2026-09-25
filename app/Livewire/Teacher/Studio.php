@@ -4,6 +4,7 @@ namespace App\Livewire\Teacher;
 
 use App\Enums\ExamType;
 use App\Enums\SubjectFeature;
+use App\Models\AiUsageLog;
 use App\Models\Document;
 use App\Models\Exam;
 use App\Models\Question;
@@ -50,6 +51,13 @@ class Studio extends Component
                 'icon' => 'mail',
                 'description' => 'Đăng tài liệu học tập cho học sinh trong đội.',
                 'count' => fn () => Document::query()->count(),
+            ],
+            [
+                'feature' => SubjectFeature::AiTools,
+                'route' => 'studio.ai',
+                'icon' => 'sparkles',
+                'description' => 'Dùng AI tạo câu hỏi và tài liệu học tập.',
+                'count' => fn () => AiUsageLog::query()->where('is_success', true)->count(),
             ],
         ];
 

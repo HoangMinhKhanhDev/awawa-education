@@ -8,6 +8,7 @@ use App\Enums\QuestionType;
 use App\Enums\SubjectFeature;
 use App\Models\Exam;
 use App\Models\ExamAttempt;
+use App\Services\NotificationDispatcher;
 use App\Support\SubjectContext;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Gate;
@@ -101,6 +102,8 @@ class GradingIndex extends Component
                 'graded_at' => now(),
                 'graded_by' => auth()->id(),
             ])->save();
+
+            app(NotificationDispatcher::class)->attemptGraded($attempt);
         }
 
         $this->gradingAttemptId = null;

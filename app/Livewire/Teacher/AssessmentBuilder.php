@@ -9,6 +9,7 @@ use App\Models\Exam;
 use App\Models\ExamQuestion;
 use App\Models\ExamSection;
 use App\Models\Question;
+use App\Services\NotificationDispatcher;
 use App\Support\SubjectContext;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Gate;
@@ -304,6 +305,10 @@ class AssessmentBuilder extends Component
         }
 
         $exam->forceFill(['status' => $target])->save();
+
+        if ($target === ExamStatus::Published) {
+            app(NotificationDispatcher::class)->examPublished($exam);
+        }
 
         session()->flash('status', 'Đã cập nhật trạng thái.');
     }

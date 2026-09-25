@@ -102,6 +102,11 @@ class User extends Authenticatable
         return $this->hasMany(TeamMembership::class, 'student_id');
     }
 
+    public function pushSubscriptions(): HasMany
+    {
+        return $this->hasMany(PushSubscription::class);
+    }
+
     public function activeMembership(): HasOne
     {
         return $this->hasOne(TeamMembership::class, 'student_id')

@@ -10,6 +10,7 @@
         ['key' => 'assignments', 'route' => 'studio.assignments', 'label' => 'Bài tập', 'feature' => 'assignments', 'icon' => 'check'],
         ['key' => 'documents', 'route' => 'studio.documents', 'label' => 'Tài liệu', 'feature' => 'documents', 'icon' => 'mail'],
         ['key' => 'announcements', 'route' => 'studio.announcements', 'label' => 'Thông báo', 'feature' => 'announcements', 'icon' => 'bell'],
+        ['key' => 'ai', 'route' => 'studio.ai', 'label' => 'AI', 'feature' => 'ai_tools', 'icon' => 'sparkles'],
     ];
 @endphp
 

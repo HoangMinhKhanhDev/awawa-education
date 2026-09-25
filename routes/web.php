@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\Auth\GoogleController;
+use App\Http\Controllers\PushSubscriptionController;
+use App\Livewire\Admin\Stats as AdminStats;
 use App\Livewire\Admin\Subjects\Index as AdminSubjects;
 use App\Livewire\Admin\Users\Index as AdminUsers;
 use App\Livewire\Auth\ChangePassword;
@@ -13,9 +15,11 @@ use App\Livewire\Info;
 use App\Livewire\Maps\Editor as MapEditor;
 use App\Livewire\Maps\Index as MapsIndex;
 use App\Livewire\Maps\Shared as MapsShared;
+use App\Livewire\Notifications\Index as NotificationsIndex;
 use App\Livewire\Profile\Show as ProfileShow;
 use App\Livewire\Student\Result as StudentResult;
 use App\Livewire\Student\Take as StudentTake;
+use App\Livewire\Teacher\AiGenerate;
 use App\Livewire\Teacher\AnnouncementsIndex;
 use App\Livewire\Teacher\AssessmentBuilder;
 use App\Livewire\Teacher\AssignmentsIndex;
@@ -79,7 +83,12 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/thong-tin', Info::class)->name('info');
 
+    Route::get('/thong-bao', NotificationsIndex::class)->name('notifications.index');
+
     Route::get('/ho-so', ProfileShow::class)->name('profile');
+
+    Route::post('/push/subscribe', [PushSubscriptionController::class, 'store'])->name('push.subscribe');
+    Route::post('/push/unsubscribe', [PushSubscriptionController::class, 'destroy'])->name('push.unsubscribe');
 
     /*
     |----------------------------------------------------------------------
@@ -114,6 +123,9 @@ Route::middleware('auth')->group(function () {
         Route::get('/studio/thong-bao', AnnouncementsIndex::class)
             ->middleware('feature:announcements')->name('studio.announcements');
 
+        Route::get('/studio/ai', AiGenerate::class)
+            ->middleware('feature:ai_tools')->name('studio.ai');
+
         Route::get('/studio/{exam}/soan', AssessmentBuilder::class)->name('studio.builder');
 
         Route::get('/studio/{exam}/bai-lam', GradingIndex::class)->name('studio.grading');
@@ -133,9 +145,6 @@ Route::middleware('auth')->group(function () {
 
         Route::get('/api-key', fn () => view('admin.api-keys'))->name('api-keys');
 
-        Route::get('/thong-ke', fn () => view('pages.placeholder', [
-            'title' => 'Thống kê',
-            'phase' => 'P5',
-        ]))->name('stats');
+        Route::get('/thong-ke', AdminStats::class)->name('stats');
     });
 });

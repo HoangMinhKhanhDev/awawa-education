@@ -4,6 +4,7 @@ namespace App\Livewire\Teacher;
 
 use App\Enums\SubjectFeature;
 use App\Models\Announcement;
+use App\Services\NotificationDispatcher;
 use App\Support\SubjectContext;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Gate;
@@ -95,18 +96,26 @@ class AnnouncementsIndex extends Component
             'published_at' => $this->publishNow ? now() : null,
         ];
 
+        $wasPublished = false;
+
         if ($this->editingId !== null) {
             $announcement = Announcement::query()->findOrFail($this->editingId);
             Gate::authorize('update', $announcement);
+
+            $wasPublished = $announcement->isPublished();
             $announcement->update($attributes);
         } else {
             Gate::authorize('create', Announcement::class);
 
-            Announcement::create([
+            $announcement = Announcement::create([
                 'subject_id' => app(SubjectContext::class)->id() ?? auth()->user()?->subject_id,
                 'created_by' => auth()->id(),
                 ...$attributes,
             ]);
+        }
+
+        if ($announcement->isPublished() && ! $wasPublished) {
+            app(NotificationDispatcher::class)->announcementPublished($announcement);
         }
 
         $this->showForm = false;

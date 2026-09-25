@@ -16,6 +16,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="theme-color" content="{{ config('awawa.brand.primary') }}">
+    <meta name="vapid-public-key" content="{{ config('awawa.webpush.public_key') }}">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="{{ $brand }}">
 
@@ -46,10 +47,19 @@
     <div class="min-h-dvh lg:flex" x-data="{ drawer: false }">
         {{-- Sidebar desktop --}}
         <aside class="hidden w-72 shrink-0 border-r border-slate-200 bg-white lg:flex lg:flex-col dark:border-white/10 dark:bg-night-800">
-            <div class="flex h-16 items-center px-5">
+            <div class="flex h-16 items-center justify-between px-5">
                 <a href="{{ route('dashboard') }}" wire:navigate class="flex items-center">
                     <x-logo />
                 </a>
+                <div class="flex items-center gap-1">
+                    <livewire:notifications.bell />
+                    <button type="button" onclick="window.awawa.toggleTheme()"
+                        class="flex h-10 w-10 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/5"
+                        aria-label="Đổi chế độ sáng/tối">
+                        <x-icon name="sun" class="hidden h-5 w-5 dark:block" />
+                        <x-icon name="moon" class="h-5 w-5 dark:hidden" />
+                    </button>
+                </div>
             </div>
 
             @if ($subject)
@@ -106,6 +116,7 @@
                     @if ($subject)
                         <span class="badge" style="background-color: {{ $subject->color }}1a; color: {{ $subject->color }}">{{ $subject->name }}</span>
                     @endif
+                    <livewire:notifications.bell />
                     <button type="button" onclick="window.awawa.toggleTheme()"
                         class="flex h-10 w-10 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/5"
                         aria-label="Đổi chế độ sáng/tối">

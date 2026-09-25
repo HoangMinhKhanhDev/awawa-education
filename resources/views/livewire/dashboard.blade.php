@@ -149,7 +149,7 @@
                         ['P2', 'Studio giáo viên: ngân hàng câu hỏi, đề thi, bài tập, tài liệu', true],
                         ['P3', 'Học sinh: làm bài, chấm điểm, thông tin, xếp hạng, hồ sơ', true],
                         ['P4', 'Sơ đồ kiến thức (bảng trắng + xuất ảnh/PDF/JSON)', true],
-                        ['P5', 'AI, thông báo và Web Push, thống kê', false],
+                        ['P5', 'AI, thông báo và Web Push, thống kê', true],
                         ['P6', 'Tối ưu hiệu năng và triển khai Hostinger', false],
                     ];
                 @endphp

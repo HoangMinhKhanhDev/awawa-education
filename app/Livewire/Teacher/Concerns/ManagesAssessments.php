@@ -5,6 +5,7 @@ namespace App\Livewire\Teacher\Concerns;
 use App\Enums\ExamStatus;
 use App\Enums\ExamType;
 use App\Models\Exam;
+use App\Services\NotificationDispatcher;
 use App\Support\SubjectContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Gate;
@@ -79,6 +80,8 @@ trait ManagesAssessments
         }
 
         $exam->forceFill(['status' => ExamStatus::Published])->save();
+
+        app(NotificationDispatcher::class)->examPublished($exam);
 
         session()->flash('status', 'Đã giao cho học sinh trong đội tuyển.');
     }
