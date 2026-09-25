@@ -9,11 +9,16 @@ use App\Livewire\Auth\Login;
 use App\Livewire\Auth\Register;
 use App\Livewire\Auth\ResetPassword;
 use App\Livewire\Dashboard;
+use App\Livewire\Info;
 use App\Livewire\Profile\Show as ProfileShow;
+use App\Livewire\Student\Result as StudentResult;
+use App\Livewire\Student\Take as StudentTake;
+use App\Livewire\Teacher\AnnouncementsIndex;
 use App\Livewire\Teacher\AssessmentBuilder;
 use App\Livewire\Teacher\AssignmentsIndex;
 use App\Livewire\Teacher\DocumentsIndex;
 use App\Livewire\Teacher\ExamsIndex;
+use App\Livewire\Teacher\GradingIndex;
 use App\Livewire\Teacher\QuestionsIndex;
 use App\Livewire\Teacher\StudentsIndex;
 use App\Livewire\Teacher\Studio;
@@ -66,12 +71,19 @@ Route::middleware('auth')->group(function () {
         'phase' => 'P4',
     ]))->name('map');
 
-    Route::get('/thong-tin', fn () => view('pages.placeholder', [
-        'title' => 'Thông tin',
-        'phase' => 'P3',
-    ]))->name('info');
+    Route::get('/thong-tin', Info::class)->name('info');
 
     Route::get('/ho-so', ProfileShow::class)->name('profile');
+
+    /*
+    |----------------------------------------------------------------------
+    | Học sinh (chỉ thành viên đội tuyển)
+    |----------------------------------------------------------------------
+    */
+    Route::middleware(['role:student', 'team'])->group(function () {
+        Route::get('/bai-thi/{exam}/lam', StudentTake::class)->name('student.take');
+        Route::get('/bai-thi/{exam}/ket-qua', StudentResult::class)->name('student.result');
+    });
 
     /*
     |----------------------------------------------------------------------
@@ -93,7 +105,12 @@ Route::middleware('auth')->group(function () {
         Route::get('/studio/tai-lieu', DocumentsIndex::class)
             ->middleware('feature:documents')->name('studio.documents');
 
+        Route::get('/studio/thong-bao', AnnouncementsIndex::class)
+            ->middleware('feature:announcements')->name('studio.announcements');
+
         Route::get('/studio/{exam}/soan', AssessmentBuilder::class)->name('studio.builder');
+
+        Route::get('/studio/{exam}/bai-lam', GradingIndex::class)->name('studio.grading');
 
         Route::get('/quan-ly-hoc-sinh', StudentsIndex::class)->name('students');
     });

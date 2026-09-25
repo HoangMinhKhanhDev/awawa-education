@@ -66,6 +66,7 @@
 
                     <div class="flex flex-wrap gap-1.5">
                         <a href="{{ route('studio.builder', $exam) }}" wire:navigate class="btn btn-outline px-3 py-1.5 text-xs">Mở soạn</a>
+                        <a href="{{ route('studio.grading', $exam) }}" wire:navigate class="btn btn-ghost px-3 py-1.5 text-xs">Bài làm</a>
 
                         @if ($exam->status->value === 'draft' || $exam->status->value === 'closed')
                             <button type="button" wire:click="publish({{ $exam->id }})" class="btn btn-ghost px-3 py-1.5 text-xs">Giao</button>

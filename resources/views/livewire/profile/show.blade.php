@@ -125,12 +125,22 @@
             </div>
 
             <div class="card">
-                <h2 class="text-base font-semibold text-slate-900 dark:text-white">Thành tích</h2>
-                <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                    Lịch sử điểm số, thành tích và biểu đồ tiến bộ sẽ xuất hiện ở đây khi kết quả thi được ghi nhận.
-                </p>
-                <div class="mt-4 rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-400 dark:bg-white/5">
-                    Chưa có dữ liệu điểm
+                <div class="flex items-center justify-between">
+                    <h2 class="text-base font-semibold text-slate-900 dark:text-white">Thành tích</h2>
+                    @if (($totalScore ?? 0) > 0)
+                        <span class="badge bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">Tổng {{ $totalScore }} điểm</span>
+                    @endif
+                </div>
+                <div class="mt-3 space-y-2">
+                    @forelse ($history as $attempt)
+                        <a href="{{ route('student.result', $attempt->exam) }}" wire:navigate
+                            class="flex items-center justify-between gap-2 rounded-lg border border-slate-200 p-2.5 text-sm transition hover:border-brand-300 dark:border-white/10">
+                            <span class="min-w-0 truncate text-slate-700 dark:text-slate-200">{{ $attempt->exam?->title }}</span>
+                            <span class="shrink-0 font-semibold text-brand-600 dark:text-brand-400">{{ (float) $attempt->score }}/{{ (float) $attempt->max_score }}</span>
+                        </a>
+                    @empty
+                        <div class="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-400 dark:bg-white/5">Chưa có dữ liệu điểm</div>
+                    @endforelse
                 </div>
             </div>
         </div>

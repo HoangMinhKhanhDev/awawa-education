@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Profile;
 
+use App\Models\ExamAttempt;
 use App\Models\StudentProfile;
 use App\Models\TeacherProfile;
 use Illuminate\Contracts\View\View;
@@ -139,8 +140,24 @@ class Show extends Component
 
     public function render(): View
     {
+        $user = auth()->user();
+
+        $history = $user->isStudent()
+            ? ExamAttempt::query()
+                ->where('student_id', $user->id)
+                ->finished()
+                ->with('exam')
+                ->orderByDesc('submitted_at')
+                ->limit(20)
+                ->get()
+            : collect();
+
+        $totalScore = $history->sum(fn ($attempt) => (float) $attempt->score);
+
         return view('livewire.profile.show', [
-            'user' => auth()->user(),
+            'user' => $user,
+            'history' => $history,
+            'totalScore' => $totalScore,
         ]);
     }
 }

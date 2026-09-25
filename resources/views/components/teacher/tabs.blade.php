@@ -9,6 +9,7 @@
         ['key' => 'exams', 'route' => 'studio.exams', 'label' => 'Đề thi', 'feature' => 'exams', 'icon' => 'cap'],
         ['key' => 'assignments', 'route' => 'studio.assignments', 'label' => 'Bài tập', 'feature' => 'assignments', 'icon' => 'check'],
         ['key' => 'documents', 'route' => 'studio.documents', 'label' => 'Tài liệu', 'feature' => 'documents', 'icon' => 'mail'],
+        ['key' => 'announcements', 'route' => 'studio.announcements', 'label' => 'Thông báo', 'feature' => 'announcements', 'icon' => 'bell'],
     ];
 @endphp
 
