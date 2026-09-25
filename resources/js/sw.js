@@ -18,7 +18,10 @@ registerRoute(
 
 registerRoute(
     ({ request }) => ['style', 'script', 'worker'].includes(request.destination),
-    new StaleWhileRevalidate({ cacheName: 'awawa-assets' }),
+    new StaleWhileRevalidate({
+        cacheName: 'awawa-assets',
+        plugins: [new ExpirationPlugin({ maxEntries: 80, maxAgeSeconds: 60 * 60 * 24 * 30 })],
+    }),
 );
 
 registerRoute(

@@ -7,7 +7,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 export default defineConfig({
     plugins: [
         laravel({
-            input: ['resources/css/app.css', 'resources/js/app.js'],
+            input: ['resources/css/app.css', 'resources/js/app.js', 'resources/js/whiteboard.jsx'],
             refresh: true,
             fonts: [
                 bunny('Be Vietnam Pro', {
@@ -27,7 +27,9 @@ export default defineConfig({
             includeAssets: ['favicon.svg', 'manifest.webmanifest', 'icons/*.png', 'offline.html'],
             injectManifest: {
                 globPatterns: [
-                    'build/**/*.{js,css,woff2}',
+                    'build/assets/app-*.{js,css}',
+                    'build/assets/fonts-*.css',
+                    'build/assets/*.woff2',
                     'icons/*.png',
                     'favicon.svg',
                     'manifest.webmanifest',

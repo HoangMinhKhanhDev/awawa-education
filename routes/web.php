@@ -10,6 +10,9 @@ use App\Livewire\Auth\Register;
 use App\Livewire\Auth\ResetPassword;
 use App\Livewire\Dashboard;
 use App\Livewire\Info;
+use App\Livewire\Maps\Editor as MapEditor;
+use App\Livewire\Maps\Index as MapsIndex;
+use App\Livewire\Maps\Shared as MapsShared;
 use App\Livewire\Profile\Show as ProfileShow;
 use App\Livewire\Student\Result as StudentResult;
 use App\Livewire\Student\Take as StudentTake;
@@ -48,6 +51,8 @@ Route::middleware('guest')->group(function () {
 Route::get('/auth/google', [GoogleController::class, 'redirect'])->name('auth.google');
 Route::get('/auth/google/callback', [GoogleController::class, 'callback'])->name('auth.google.callback');
 
+Route::get('/so-do/xem/{token}', MapsShared::class)->name('maps.shared');
+
 Route::post('/logout', function () {
     Auth::logout();
     request()->session()->invalidate();
@@ -66,10 +71,11 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/dashboard', Dashboard::class)->name('dashboard');
 
-    Route::get('/so-do', fn () => view('pages.placeholder', [
-        'title' => 'Sơ đồ kiến thức',
-        'phase' => 'P4',
-    ]))->name('map');
+    Route::get('/so-do', MapsIndex::class)
+        ->middleware('feature:knowledge_map')->name('map');
+
+    Route::get('/so-do/{map}/sua', MapEditor::class)
+        ->middleware('feature:knowledge_map')->name('maps.edit');
 
     Route::get('/thong-tin', Info::class)->name('info');
 
