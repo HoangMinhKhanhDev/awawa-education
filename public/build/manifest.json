@@ -1,0 +1,62 @@
+{
+  "_be-vietnam-pro-400-normal-PpnXBOrz.woff2": {
+    "file": "assets/be-vietnam-pro-400-normal-PpnXBOrz.woff2",
+    "src": "_be-vietnam-pro-400-normal-PpnXBOrz.woff2"
+  },
+  "_be-vietnam-pro-400-normal-bXgqVju9.woff": {
+    "file": "assets/be-vietnam-pro-400-normal-bXgqVju9.woff",
+    "src": "_be-vietnam-pro-400-normal-bXgqVju9.woff"
+  },
+  "_be-vietnam-pro-500-normal-B6LVzGNe.woff2": {
+    "file": "assets/be-vietnam-pro-500-normal-B6LVzGNe.woff2",
+    "src": "_be-vietnam-pro-500-normal-B6LVzGNe.woff2"
+  },
+  "_be-vietnam-pro-500-normal-BJkVuMHw.woff": {
+    "file": "assets/be-vietnam-pro-500-normal-BJkVuMHw.woff",
+    "src": "_be-vietnam-pro-500-normal-BJkVuMHw.woff"
+  },
+  "_be-vietnam-pro-600-normal-5IO4e7bK.woff": {
+    "file": "assets/be-vietnam-pro-600-normal-5IO4e7bK.woff",
+    "src": "_be-vietnam-pro-600-normal-5IO4e7bK.woff"
+  },
+  "_be-vietnam-pro-600-normal-BZDkUTrt.woff2": {
+    "file": "assets/be-vietnam-pro-600-normal-BZDkUTrt.woff2",
+    "src": "_be-vietnam-pro-600-normal-BZDkUTrt.woff2"
+  },
+  "_be-vietnam-pro-700-normal-C2EtzaOi.woff": {
+    "file": "assets/be-vietnam-pro-700-normal-C2EtzaOi.woff",
+    "src": "_be-vietnam-pro-700-normal-C2EtzaOi.woff"
+  },
+  "_be-vietnam-pro-700-normal-DlW1Zbsh.woff2": {
+    "file": "assets/be-vietnam-pro-700-normal-DlW1Zbsh.woff2",
+    "src": "_be-vietnam-pro-700-normal-DlW1Zbsh.woff2"
+  },
+  "_fonts-DEod3wxq.css": {
+    "file": "assets/fonts-DEod3wxq.css",
+    "src": "_fonts-DEod3wxq.css"
+  },
+  "node_modules/workbox-window/build/workbox-window.prod.es5.mjs": {
+    "file": "assets/workbox-window.prod.es5-Bd17z0YL.js",
+    "name": "workbox-window.prod.es5",
+    "src": "node_modules/workbox-window/build/workbox-window.prod.es5.mjs",
+    "isDynamicEntry": true
+  },
+  "resources/css/app.css": {
+    "file": "assets/app-Mz1PAyos.css",
+    "name": "app",
+    "names": [
+      "app.css"
+    ],
+    "src": "resources/css/app.css",
+    "isEntry": true
+  },
+  "resources/js/app.js": {
+    "file": "assets/app-BJg96kZf.js",
+    "name": "app",
+    "src": "resources/js/app.js",
+    "isEntry": true,
+    "dynamicImports": [
+      "node_modules/workbox-window/build/workbox-window.prod.es5.mjs"
+    ]
+  }
+}
