@@ -27,70 +27,107 @@
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body class="min-h-full">
-    <div class="relative overflow-hidden">
-        <div class="pointer-events-none absolute -top-32 right-0 h-96 w-96 rounded-full bg-brand-500/20 blur-3xl"></div>
-        <div class="pointer-events-none absolute top-40 -left-24 h-96 w-96 rounded-full bg-brand-800/20 blur-3xl"></div>
+<body class="paper-grid min-h-full">
+    <header class="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-4 sm:px-6 lg:py-6">
+        <x-logo class="h-10 w-10" />
+        <div class="flex items-center gap-1.5">
+            <button type="button" onclick="window.awawa.toggleTheme()"
+                class="flex h-10 w-10 items-center justify-center rounded-[10px] text-ink-soft hover:bg-paper-2 dark:text-slate-300 dark:hover:bg-white/5"
+                aria-label="Đổi chế độ sáng/tối">
+                <x-icon name="sun" class="hidden h-5 w-5 dark:block" />
+                <x-icon name="moon" class="h-5 w-5 dark:hidden" />
+            </button>
+            @auth
+                <a href="{{ route('dashboard') }}" class="btn btn-primary">Vào ứng dụng</a>
+            @else
+                <a href="{{ route('login') }}" class="btn btn-ghost">Đăng nhập</a>
+                <a href="{{ route('register') }}" class="btn btn-primary">Tạo tài khoản</a>
+            @endauth
+        </div>
+    </header>
 
-        <header class="relative mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-5">
-            <x-logo class="h-10 w-10" />
-            <div class="flex items-center gap-2">
-                <button type="button" onclick="window.awawa.toggleTheme()"
-                    class="flex h-10 w-10 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/5"
-                    aria-label="Đổi chế độ sáng/tối">
-                    <x-icon name="sun" class="hidden h-5 w-5 dark:block" />
-                    <x-icon name="moon" class="h-5 w-5 dark:hidden" />
-                </button>
-                @auth
-                    <a href="{{ route('dashboard') }}" class="btn btn-primary">Vào ứng dụng</a>
-                @else
-                    <a href="{{ route('login') }}" class="btn btn-ghost">Đăng nhập</a>
-                    <a href="{{ route('register') }}" class="btn btn-primary">Bắt đầu</a>
-                @endauth
-            </div>
-        </header>
-
-        <main class="relative mx-auto w-full max-w-6xl px-4 pb-20 pt-10">
-            <div class="mx-auto max-w-3xl text-center">
-                <span class="badge bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">Dành cho đội tuyển học sinh giỏi</span>
-                <h1 class="mt-5 text-4xl font-extrabold tracking-tight text-slate-900 sm:text-5xl dark:text-white">
-                    Quản lý đội tuyển <span class="bg-gradient-to-r from-brand-500 to-brand-800 bg-clip-text text-transparent">gọn gàng và nhẹ nhàng</span>
+    <main class="mx-auto w-full max-w-6xl px-4 pb-16 sm:px-6">
+        <section class="grid items-center gap-10 py-10 lg:grid-cols-[1.05fr_0.95fr] lg:gap-14 lg:py-16">
+            <div>
+                <h1 class="max-w-[18ch] font-serif text-[34px] font-semibold leading-[1.12] tracking-[-0.015em] text-ink sm:text-[42px] dark:text-white">
+                    Soạn đề, giao bài, chấm điểm — một chỗ cho cả đội tuyển.
                 </h1>
-                <p class="mx-auto mt-5 max-w-2xl text-base text-slate-600 dark:text-slate-300">
-                    {{ $brand }} giúp giáo viên từng môn tạo đề, tài liệu và bài tập; học sinh làm bài, theo dõi điểm và xây dựng sơ đồ kiến thức — tất cả trong một PWA nhẹ, chạy mượt trên cả điện thoại yếu.
+                <p class="mt-5 max-w-[54ch] text-[15px] leading-relaxed text-ink-soft dark:text-slate-400">
+                    Giáo viên mỗi môn có ngân hàng câu hỏi, đề thi, bài tập và tài liệu riêng. Học sinh trong đội làm bài, xem điểm và dựng sơ đồ kiến thức. Dữ liệu giữ tách biệt theo từng môn.
                 </p>
-                <div class="mt-8 flex flex-wrap items-center justify-center gap-3">
-                    <a href="{{ route('register') }}" class="btn btn-primary px-6 py-3">
-                        Tạo tài khoản học sinh
-                        <x-icon name="arrow-right" class="h-5 w-5" />
-                    </a>
-                    <a href="{{ route('login') }}" class="btn btn-outline px-6 py-3">Đăng nhập</a>
+
+                <div class="mt-7 flex flex-wrap items-center gap-3">
+                    <a href="{{ route('register') }}" class="btn btn-primary px-5 py-3">Tạo tài khoản học sinh</a>
+                    <a href="{{ route('login') }}" class="btn btn-outline px-5 py-3">Đăng nhập</a>
+                </div>
+
+                <p class="mt-4 text-[13px] text-ink-faint dark:text-slate-500">
+                    Học sinh tự đăng ký chỉ xem được tài liệu công khai. Giáo viên thêm vào đội tuyển thì mới làm bài và tính điểm.
+                </p>
+            </div>
+
+            {{-- Vật thể nhận diện: một tờ đề đã chấm --}}
+            <div class="relative">
+                <div class="panel overflow-hidden">
+                    <div class="flex items-center justify-between border-b border-rule px-5 py-3 dark:border-night-700">
+                        <p class="font-serif text-sm font-semibold text-ink dark:text-white">Đề số 01 · Toán</p>
+                        <p class="tnum text-sm text-ink-faint dark:text-slate-500">45 phút</p>
+                    </div>
+
+                    <div class="space-y-4 px-5 py-5">
+                        @foreach ([
+                            ['1', 'Tìm giá trị nhỏ nhất của biểu thức theo điều kiện cho trước.', null],
+                            ['2', 'Chứng minh bất đẳng thức bằng phương pháp tương đương.', 'correct'],
+                            ['3', 'Cho dãy số, xác định công thức tổng quát.', 'wrong'],
+                        ] as [$no, $text, $mark])
+                            <div class="flex gap-3">
+                                <span class="tnum mt-0.5 w-4 shrink-0 text-sm text-ink-faint dark:text-slate-500">{{ $no }}</span>
+                                <div class="min-w-0 flex-1">
+                                    <p class="text-sm leading-relaxed text-ink dark:text-slate-200">{{ $text }}</p>
+                                    @if ($mark === 'correct')
+                                        <p class="mt-1 text-[13px] font-medium text-success">Đúng · 1.0 điểm</p>
+                                    @elseif ($mark === 'wrong')
+                                        <p class="mt-1 text-[13px] font-medium text-signal">Sai · xem lại bước biến đổi</p>
+                                    @else
+                                        <p class="mt-1 text-[13px] text-ink-faint dark:text-slate-500">Chưa làm</p>
+                                    @endif
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+
+                    <div class="flex items-center justify-between border-t border-rule bg-paper-2 px-5 py-3 dark:border-night-700 dark:bg-night-900/40">
+                        <p class="text-[13px] text-ink-soft dark:text-slate-400">Giáo viên chấm tự luận, nhận xét từng câu</p>
+                        <p class="font-serif text-xl font-semibold text-ink dark:text-white">8.5<span class="text-sm font-normal text-ink-faint">/10</span></p>
+                    </div>
                 </div>
             </div>
+        </section>
 
-            <div class="mt-16 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <section class="border-t border-rule pt-10 dark:border-night-700">
+            <h2 class="max-w-[30ch] font-serif text-xl font-semibold text-ink dark:text-white">Những gì có trong awawa</h2>
+            <dl class="mt-6 grid gap-x-10 gap-y-6 sm:grid-cols-2">
                 @foreach ([
-                    ['sparkles', 'Studio theo môn', 'Mỗi môn có bộ tính năng riêng, tách biệt hoàn toàn, không lẫn dữ liệu.'],
-                    ['map', 'Sơ đồ kiến thức', 'Bảng trắng tự do tạo node và liên kết, lưu trạng thái và xuất ảnh/PDF/JSON.'],
-                    ['chart', 'Điểm số & xếp hạng', 'Chấm trắc nghiệm tự động, tổng hợp điểm và bảng xếp hạng theo môn.'],
-                    ['bell', 'Thông báo', 'Nhắc hạn nộp, đề mới và kết quả qua thông báo trong app và Web Push.'],
-                    ['key', 'API & AI', 'Quản lý API key, tích hợp AI tạo đề qua OpenRouter và Agnes AI.'],
-                    ['bolt', 'PWA tải nhanh', 'Cài như ứng dụng, hoạt động nhẹ trên thiết bị cấu hình thấp.'],
-                ] as [$icon, $title, $desc])
-                    <div class="card">
-                        <span class="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
-                            <x-icon :name="$icon" class="h-6 w-6" />
-                        </span>
-                        <h3 class="mt-4 font-semibold text-slate-900 dark:text-white">{{ $title }}</h3>
-                        <p class="mt-1.5 text-sm text-slate-500 dark:text-slate-400">{{ $desc }}</p>
+                    ['Studio theo môn', 'Mỗi môn có bộ tính năng riêng và dữ liệu tách biệt, không lẫn sang nhau.'],
+                    ['Ngân hàng câu hỏi', 'Trắc nghiệm, tự luận, điền khuyết — kèm đáp án, độ khó và chủ đề.'],
+                    ['Đề thi và bài tập', 'Soạn từ ngân hàng, trộn câu, hẹn giờ, giao cho học sinh trong đội.'],
+                    ['Chấm và xếp hạng', 'Trắc nghiệm chấm tự động, tự luận giáo viên chấm và nhận xét.'],
+                    ['Sơ đồ kiến thức', 'Bảng trắng tạo node và liên kết, lưu phiên bản, xuất ảnh và PDF.'],
+                    ['Thông báo', 'Có đề mới, hạn nộp và kết quả qua thông báo trong app và Web Push.'],
+                ] as [$term, $desc])
+                    <div class="border-t border-rule pt-4 dark:border-night-700">
+                        <dt class="font-medium text-ink dark:text-slate-100">{{ $term }}</dt>
+                        <dd class="mt-1 text-sm leading-relaxed text-ink-soft dark:text-slate-400">{{ $desc }}</dd>
                     </div>
                 @endforeach
-            </div>
-        </main>
+            </dl>
+        </section>
+    </main>
 
-        <footer class="relative border-t border-slate-200 py-8 text-center text-xs text-slate-400 dark:border-white/10">
+    <footer class="border-t border-rule py-8 dark:border-night-700">
+        <p class="mx-auto max-w-6xl px-4 text-xs text-ink-faint sm:px-6 dark:text-slate-500">
             &copy; {{ date('Y') }} {{ $brand }} — Đội tuyển học sinh giỏi
-        </footer>
-    </div>
+        </p>
+    </footer>
 </body>
 </html>

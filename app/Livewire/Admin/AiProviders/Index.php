@@ -2,7 +2,9 @@
 
 namespace App\Livewire\Admin\AiProviders;
 
+use App\Enums\AiPurpose;
 use App\Models\AiProvider;
+use App\Services\Ai\AiManager;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
@@ -157,6 +159,28 @@ class Index extends Component
         $provider->forceFill(['is_default' => true, 'is_enabled' => true])->save();
 
         session()->flash('status', "Đã đặt {$provider->label} làm nhà cung cấp mặc định.");
+    }
+
+    public function testConnection(AiManager $ai): void
+    {
+        try {
+            $result = $ai->chat(
+                [
+                    ['role' => 'system', 'content' => 'Bạn là trợ lý kiểm tra kết nối.'],
+                    ['role' => 'user', 'content' => 'Trả lời đúng một từ: OK'],
+                ],
+                [
+                    'purpose' => AiPurpose::ConnectionTest,
+                    'user_id' => auth()->id(),
+                    'max_tokens' => 20,
+                    'temperature' => 0,
+                ],
+            );
+
+            session()->flash('status', 'Kết nối thành công qua '.$result->providerKey.' ('.$result->model.').');
+        } catch (\Throwable $exception) {
+            session()->flash('error', 'Kết nối thất bại: '.$exception->getMessage());
+        }
     }
 
     public function toggleEnabled(int $id): void

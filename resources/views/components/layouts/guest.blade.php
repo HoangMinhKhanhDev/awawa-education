@@ -11,6 +11,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="theme-color" content="{{ config('awawa.brand.primary') }}">
+    <meta name="vapid-public-key" content="{{ config('awawa.webpush.public_key') }}">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
 
     <title>{{ $title ? $title.' · '.$brand : $brand }}</title>
 
@@ -35,30 +38,50 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @livewireStyles
 </head>
-<body class="min-h-full">
-    <div class="relative flex min-h-dvh flex-col items-center justify-center overflow-hidden px-4 py-10">
-        <div class="pointer-events-none absolute -top-24 -right-24 h-72 w-72 rounded-full bg-brand-500/20 blur-3xl"></div>
-        <div class="pointer-events-none absolute -bottom-24 -left-24 h-72 w-72 rounded-full bg-brand-800/20 blur-3xl"></div>
+<body class="paper-grid min-h-full">
+    <div class="min-h-dvh lg:grid lg:grid-cols-[1.05fr_1fr]">
+        {{-- Bìa giới thiệu (desktop) --}}
+        <aside class="hidden flex-col justify-between border-r border-rule bg-white/75 p-10 backdrop-blur lg:flex dark:border-night-700 dark:bg-night-800/70">
+            <x-logo class="h-10 w-10" />
 
-        <div class="relative w-full max-w-md">
-            <div class="mb-6 flex flex-col items-center text-center">
-                <x-logo class="h-14 w-14" :show-text="false" />
-                <h1 class="mt-4 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-                    {{ $title ?? 'Chào mừng tới awawa' }}
-                </h1>
-                @if ($subtitle)
-                    <p class="mt-1.5 text-sm text-slate-500 dark:text-slate-400">{{ $subtitle }}</p>
-                @endif
+            <div class="max-w-md">
+                <p class="font-serif text-[32px] font-semibold leading-[1.15] tracking-[-0.01em] text-ink dark:text-white">
+                    Một chỗ cho cả đội tuyển: đề, bài, điểm và sơ đồ kiến thức.
+                </p>
+                <p class="mt-4 text-[15px] leading-relaxed text-ink-soft dark:text-slate-400">
+                    Giáo viên từng môn soạn đề và giao bài; học sinh làm bài, xem điểm và dựng sơ đồ. Dữ liệu tách riêng theo môn.
+                </p>
+
+                <ul class="mt-8 space-y-3 text-sm text-ink-soft dark:text-slate-400">
+                    <li class="flex gap-3"><span class="mt-2 h-px w-6 shrink-0 bg-rule-strong dark:bg-night-700"></span>Ngân hàng câu hỏi, đề thi, bài tập và tài liệu.</li>
+                    <li class="flex gap-3"><span class="mt-2 h-px w-6 shrink-0 bg-rule-strong dark:bg-night-700"></span>Chấm trắc nghiệm tự động, chấm tự luận có nhận xét.</li>
+                    <li class="flex gap-3"><span class="mt-2 h-px w-6 shrink-0 bg-rule-strong dark:bg-night-700"></span>Cài như ứng dụng, chạy nhẹ trên điện thoại yếu.</li>
+                </ul>
             </div>
 
-            <div class="card p-6">
-                {{ $slot }}
-            </div>
-        </div>
+            <p class="text-xs text-ink-faint dark:text-slate-500">&copy; {{ date('Y') }} {{ $brand }} — Đội tuyển học sinh giỏi</p>
+        </aside>
 
-        <p class="relative mt-6 text-center text-xs text-slate-400">
-            &copy; {{ date('Y') }} {{ $brand }} — Đội tuyển học sinh giỏi
-        </p>
+        {{-- Form --}}
+        <main class="flex min-h-dvh items-center justify-center px-4 py-10 sm:px-6">
+            <div class="w-full max-w-md">
+                <div class="mb-6 flex flex-col items-start">
+                    <x-logo class="h-11 w-11" text-class="text-lg lg:hidden" />
+                    <h1 class="page-title mt-4">{{ $title ?? 'Chào mừng tới awawa' }}</h1>
+                    @if ($subtitle)
+                        <p class="page-sub">{{ $subtitle }}</p>
+                    @endif
+                </div>
+
+                <div class="panel panel-pad">
+                    {{ $slot }}
+                </div>
+
+                <p class="mt-6 text-xs text-ink-faint lg:hidden dark:text-slate-500">
+                    &copy; {{ date('Y') }} {{ $brand }} — Đội tuyển học sinh giỏi
+                </p>
+            </div>
+        </main>
     </div>
 
     @livewireScripts

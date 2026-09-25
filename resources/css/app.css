@@ -6,24 +6,48 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
+    /* ----- Typography ----- */
     --font-sans: 'Be Vietnam Pro', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-serif: 'Source Serif 4', ui-serif, Georgia, 'Times New Roman', serif;
 
-    --color-brand-50: #eff6ff;
-    --color-brand-100: #dbeafe;
-    --color-brand-200: #bfdbfe;
-    --color-brand-300: #93c5fd;
-    --color-brand-400: #60a5fa;
-    --color-brand-500: #3b82f6;
-    --color-brand-600: #2563eb;
-    --color-brand-700: #1d4ed8;
-    --color-brand-800: #1e40af;
-    --color-brand-900: #1e3a8a;
-    --color-brand-950: #172554;
+    /* ----- Brand blue (retuned, đậm & "mực" hơn) ----- */
+    --color-brand-50: #f4f7ff;
+    --color-brand-100: #e6edff;
+    --color-brand-200: #c8d8fb;
+    --color-brand-300: #9fb9f0;
+    --color-brand-400: #6c92e4;
+    --color-brand-500: #3d68d6;
+    --color-brand-600: #2154d6;
+    --color-brand-700: #1b43ab;
+    --color-brand-800: #173892;
+    --color-brand-900: #142e75;
+    --color-brand-950: #0d1e4e;
 
-    --color-night-700: #16213a;
-    --color-night-800: #111a2e;
-    --color-night-900: #0b1220;
+    /* ----- Neutral paper & ink ----- */
+    --color-paper: #f6f7f9;
+    --color-paper-2: #eef1f5;
+    --color-rule: #e1e6ee;
+    --color-rule-strong: #c9d2e0;
+    --color-ink: #141b2d;
+    --color-ink-soft: #5b6678;
+    --color-ink-faint: #8a93a6;
+
+    /* ----- Accents (dùng có ý nghĩa) ----- */
+    --color-signal: #b42318;
+    --color-signal-soft: #fdecea;
+    --color-success: #1f7a57;
+    --color-success-soft: #e9f5ef;
+    --color-warning: #b54708;
+    --color-warning-soft: #fdf3e7;
+
+    /* ----- Dark surfaces (than trung tính, bỏ tông xanh) ----- */
+    --color-night-700: #1b2130;
+    --color-night-800: #151a24;
+    --color-night-900: #0e1118;
+
+    /* ----- Grid giấy ô ly ----- */
+    --grid-line: rgba(20, 27, 45, 0.05);
 }
 
 @layer base {
@@ -32,7 +56,13 @@
     }
 
     body {
-        @apply bg-slate-50 text-slate-800 antialiased dark:bg-night-900 dark:text-slate-200;
+        @apply bg-paper text-ink antialiased dark:bg-night-900 dark:text-slate-100;
+    }
+
+    h1,
+    h2,
+    h3 {
+        @apply font-serif;
     }
 
     ::-webkit-scrollbar {
@@ -41,48 +71,188 @@
     }
 
     ::-webkit-scrollbar-thumb {
-        @apply rounded-full bg-slate-300 dark:bg-white/10;
+        @apply rounded-full bg-rule-strong dark:bg-white/10;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: transparent;
     }
 }
 
 @layer components {
-    .btn {
-        @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60 disabled:cursor-not-allowed disabled:opacity-50;
+    /* ----- Surfaces ----- */
+    .panel {
+        @apply rounded-[14px] border border-rule bg-white dark:border-night-700 dark:bg-night-800;
     }
 
-    .btn-primary {
-        @apply bg-brand-600 text-white shadow-sm shadow-brand-600/20 hover:bg-brand-700 active:bg-brand-800;
-    }
-
-    .btn-outline {
-        @apply border border-slate-300 text-slate-700 hover:bg-slate-100 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/5;
-    }
-
-    .btn-ghost {
-        @apply text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/5;
-    }
-
-    .input {
-        @apply w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:placeholder:text-slate-500;
-    }
-
-    .label {
-        @apply mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300;
+    .panel-pad {
+        @apply p-5;
     }
 
     .card {
-        @apply rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-white/5;
+        @apply rounded-[14px] border border-rule bg-white p-5 dark:border-night-700 dark:bg-night-800;
     }
 
+    .rule {
+        @apply h-px w-full bg-rule dark:bg-night-700;
+    }
+
+    /* ----- Buttons ----- */
+    .btn {
+        @apply inline-flex items-center justify-center gap-2 rounded-[10px] px-4 py-2.5 text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:cursor-not-allowed disabled:opacity-50 dark:focus-visible:ring-offset-night-900;
+    }
+
+    .btn-primary {
+        @apply bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800;
+    }
+
+    .btn-outline {
+        @apply border border-rule-strong text-ink hover:bg-paper-2 dark:border-night-700 dark:text-slate-200 dark:hover:bg-white/5;
+    }
+
+    .btn-ghost {
+        @apply text-ink-soft hover:bg-paper-2 hover:text-ink dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-white;
+    }
+
+    /* ----- Form ----- */
+    .field,
+    .input {
+        @apply w-full rounded-[10px] border border-rule-strong bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/25 dark:border-night-700 dark:bg-night-800 dark:text-slate-100 dark:placeholder:text-slate-500;
+    }
+
+    .label {
+        @apply mb-1.5 block text-[13px] font-medium text-ink-soft dark:text-slate-300;
+    }
+
+    /* ----- Chips / badges ----- */
     .badge {
-        @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+        @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium;
     }
 
+    .chip {
+        @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium;
+    }
+
+    .chip-neutral {
+        @apply bg-paper-2 text-ink-soft dark:bg-white/5 dark:text-slate-300;
+    }
+
+    .chip-brand {
+        @apply bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300;
+    }
+
+    .chip-signal {
+        @apply bg-signal-soft text-signal dark:bg-signal/15 dark:text-red-300;
+    }
+
+    .chip-success {
+        @apply bg-success-soft text-success dark:bg-success/15 dark:text-emerald-300;
+    }
+
+    .chip-warning {
+        @apply bg-warning-soft text-warning dark:bg-warning/15 dark:text-amber-300;
+    }
+
+    /* ----- Navigation ----- */
     .nav-item {
-        @apply flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-white;
+        @apply relative flex items-center gap-3 rounded-[10px] px-3 py-2.5 text-sm font-medium text-ink-soft transition-colors hover:bg-paper-2 hover:text-ink dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-white;
     }
 
     .nav-item-active {
-        @apply bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300;
+        @apply bg-paper-2 text-ink dark:bg-white/5 dark:text-white;
+    }
+
+    .nav-item-active::before {
+        content: '';
+        @apply absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-full bg-brand-600 dark:bg-brand-400;
+    }
+
+    /* ----- Page header ----- */
+    .page-head {
+        @apply flex flex-wrap items-end justify-between gap-3 border-b border-rule pb-4 dark:border-night-700;
+    }
+
+    .page-title {
+        @apply font-serif text-[26px] font-semibold leading-tight tracking-[-0.01em] text-ink dark:text-white;
+    }
+
+    .page-sub {
+        @apply mt-1 text-sm text-ink-soft dark:text-slate-400;
+    }
+
+    /* ----- Tabs (underline) ----- */
+    .tabs {
+        @apply flex gap-5 overflow-x-auto border-b border-rule dark:border-night-700;
+    }
+
+    .tab {
+        @apply relative flex flex-none items-center gap-2 pb-3 pt-1 text-sm font-medium text-ink-soft transition-colors hover:text-ink dark:text-slate-400 dark:hover:text-white;
+    }
+
+    .tab-active {
+        @apply text-brand-700 dark:text-brand-300;
+    }
+
+    .tab-active::after {
+        content: '';
+        @apply absolute inset-x-0 -bottom-px h-[2px] rounded-full bg-brand-600 dark:bg-brand-400;
+    }
+
+    /* ----- Data / numbers ----- */
+    .tnum {
+        font-variant-numeric: tabular-nums;
+    }
+
+    .stat-num {
+        @apply font-serif text-3xl font-semibold leading-none text-ink dark:text-white;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .rank-row {
+        @apply flex items-center gap-3 border-b border-rule py-3 last:border-0 dark:border-night-700;
+    }
+
+    /* ----- Empty & alerts ----- */
+    .empty {
+        @apply px-4 py-10 text-center text-sm text-ink-faint dark:text-slate-500;
+    }
+
+    .alert {
+        @apply rounded-[10px] border px-4 py-3 text-sm;
+    }
+
+    .alert-success {
+        @apply border-success/25 bg-success-soft text-success dark:border-success/20 dark:bg-success/10 dark:text-emerald-300;
+    }
+
+    .alert-error {
+        @apply border-signal/25 bg-signal-soft text-signal dark:border-signal/20 dark:bg-signal/10 dark:text-red-300;
+    }
+
+    .alert-warning {
+        @apply border-warning/25 bg-warning-soft text-warning dark:border-warning/20 dark:bg-warning/10 dark:text-amber-300;
+    }
+
+    /* ----- Motif giấy ô ly (chỉ landing/auth) ----- */
+    .paper-grid {
+        background-image: linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+            linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+        background-size: 24px 24px;
+    }
+
+    .dark .paper-grid {
+        background-image: linear-gradient(to right, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+        scroll-behavior: auto !important;
     }
 }

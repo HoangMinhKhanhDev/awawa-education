@@ -1,4 +1,4 @@
-@props(['class' => 'h-9 w-9', 'showText' => true, 'textClass' => 'text-slate-900 dark:text-white'])
+@props(['class' => 'h-9 w-9', 'showText' => true, 'textClass' => 'text-ink dark:text-white'])
 
 <div {{ $attributes->merge(['class' => 'flex items-center gap-2.5']) }}>
     <svg class="{{ $class }} shrink-0" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" role="img"
@@ -16,6 +16,6 @@
     </svg>
 
     @if ($showText)
-        <span class="text-lg font-bold leading-none tracking-tight {{ $textClass }}">awawa</span>
+        <span class="font-serif text-[19px] font-semibold leading-none tracking-[-0.01em] {{ $textClass }}">awawa</span>
     @endif
 </div>

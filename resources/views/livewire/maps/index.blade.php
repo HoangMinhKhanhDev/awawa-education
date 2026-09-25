@@ -1,10 +1,10 @@
 <div class="space-y-6">
-    <header class="flex flex-wrap items-end justify-between gap-3">
+    <div class="page-head">
         <div>
-            <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Sơ đồ kiến thức</h1>
-            <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            <h1 class="page-title">Sơ đồ kiến thức</h1>
+            <p class="page-sub">
                 @if ($subject)
-                    Bảng trắng tạo node và liên kết cho môn <span class="font-semibold" style="color: {{ $subject->color }}">{{ $subject->name }}</span>.
+                    Bảng trắng tạo node và liên kết cho môn <span class="font-medium" style="color: {{ $subject->color }}">{{ $subject->name }}</span>.
                 @else
                     Bảng trắng tạo node và liên kết kiến thức.
                 @endif
@@ -16,70 +16,69 @@
                 Tạo sơ đồ
             </button>
         @endif
-    </header>
+    </div>
 
     @if (session('status'))
-        <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
-            {{ session('status') }}
-        </div>
+        <div class="alert alert-success">{{ session('status') }}</div>
     @endif
 
     @if ($sharedUrl)
-        <div class="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 dark:border-brand-500/20 dark:bg-brand-500/10">
-            <p class="text-sm font-semibold text-brand-800 dark:text-brand-300">Liên kết chia sẻ</p>
-            <code class="mt-2 block select-all overflow-x-auto rounded-lg bg-white px-3 py-2 text-xs text-brand-900 dark:bg-night-900 dark:text-brand-200">{{ $sharedUrl }}</code>
+        <div class="alert alert-success">
+            <p class="font-medium">Liên kết chia sẻ</p>
+            <code class="mt-2 block select-all overflow-x-auto rounded-[10px] bg-white px-3 py-2 text-xs text-ink dark:bg-night-900 dark:text-slate-200">{{ $sharedUrl }}</code>
         </div>
     @endif
 
-    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        @forelse ($maps as $map)
-            <div class="card flex flex-col" wire:key="map-{{ $map->id }}">
-                <div class="flex items-start justify-between gap-2">
-                    <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
+    <div class="panel">
+        <div class="divide-y divide-rule dark:divide-night-700">
+            @forelse ($maps as $map)
+                <div class="flex flex-wrap items-center gap-4 px-5 py-4" wire:key="map-{{ $map->id }}">
+                    <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-paper-2 text-ink-soft dark:bg-white/5 dark:text-slate-300">
                         <x-icon name="map" class="h-5 w-5" />
                     </span>
-                    <span class="badge bg-slate-100 text-slate-600 dark:bg-white/5 dark:text-slate-300">{{ $map->visibility->label() }}</span>
+
+                    <div class="min-w-0 flex-1">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <p class="font-medium text-ink dark:text-slate-100">{{ $map->title }}</p>
+                            <span class="chip chip-neutral">{{ $map->visibility->label() }}</span>
+                        </div>
+                        @if ($map->description)
+                            <p class="mt-0.5 line-clamp-1 text-sm text-ink-soft dark:text-slate-400">{{ $map->description }}</p>
+                        @endif
+                        <p class="tnum mt-0.5 text-xs text-ink-faint dark:text-slate-500">
+                            {{ $map->owner?->name }} <span class="mx-1">—</span> phiên bản {{ $map->current_version }}
+                            @if ($map->updated_at)<span class="mx-1">—</span>{{ $map->updated_at->diffForHumans() }}@endif
+                        </p>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-1.5">
+                        <a href="{{ route('maps.edit', $map) }}" wire:navigate class="btn btn-primary px-3.5 py-2 text-xs">Mở</a>
+                        @can('update', $map)
+                            <button type="button" wire:click="openEdit({{ $map->id }})" class="btn btn-outline px-3.5 py-2 text-xs">Sửa</button>
+                        @endcan
+                        @can('share', $map)
+                            <button type="button" wire:click="share({{ $map->id }})" class="btn btn-ghost px-3 py-2 text-xs">Chia sẻ</button>
+                        @endcan
+                        <button type="button" wire:click="duplicate({{ $map->id }})" class="btn btn-ghost px-3 py-2 text-xs">Nhân bản</button>
+                        @can('delete', $map)
+                            <button type="button" wire:click="delete({{ $map->id }})" wire:confirm="Xóa sơ đồ {{ $map->title }}?"
+                                class="btn btn-ghost px-3 py-2 text-xs text-signal hover:bg-signal-soft dark:text-red-400 dark:hover:bg-red-500/10">Xóa</button>
+                        @endcan
+                    </div>
                 </div>
-
-                <h2 class="mt-3 font-semibold text-slate-900 dark:text-white">{{ $map->title }}</h2>
-                @if ($map->description)
-                    <p class="mt-1 line-clamp-2 text-sm text-slate-500 dark:text-slate-400">{{ $map->description }}</p>
-                @endif
-
-                <p class="mt-2 text-xs text-slate-400">
-                    {{ $map->owner?->name }} · v{{ $map->current_version }}
-                    @if ($map->updated_at) · {{ $map->updated_at->diffForHumans() }} @endif
-                </p>
-
-                <div class="mt-4 flex flex-1 flex-wrap items-end gap-1.5">
-                    <a href="{{ route('maps.edit', $map) }}" wire:navigate class="btn btn-primary px-3 py-1.5 text-xs">Mở</a>
-                    @can('update', $map)
-                        <button type="button" wire:click="openEdit({{ $map->id }})" class="btn btn-outline px-3 py-1.5 text-xs">Sửa</button>
-                    @endcan
-                    @can('share', $map)
-                        <button type="button" wire:click="share({{ $map->id }})" class="btn btn-ghost px-3 py-1.5 text-xs">Chia sẻ</button>
-                    @endcan
-                    <button type="button" wire:click="duplicate({{ $map->id }})" class="btn btn-ghost px-3 py-1.5 text-xs">Nhân bản</button>
-                    @can('delete', $map)
-                        <button type="button" wire:click="delete({{ $map->id }})" wire:confirm="Xóa sơ đồ {{ $map->title }}?"
-                            class="btn btn-ghost px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10">Xóa</button>
-                    @endcan
-                </div>
-            </div>
-        @empty
-            <div class="card text-center text-sm text-slate-500 sm:col-span-2 lg:col-span-3 dark:text-slate-400">
-                Chưa có sơ đồ nào. Hãy tạo sơ đồ đầu tiên.
-            </div>
-        @endforelse
+            @empty
+                <p class="empty">Chưa có sơ đồ nào. Tạo sơ đồ đầu tiên để bắt đầu.</p>
+            @endforelse
+        </div>
     </div>
 
     @if ($showForm)
-        <div class="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+        <div class="fixed inset-0 z-50 flex items-end justify-center bg-night-900/50 p-0 backdrop-blur-sm sm:items-center sm:p-4"
             x-data x-on:keydown.escape.window="$wire.closeForm()">
-            <div class="w-full max-w-md rounded-t-2xl bg-white p-6 shadow-xl sm:rounded-2xl dark:bg-night-800" @click.stop>
+            <div class="w-full max-w-md rounded-t-[14px] bg-white p-6 sm:rounded-[14px] dark:bg-night-800" @click.stop>
                 <div class="mb-5 flex items-center justify-between">
-                    <h2 class="text-lg font-semibold text-slate-900 dark:text-white">{{ $editingId ? 'Sửa sơ đồ' : 'Tạo sơ đồ' }}</h2>
-                    <button type="button" wire:click="closeForm" class="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5" aria-label="Đóng">
+                    <h2 class="font-serif text-lg font-semibold text-ink dark:text-white">{{ $editingId ? 'Sửa sơ đồ' : 'Tạo sơ đồ' }}</h2>
+                    <button type="button" wire:click="closeForm" class="rounded-[10px] p-1.5 text-ink-faint hover:bg-paper-2 dark:hover:bg-white/5" aria-label="Đóng">
                         <x-icon name="x" class="h-5 w-5" />
                     </button>
                 </div>
@@ -88,7 +87,7 @@
                     <div>
                         <label class="label" for="m-title">Tên sơ đồ</label>
                         <input id="m-title" type="text" class="input" wire:model="title" placeholder="Sơ đồ chuyên đề 1">
-                        @error('title') <p class="mt-1.5 text-sm text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
+                        @error('title') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
                     </div>
                     <div>
                         <label class="label" for="m-description">Mô tả</label>
@@ -101,9 +100,9 @@
                                 <option value="{{ $option->value }}">{{ $option->label() }}</option>
                             @endforeach
                         </select>
-                        <p class="mt-1 text-xs text-slate-400">{{ collect($visibilities)->firstWhere('value', $visibility)?->description() }}</p>
+                        <p class="mt-1.5 text-xs text-ink-faint dark:text-slate-500">{{ collect($visibilities)->firstWhere('value', $visibility)?->description() }}</p>
                     </div>
-                    <div class="flex justify-end gap-2 pt-2">
+                    <div class="flex justify-end gap-2 pt-1">
                         <button type="button" wire:click="closeForm" class="btn btn-ghost">Hủy</button>
                         <button type="submit" class="btn btn-primary" wire:loading.attr="disabled">
                             <span wire:loading.remove wire:target="save">Lưu</span>

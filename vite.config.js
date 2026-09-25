@@ -12,6 +12,12 @@ export default defineConfig({
             fonts: [
                 bunny('Be Vietnam Pro', {
                     weights: [400, 500, 600, 700],
+                    subsets: ['latin', 'latin-ext', 'vietnamese'],
+                    optimizedFallbacks: false,
+                }),
+                bunny('Source Serif 4', {
+                    weights: [600, 700],
+                    subsets: ['latin', 'latin-ext', 'vietnamese'],
                     optimizedFallbacks: false,
                 }),
             ],

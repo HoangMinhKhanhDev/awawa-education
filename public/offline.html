@@ -3,70 +3,86 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#2563EB">
+    <meta name="theme-color" content="#2154d6">
     <title>awawa — Đang ngoại tuyến</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <style>
         :root {
             color-scheme: light dark;
+            --paper: #f6f7f9;
+            --surface: #ffffff;
+            --rule: #e1e6ee;
+            --ink: #141b2d;
+            --ink-soft: #5b6678;
+            --ink-faint: #8a93a6;
+            --brand: #2154d6;
+            --grid: rgba(20, 27, 45, 0.05);
         }
 
-        * {
-            box-sizing: border-box;
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --paper: #0e1118;
+                --surface: #151a24;
+                --rule: #263041;
+                --ink: #e6e9f0;
+                --ink-soft: #9aa4b6;
+                --ink-faint: #6b7488;
+                --brand: #4e7bea;
+                --grid: rgba(255, 255, 255, 0.035);
+            }
         }
+
+        * { box-sizing: border-box; }
 
         body {
             margin: 0;
             min-height: 100vh;
             display: grid;
             place-items: center;
-            font-family: 'Be Vietnam Pro', 'Segoe UI', system-ui, -apple-system, sans-serif;
-            background: #f8fafc;
-            color: #0f172a;
             padding: 24px;
+            background-color: var(--paper);
+            background-image:
+                linear-gradient(to right, var(--grid) 1px, transparent 1px),
+                linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+            background-size: 24px 24px;
+            color: var(--ink);
+            font-family: 'Be Vietnam Pro', 'Segoe UI', system-ui, -apple-system, sans-serif;
         }
 
-        @media (prefers-color-scheme: dark) {
-            body {
-                background: #0b1220;
-                color: #e2e8f0;
-            }
-        }
-
-        .card {
-            max-width: 420px;
+        .sheet {
             width: 100%;
-            text-align: center;
-            background: rgba(37, 99, 235, 0.06);
-            border: 1px solid rgba(37, 99, 235, 0.2);
-            border-radius: 24px;
-            padding: 40px 28px;
+            max-width: 420px;
+            border: 1px solid var(--rule);
+            border-radius: 14px;
+            background: var(--surface);
+            padding: 32px 28px;
         }
 
-        .logo {
-            width: 72px;
-            height: 72px;
-            border-radius: 20px;
-            margin: 0 auto 20px;
+        .mark {
+            width: 56px;
+            height: 56px;
+            border-radius: 14px;
             background: linear-gradient(135deg, #3b82f6, #1e40af);
             display: grid;
             place-items: center;
             color: #fff;
             font-weight: 700;
-            font-size: 24px;
-            letter-spacing: 1px;
+            font-size: 18px;
+            letter-spacing: 0.5px;
         }
 
         h1 {
-            font-size: 20px;
-            margin: 0 0 8px;
+            margin: 20px 0 8px;
+            font-size: 22px;
+            line-height: 1.25;
+            letter-spacing: -0.01em;
         }
 
         p {
-            font-size: 14px;
-            line-height: 1.6;
             margin: 0 0 22px;
-            opacity: 0.75;
+            font-size: 14px;
+            line-height: 1.65;
+            color: var(--ink-soft);
         }
 
         button {
@@ -74,22 +90,20 @@
             font-weight: 600;
             cursor: pointer;
             border: none;
-            border-radius: 14px;
-            padding: 12px 22px;
+            border-radius: 10px;
+            padding: 12px 20px;
             color: #fff;
-            background: #2563eb;
+            background: var(--brand);
         }
 
-        button:hover {
-            background: #1d4ed8;
-        }
+        button:hover { filter: brightness(0.94); }
     </style>
 </head>
 <body>
-    <div class="card">
-        <div class="logo">HSG</div>
+    <div class="sheet">
+        <div class="mark">HSG</div>
         <h1>Bạn đang ngoại tuyến</h1>
-        <p>awawa cần kết nối mạng để tải dữ liệu mới nhất. Hãy kiểm tra kết nối rồi thử lại.</p>
+        <p>awawa cần kết nối mạng để lấy dữ liệu mới nhất. Kiểm tra kết nối rồi thử lại.</p>
         <button type="button" onclick="location.reload()">Thử lại</button>
     </div>
 </body>

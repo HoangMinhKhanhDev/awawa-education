@@ -11,6 +11,22 @@
     "file": "assets/array-BifhSqXX.js",
     "name": "array"
   },
+  "_be-vietnam-pro-400-normal-BuGn0gnm.woff": {
+    "file": "assets/be-vietnam-pro-400-normal-BuGn0gnm.woff",
+    "src": "_be-vietnam-pro-400-normal-BuGn0gnm.woff"
+  },
+  "_be-vietnam-pro-400-normal-CRcqvyg1.woff2": {
+    "file": "assets/be-vietnam-pro-400-normal-CRcqvyg1.woff2",
+    "src": "_be-vietnam-pro-400-normal-CRcqvyg1.woff2"
+  },
+  "_be-vietnam-pro-400-normal-CiZNW1ec.woff2": {
+    "file": "assets/be-vietnam-pro-400-normal-CiZNW1ec.woff2",
+    "src": "_be-vietnam-pro-400-normal-CiZNW1ec.woff2"
+  },
+  "_be-vietnam-pro-400-normal-DYBYyMQr.woff": {
+    "file": "assets/be-vietnam-pro-400-normal-DYBYyMQr.woff",
+    "src": "_be-vietnam-pro-400-normal-DYBYyMQr.woff"
+  },
   "_be-vietnam-pro-400-normal-PpnXBOrz.woff2": {
     "file": "assets/be-vietnam-pro-400-normal-PpnXBOrz.woff2",
     "src": "_be-vietnam-pro-400-normal-PpnXBOrz.woff2"
@@ -27,17 +43,65 @@
     "file": "assets/be-vietnam-pro-500-normal-BJkVuMHw.woff",
     "src": "_be-vietnam-pro-500-normal-BJkVuMHw.woff"
   },
+  "_be-vietnam-pro-500-normal-CK0UkkKf.woff": {
+    "file": "assets/be-vietnam-pro-500-normal-CK0UkkKf.woff",
+    "src": "_be-vietnam-pro-500-normal-CK0UkkKf.woff"
+  },
+  "_be-vietnam-pro-500-normal-CfdwVo8-.woff": {
+    "file": "assets/be-vietnam-pro-500-normal-CfdwVo8-.woff",
+    "src": "_be-vietnam-pro-500-normal-CfdwVo8-.woff"
+  },
+  "_be-vietnam-pro-500-normal-DREgrEoJ.woff2": {
+    "file": "assets/be-vietnam-pro-500-normal-DREgrEoJ.woff2",
+    "src": "_be-vietnam-pro-500-normal-DREgrEoJ.woff2"
+  },
+  "_be-vietnam-pro-500-normal-h0Fp6aX0.woff2": {
+    "file": "assets/be-vietnam-pro-500-normal-h0Fp6aX0.woff2",
+    "src": "_be-vietnam-pro-500-normal-h0Fp6aX0.woff2"
+  },
   "_be-vietnam-pro-600-normal-5IO4e7bK.woff": {
     "file": "assets/be-vietnam-pro-600-normal-5IO4e7bK.woff",
     "src": "_be-vietnam-pro-600-normal-5IO4e7bK.woff"
+  },
+  "_be-vietnam-pro-600-normal-BNd8euf0.woff2": {
+    "file": "assets/be-vietnam-pro-600-normal-BNd8euf0.woff2",
+    "src": "_be-vietnam-pro-600-normal-BNd8euf0.woff2"
   },
   "_be-vietnam-pro-600-normal-BZDkUTrt.woff2": {
     "file": "assets/be-vietnam-pro-600-normal-BZDkUTrt.woff2",
     "src": "_be-vietnam-pro-600-normal-BZDkUTrt.woff2"
   },
+  "_be-vietnam-pro-600-normal-BeUwKxhG.woff": {
+    "file": "assets/be-vietnam-pro-600-normal-BeUwKxhG.woff",
+    "src": "_be-vietnam-pro-600-normal-BeUwKxhG.woff"
+  },
+  "_be-vietnam-pro-600-normal-DkpCIyan.woff": {
+    "file": "assets/be-vietnam-pro-600-normal-DkpCIyan.woff",
+    "src": "_be-vietnam-pro-600-normal-DkpCIyan.woff"
+  },
+  "_be-vietnam-pro-600-normal-nyU-ZL2p.woff2": {
+    "file": "assets/be-vietnam-pro-600-normal-nyU-ZL2p.woff2",
+    "src": "_be-vietnam-pro-600-normal-nyU-ZL2p.woff2"
+  },
+  "_be-vietnam-pro-700-normal-4Hjo2OtD.woff": {
+    "file": "assets/be-vietnam-pro-700-normal-4Hjo2OtD.woff",
+    "src": "_be-vietnam-pro-700-normal-4Hjo2OtD.woff"
+  },
+  "_be-vietnam-pro-700-normal-By_5yT39.woff": {
+    "file": "assets/be-vietnam-pro-700-normal-By_5yT39.woff",
+    "src": "_be-vietnam-pro-700-normal-By_5yT39.woff"
+  },
   "_be-vietnam-pro-700-normal-C2EtzaOi.woff": {
     "file": "assets/be-vietnam-pro-700-normal-C2EtzaOi.woff",
     "src": "_be-vietnam-pro-700-normal-C2EtzaOi.woff"
+  },
+  "_be-vietnam-pro-700-normal-C8_gqRu2.woff2": {
+    "file": "assets/be-vietnam-pro-700-normal-C8_gqRu2.woff2",
+    "src": "_be-vietnam-pro-700-normal-C8_gqRu2.woff2"
+  },
+  "_be-vietnam-pro-700-normal-Csr0PCuG.woff2": {
+    "file": "assets/be-vietnam-pro-700-normal-Csr0PCuG.woff2",
+    "src": "_be-vietnam-pro-700-normal-Csr0PCuG.woff2"
   },
   "_be-vietnam-pro-700-normal-DlW1Zbsh.woff2": {
     "file": "assets/be-vietnam-pro-700-normal-DlW1Zbsh.woff2",
@@ -300,9 +364,9 @@
       "resources/js/whiteboard.jsx"
     ]
   },
-  "_fonts-DEod3wxq.css": {
-    "file": "assets/fonts-DEod3wxq.css",
-    "src": "_fonts-DEod3wxq.css"
+  "_fonts-DoqAIAJO.css": {
+    "file": "assets/fonts-DoqAIAJO.css",
+    "src": "_fonts-DoqAIAJO.css"
   },
   "_graphlib-DS17s2tU.js": {
     "file": "assets/graphlib-DS17s2tU.js",
@@ -395,6 +459,54 @@
   "_rough.esm-Dy-Kn_BL.js": {
     "file": "assets/rough.esm-Dy-Kn_BL.js",
     "name": "rough.esm"
+  },
+  "_source-serif-4-600-normal-0sIUyHMO.woff2": {
+    "file": "assets/source-serif-4-600-normal-0sIUyHMO.woff2",
+    "src": "_source-serif-4-600-normal-0sIUyHMO.woff2"
+  },
+  "_source-serif-4-600-normal-B0WJbuqT.woff": {
+    "file": "assets/source-serif-4-600-normal-B0WJbuqT.woff",
+    "src": "_source-serif-4-600-normal-B0WJbuqT.woff"
+  },
+  "_source-serif-4-600-normal-C6NNqpJh.woff": {
+    "file": "assets/source-serif-4-600-normal-C6NNqpJh.woff",
+    "src": "_source-serif-4-600-normal-C6NNqpJh.woff"
+  },
+  "_source-serif-4-600-normal-CznyfUKR.woff2": {
+    "file": "assets/source-serif-4-600-normal-CznyfUKR.woff2",
+    "src": "_source-serif-4-600-normal-CznyfUKR.woff2"
+  },
+  "_source-serif-4-600-normal-DMD1h6_f.woff": {
+    "file": "assets/source-serif-4-600-normal-DMD1h6_f.woff",
+    "src": "_source-serif-4-600-normal-DMD1h6_f.woff"
+  },
+  "_source-serif-4-600-normal-DouSKlru.woff2": {
+    "file": "assets/source-serif-4-600-normal-DouSKlru.woff2",
+    "src": "_source-serif-4-600-normal-DouSKlru.woff2"
+  },
+  "_source-serif-4-700-normal-3V4Pv1hj.woff": {
+    "file": "assets/source-serif-4-700-normal-3V4Pv1hj.woff",
+    "src": "_source-serif-4-700-normal-3V4Pv1hj.woff"
+  },
+  "_source-serif-4-700-normal-BBU5i_d1.woff": {
+    "file": "assets/source-serif-4-700-normal-BBU5i_d1.woff",
+    "src": "_source-serif-4-700-normal-BBU5i_d1.woff"
+  },
+  "_source-serif-4-700-normal-BZsvHpal.woff": {
+    "file": "assets/source-serif-4-700-normal-BZsvHpal.woff",
+    "src": "_source-serif-4-700-normal-BZsvHpal.woff"
+  },
+  "_source-serif-4-700-normal-C8ywwcuQ.woff2": {
+    "file": "assets/source-serif-4-700-normal-C8ywwcuQ.woff2",
+    "src": "_source-serif-4-700-normal-C8ywwcuQ.woff2"
+  },
+  "_source-serif-4-700-normal-CCAt8c4x.woff2": {
+    "file": "assets/source-serif-4-700-normal-CCAt8c4x.woff2",
+    "src": "_source-serif-4-700-normal-CCAt8c4x.woff2"
+  },
+  "_source-serif-4-700-normal-CGGdTIBe.woff2": {
+    "file": "assets/source-serif-4-700-normal-CGGdTIBe.woff2",
+    "src": "_source-serif-4-700-normal-CGGdTIBe.woff2"
   },
   "_src-CYEFjrUa.js": {
     "file": "assets/src-CYEFjrUa.js",
@@ -2063,7 +2175,7 @@
     "isDynamicEntry": true
   },
   "resources/css/app.css": {
-    "file": "assets/app-dfWUtqUQ.css",
+    "file": "assets/app-CUhR-vUf.css",
     "name": "app",
     "names": [
       "app.css"

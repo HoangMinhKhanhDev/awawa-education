@@ -3,37 +3,46 @@
 @endphp
 
 <div class="space-y-6">
-    <header class="flex flex-wrap items-start justify-between gap-3">
+    <div class="page-head">
         <div>
-            <a href="{{ route('dashboard') }}" wire:navigate class="text-sm text-slate-500 hover:text-brand-600 dark:text-slate-400">← Trang chủ</a>
-            <h1 class="mt-1 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{{ $exam->title }}</h1>
-            <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Kết quả bài làm của bạn</p>
+            <a href="{{ route('dashboard') }}" wire:navigate class="text-sm text-ink-soft hover:text-brand-700 dark:text-slate-400 dark:hover:text-brand-300">Quay lại trang chủ</a>
+            <h1 class="page-title mt-1">{{ $exam->title }}</h1>
+            <p class="page-sub">Kết quả bài làm của bạn</p>
         </div>
-        <span class="badge bg-slate-100 text-slate-600 dark:bg-white/5 dark:text-slate-300">{{ $attempt->status->label() }}</span>
-    </header>
+        <span class="chip chip-neutral">{{ $attempt->status->label() }}</span>
+    </div>
 
-    <div class="card flex flex-wrap items-center gap-6">
-        <div class="text-center">
-            <p class="text-4xl font-extrabold text-brand-600 dark:text-brand-400">{{ (float) $attempt->score }}</p>
-            <p class="text-xs text-slate-400">trên {{ (float) $attempt->max_score }} điểm</p>
-        </div>
-        <div class="min-w-[180px] flex-1">
-            <div class="h-2.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-white/10">
-                <div class="h-full rounded-full bg-brand-500" style="width: {{ $percentage }}%"></div>
+    <div class="panel panel-pad">
+        <div class="flex flex-wrap items-center gap-x-8 gap-y-5">
+            <div>
+                <p class="font-serif text-4xl font-semibold leading-none text-ink tnum dark:text-white">
+                    {{ (float) $attempt->score }}<span class="text-lg font-normal text-ink-faint">/{{ (float) $attempt->max_score }}</span>
+                </p>
+                <p class="mt-1.5 text-xs text-ink-faint dark:text-slate-500">điểm của bạn</p>
             </div>
-            <p class="mt-2 text-xs text-slate-400">
-                Tự động: {{ (float) $attempt->auto_score }} · Chấm tay: {{ (float) $attempt->manual_score }}
-                @if ($attempt->submitted_at) · nộp {{ $attempt->submitted_at->format('d/m/Y H:i') }} @endif
-            </p>
-            @if ($attempt->hasPendingManualGrading())
-                <p class="mt-2 text-xs text-amber-600 dark:text-amber-400">Còn câu tự luận đang chờ giáo viên chấm.</p>
-            @endif
+
+            <div class="min-w-[200px] flex-1">
+                <div class="h-1.5 w-full overflow-hidden rounded-full bg-paper-2 dark:bg-night-700">
+                    <div class="h-full rounded-full bg-brand-600 dark:bg-brand-400" style="width: {{ $percentage }}%"></div>
+                </div>
+                <p class="tnum mt-2 text-xs text-ink-soft dark:text-slate-400">
+                    Trắc nghiệm và điền khuyết: {{ (float) $attempt->auto_score }} điểm
+                    <span class="mx-1.5">—</span>
+                    Tự luận: {{ (float) $attempt->manual_score }} điểm
+                </p>
+                @if ($attempt->submitted_at)
+                    <p class="tnum mt-1 text-xs text-ink-faint dark:text-slate-500">Nộp lúc {{ $attempt->submitted_at->format('d/m/Y H:i') }}</p>
+                @endif
+                @if ($attempt->hasPendingManualGrading())
+                    <p class="mt-1 text-xs font-medium text-warning dark:text-amber-400">Còn câu tự luận đang chờ giáo viên chấm.</p>
+                @endif
+            </div>
         </div>
     </div>
 
     @if ($attempt->anti_cheat)
-        <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
-            Hệ thống ghi nhận {{ count($attempt->anti_cheat) }} sự kiện rời màn hình trong khi làm bài.
+        <div class="alert alert-warning">
+            Hệ thống ghi nhận {{ count($attempt->anti_cheat) }} lần rời màn hình trong khi làm bài.
         </div>
     @endif
 
@@ -45,56 +54,53 @@
                 $awarded = $answer?->awarded_points;
                 $pending = $question->type === \App\Enums\QuestionType::Essay && $awarded === null;
             @endphp
-            <div class="card" wire:key="result-q-{{ $examQuestion->id }}">
+            <div class="panel p-4 sm:p-5" wire:key="result-q-{{ $examQuestion->id }}">
                 <div class="flex items-start gap-3">
-                    <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white
-                        {{ $pending ? 'bg-amber-500' : ($answer?->is_correct ? 'bg-emerald-500' : 'bg-red-500') }}">
+                    <span class="tnum mt-0.5 w-5 shrink-0 font-serif text-sm font-semibold {{ $pending ? 'text-warning' : ($answer?->is_correct ? 'text-success' : 'text-signal') }}">
                         {{ $index + 1 }}
                     </span>
                     <div class="min-w-0 flex-1">
-                        <p class="whitespace-pre-line text-slate-800 dark:text-slate-100">{{ $question->content }}</p>
+                        <p class="whitespace-pre-line leading-relaxed text-ink dark:text-slate-100">{{ $question->content }}</p>
 
                         @if ($question->type === \App\Enums\QuestionType::MultipleChoice)
                             <ul class="mt-3 space-y-1.5">
                                 @foreach ($question->options as $option)
-                                    @php
-                                        $selected = in_array($option->id, array_map('intval', $answer?->selected_option_ids ?? []), true);
-                                    @endphp
-                                    <li class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm
-                                        {{ $option->is_correct ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-300' : ($selected ? 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300' : 'text-slate-600 dark:text-slate-300') }}">
+                                    @php $selected = in_array($option->id, array_map('intval', $answer?->selected_option_ids ?? []), true); @endphp
+                                    <li class="flex items-center gap-2 rounded-[10px] border px-3.5 py-2.5 text-sm
+                                        {{ $option->is_correct
+                                            ? 'border-success/30 bg-success-soft text-success dark:bg-success/10 dark:text-emerald-300'
+                                            : ($selected ? 'border-signal/30 bg-signal-soft text-signal dark:bg-signal/10 dark:text-red-300' : 'border-rule text-ink-soft dark:border-night-700 dark:text-slate-400') }}">
                                         <span>{{ $option->content }}</span>
-                                        @if ($option->is_correct) <span class="text-xs font-semibold">(đáp án đúng)</span> @endif
-                                        @if ($selected && ! $option->is_correct) <span class="text-xs font-semibold">(bạn chọn)</span> @endif
+                                        @if ($option->is_correct) <span class="ml-auto text-xs font-medium">đáp án đúng</span> @endif
+                                        @if ($selected && ! $option->is_correct) <span class="ml-auto text-xs font-medium">bạn chọn</span> @endif
                                     </li>
                                 @endforeach
                             </ul>
                         @else
-                            <div class="mt-3 rounded-xl bg-slate-50 p-3 text-sm dark:bg-white/5">
-                                <p class="text-xs font-medium text-slate-400">Bài làm của bạn</p>
-                                <p class="mt-1 whitespace-pre-line text-slate-700 dark:text-slate-200">{{ $answer?->answer_text ?: '(bỏ trống)' }}</p>
+                            <div class="mt-3 rounded-[10px] border border-rule bg-paper-2 p-3.5 dark:border-night-700 dark:bg-night-900/40">
+                                <p class="text-xs font-medium text-ink-faint dark:text-slate-500">Bài làm của bạn</p>
+                                <p class="mt-1 whitespace-pre-line text-sm leading-relaxed text-ink dark:text-slate-200">{{ $answer?->answer_text ?: '(bỏ trống)' }}</p>
                             </div>
                             @if ($question->answer && $question->type === \App\Enums\QuestionType::FillBlank)
-                                <p class="mt-2 text-sm text-slate-500 dark:text-slate-400"><span class="font-medium">Đáp án:</span> {{ $question->answer }}</p>
+                                <p class="mt-2 text-sm text-ink-soft dark:text-slate-400"><span class="font-medium">Đáp án:</span> {{ $question->answer }}</p>
                             @endif
                         @endif
 
-                        <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                        <div class="mt-3 flex flex-wrap items-center gap-2">
                             @if ($pending)
-                                <span class="badge bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">Chờ chấm</span>
+                                <span class="chip chip-warning">Chờ chấm</span>
                             @else
-                                <span class="badge {{ $answer?->is_correct ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300' }}">
-                                    {{ $answer?->is_correct ? 'Đúng' : 'Sai' }}
-                                </span>
+                                <span class="chip {{ $answer?->is_correct ? 'chip-success' : 'chip-signal' }}">{{ $answer?->is_correct ? 'Đúng' : 'Sai' }}</span>
                             @endif
-                            <span class="text-slate-400">{{ (float) ($awarded ?? 0) }} / {{ (float) ($examQuestion->points ?? $question->points) }} điểm</span>
+                            <span class="tnum text-xs text-ink-faint dark:text-slate-500">{{ (float) ($awarded ?? 0) }} / {{ (float) ($examQuestion->points ?? $question->points) }} điểm</span>
                         </div>
 
                         @if ($question->explanation)
-                            <p class="mt-2 text-sm text-slate-500 dark:text-slate-400"><span class="font-medium">Giải thích:</span> {{ $question->explanation }}</p>
+                            <p class="mt-2 text-sm leading-relaxed text-ink-soft dark:text-slate-400"><span class="font-medium">Giải thích:</span> {{ $question->explanation }}</p>
                         @endif
 
                         @if ($answer?->feedback)
-                            <p class="mt-2 rounded-lg bg-brand-50 p-2 text-sm text-brand-800 dark:bg-brand-500/10 dark:text-brand-200">
+                            <p class="mt-3 border-l-2 border-brand-500 bg-brand-50/60 px-3.5 py-2.5 text-sm leading-relaxed text-ink dark:border-brand-400 dark:bg-brand-500/10 dark:text-slate-200">
                                 <span class="font-medium">Nhận xét của giáo viên:</span> {{ $answer->feedback }}
                             </p>
                         @endif
