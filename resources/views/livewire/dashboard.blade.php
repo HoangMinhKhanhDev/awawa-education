@@ -91,6 +91,36 @@
                 </div>
             </div>
         </section>
+
+        <section class="space-y-3">
+            <h2 class="font-serif text-lg font-semibold text-ink dark:text-white">Tài liệu công khai</h2>
+            <div class="panel">
+                <div class="divide-y divide-rule dark:divide-night-700">
+                    @forelse ($studentData['documents'] as $document)
+                        <div class="flex flex-wrap items-center gap-3 px-5 py-3.5">
+                            <x-icon name="mail" class="h-4 w-4 shrink-0 text-ink-faint dark:text-slate-500" />
+                            <div class="min-w-0 flex-1">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <p class="truncate font-medium text-ink dark:text-slate-100">{{ $document->title }}</p>
+                                    @if (! $studentData['documentsAreOwnSubject'] && $document->subject)
+                                        <span class="chip chip-neutral" style="color: {{ $document->subject->color }}">{{ $document->subject->name }}</span>
+                                    @endif
+                                    @if ($document->category)
+                                        <span class="chip chip-neutral">{{ $document->category }}</span>
+                                    @endif
+                                </div>
+                                <p class="tnum mt-0.5 truncate text-xs text-ink-faint dark:text-slate-500">
+                                    {{ $document->original_name }} — {{ $document->sizeForHumans() }}@if ($document->creator)<span class="mx-1.5">—</span>{{ $document->creator->name }}@endif
+                                </p>
+                            </div>
+                            <a href="{{ $document->url() }}" target="_blank" rel="noopener" class="btn btn-outline px-3.5 py-2 text-xs">Mở</a>
+                        </div>
+                    @empty
+                        <p class="empty">Chưa có tài liệu công khai nào.</p>
+                    @endforelse
+                </div>
+            </div>
+        </section>
     @endif
 
     {{-- Giáo viên --}}

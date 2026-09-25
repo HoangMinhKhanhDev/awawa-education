@@ -10,6 +10,7 @@ use App\Models\TeamMembership;
 use App\Models\User;
 use App\Notifications\AnnouncementPublishedNotification;
 use App\Notifications\AttemptGradedNotification;
+use App\Notifications\ExamDueSoonNotification;
 use App\Notifications\ExamPublishedNotification;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Notification;
@@ -45,6 +46,27 @@ class NotificationDispatcher
         if ($student !== null) {
             Notification::send($student, new AttemptGradedNotification($attempt));
         }
+    }
+
+    /**
+     * Nhắc hạn nộp cho thành viên chưa nộp bài.
+     */
+    public function examDueSoon(Exam $exam, string $milestone): int
+    {
+        $recipients = $this->teamMembers($exam->subject_id)
+            ->reject(fn (User $user) => ExamAttempt::query()
+                ->withoutSubjectScope()
+                ->where('exam_id', $exam->id)
+                ->where('student_id', $user->id)
+                ->finished()
+                ->exists())
+            ->values();
+
+        if ($recipients->isNotEmpty()) {
+            Notification::send($recipients, new ExamDueSoonNotification($exam, $milestone));
+        }
+
+        return $recipients->count();
     }
 
     /**

@@ -22,3 +22,5 @@ Schedule::call(function (): void {
         ->where('created_at', '<', now()->subDays(120))
         ->delete();
 })->daily()->name('awawa:prune')->withoutOverlapping();
+
+Schedule::command('awawa:due-reminders')->everyFifteenMinutes()->withoutOverlapping();

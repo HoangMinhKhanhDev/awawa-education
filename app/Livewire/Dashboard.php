@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\Enums\AttemptStatus;
 use App\Enums\ExamStatus;
 use App\Enums\Role;
+use App\Models\Document;
 use App\Models\Exam;
 use App\Models\ExamAttempt;
 use App\Models\Subject;
@@ -12,6 +13,7 @@ use App\Models\TeamMembership;
 use App\Models\User;
 use App\Support\SubjectContext;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Collection;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -72,7 +74,28 @@ class Dashboard extends Component
             'inProgress' => $inProgress,
             'available' => $available,
             'recent' => $recent,
+            'documents' => $this->publicDocuments($user),
+            'documentsAreOwnSubject' => $user->subject_id !== null,
         ];
+    }
+
+    /**
+     * Tài liệu công khai học sinh xem được.
+     *
+     * - Đã vào đội: tài liệu công khai của môn mình.
+     * - Chưa có môn (tự đăng ký): tài liệu công khai của mọi môn, kèm nhãn môn.
+     *
+     * @return Collection<int, Document>
+     */
+    protected function publicDocuments(User $user): Collection
+    {
+        $query = Document::query()->where('is_public', true)->with(['subject', 'creator']);
+
+        if ($user->subject_id === null) {
+            $query->withoutSubjectScope();
+        }
+
+        return $query->orderByDesc('created_at')->limit(8)->get();
     }
 
     /**
