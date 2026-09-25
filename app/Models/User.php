@@ -5,12 +5,15 @@ namespace App\Models;
 use App\Enums\MembershipStatus;
 use App\Enums\Role;
 use Database\Factories\UserFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class User extends Authenticatable
 {
@@ -30,6 +33,7 @@ class User extends Authenticatable
         'avatar',
         'must_change_password',
         'last_login_at',
+        'is_active',
     ];
 
     /**
@@ -51,7 +55,31 @@ class User extends Authenticatable
             'role' => Role::class,
             'must_change_password' => 'boolean',
             'last_login_at' => 'datetime',
+            'is_active' => 'boolean',
         ];
+    }
+
+    public function scopeActive(Builder $query): Builder
+    {
+        return $query->where('is_active', true);
+    }
+
+    public function avatarUrl(): ?string
+    {
+        if (blank($this->avatar)) {
+            return null;
+        }
+
+        if (str_starts_with($this->avatar, 'http://') || str_starts_with($this->avatar, 'https://')) {
+            return $this->avatar;
+        }
+
+        return Storage::disk('public')->url($this->avatar);
+    }
+
+    public function initials(): string
+    {
+        return Str::upper(Str::substr(trim($this->name), 0, 1)) ?: '?';
     }
 
     public function subject(): BelongsTo

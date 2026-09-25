@@ -64,6 +64,15 @@ class Login extends Component
         }
 
         RateLimiter::clear($key);
+
+        if (! Auth::user()->is_active) {
+            Auth::logout();
+
+            throw ValidationException::withMessages([
+                'email' => 'Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.',
+            ]);
+        }
+
         session()->regenerate();
 
         Auth::user()->forceFill(['last_login_at' => now()])->save();

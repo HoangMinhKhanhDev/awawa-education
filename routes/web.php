@@ -1,12 +1,15 @@
 <?php
 
 use App\Http\Controllers\Auth\GoogleController;
+use App\Livewire\Admin\Subjects\Index as AdminSubjects;
+use App\Livewire\Admin\Users\Index as AdminUsers;
 use App\Livewire\Auth\ChangePassword;
 use App\Livewire\Auth\ForgotPassword;
 use App\Livewire\Auth\Login;
 use App\Livewire\Auth\Register;
 use App\Livewire\Auth\ResetPassword;
 use App\Livewire\Dashboard;
+use App\Livewire\Profile\Show as ProfileShow;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
@@ -61,10 +64,7 @@ Route::middleware('auth')->group(function () {
         'phase' => 'P3',
     ]))->name('info');
 
-    Route::get('/ho-so', fn () => view('pages.placeholder', [
-        'title' => 'Hồ sơ',
-        'phase' => 'P1',
-    ]))->name('profile');
+    Route::get('/ho-so', ProfileShow::class)->name('profile');
 
     /*
     |----------------------------------------------------------------------
@@ -89,15 +89,11 @@ Route::middleware('auth')->group(function () {
     |----------------------------------------------------------------------
     */
     Route::middleware('role:super_admin')->prefix('quan-tri')->name('admin.')->group(function () {
-        Route::get('/nguoi-dung', fn () => view('pages.placeholder', [
-            'title' => 'Quản lý người dùng',
-            'phase' => 'P1',
-        ]))->name('users');
+        Route::get('/nguoi-dung', AdminUsers::class)->name('users');
 
-        Route::get('/api-key', fn () => view('pages.placeholder', [
-            'title' => 'Quản lý API key',
-            'phase' => 'P1',
-        ]))->name('api-keys');
+        Route::get('/mon-hoc', AdminSubjects::class)->name('subjects');
+
+        Route::get('/api-key', fn () => view('admin.api-keys'))->name('api-keys');
 
         Route::get('/thong-ke', fn () => view('pages.placeholder', [
             'title' => 'Thống kê',
