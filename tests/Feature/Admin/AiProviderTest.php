@@ -7,12 +7,25 @@ use App\Models\AiProvider;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 use Tests\TestCase;
 
 class AiProviderTest extends TestCase
 {
     use RefreshDatabase;
+
+    private function fakeModelsOk(): void
+    {
+        Http::fake([
+            '*/models' => Http::response([
+                'data' => [
+                    ['id' => 'openrouter/free', 'name' => 'Free', 'pricing' => ['prompt' => '0', 'completion' => '0']],
+                    ['id' => 'openai/gpt-4o-mini', 'name' => 'GPT-4o mini', 'pricing' => ['prompt' => '0.0001', 'completion' => '0.0002']],
+                ],
+            ], 200),
+        ]);
+    }
 
     public function test_making_provider_default_unsets_others(): void
     {
@@ -60,6 +73,7 @@ class AiProviderTest extends TestCase
     {
         $admin = User::factory()->superAdmin()->create();
         $this->actingAs($admin);
+        $this->fakeModelsOk();
 
         Livewire::test(AdminAiProviders::class)
             ->set('quickPreset', 'openrouter')
@@ -79,6 +93,7 @@ class AiProviderTest extends TestCase
     {
         $admin = User::factory()->superAdmin()->create();
         $this->actingAs($admin);
+        $this->fakeModelsOk();
 
         AiProvider::create(['key' => 'openrouter', 'label' => 'OpenRouter', 'base_url' => 'https://openrouter.ai/api/v1', 'api_key' => 'old-key']);
 
@@ -120,6 +135,86 @@ class AiProviderTest extends TestCase
     {
         $admin = User::factory()->superAdmin()->create();
 
-        $this->actingAs($admin)->get(route('admin.api-keys'))->assertOk()->assertSee('Thiết lập nhanh');
+        $this->actingAs($admin)->get(route('admin.api-keys'))->assertOk()->assertSee('Nhà cung cấp AI');
+    }
+
+    public function test_check_provider_reports_models(): void
+    {
+        $admin = User::factory()->superAdmin()->create();
+        $this->actingAs($admin);
+        $this->fakeModelsOk();
+
+        $provider = AiProvider::create([
+            'key' => 'openrouter',
+            'label' => 'OpenRouter',
+            'base_url' => 'https://openrouter.ai/api/v1',
+            'api_key' => 'sk-test-12345678',
+            'is_enabled' => true,
+        ]);
+
+        Livewire::test(AdminAiProviders::class)
+            ->call('checkProvider', $provider->id)
+            ->assertSee('kết nối thành công');
+    }
+
+    public function test_check_provider_reports_error_on_bad_key(): void
+    {
+        $admin = User::factory()->superAdmin()->create();
+        $this->actingAs($admin);
+
+        Http::fake([
+            '*/models' => Http::response(['error' => ['message' => 'Invalid key']], 401),
+            '*/chat/completions' => Http::response(['error' => ['message' => 'Invalid key']], 401),
+        ]);
+
+        $provider = AiProvider::create([
+            'key' => 'openrouter',
+            'label' => 'OpenRouter',
+            'base_url' => 'https://openrouter.ai/api/v1',
+            'api_key' => 'bad-key-12345678',
+            'is_enabled' => true,
+        ]);
+
+        Livewire::test(AdminAiProviders::class)
+            ->call('checkProvider', $provider->id)
+            ->assertSee('Lỗi');
+    }
+
+    public function test_fetch_form_models_populates_model_list(): void
+    {
+        $admin = User::factory()->superAdmin()->create();
+        $this->actingAs($admin);
+        $this->fakeModelsOk();
+
+        $component = Livewire::test(AdminAiProviders::class)
+            ->call('openQuickCreate', 'openrouter')
+            ->set('apiKey', 'sk-test-12345678')
+            ->call('fetchFormModels')
+            ->assertHasNoErrors();
+
+        $models = $component->get('modelList');
+
+        $this->assertCount(2, $models);
+        $this->assertTrue($models[0]['free']);
+        $this->assertNotNull($component->get('probeMessage'));
+    }
+
+    public function test_save_with_probe_failure_still_persists_key(): void
+    {
+        $admin = User::factory()->superAdmin()->create();
+        $this->actingAs($admin);
+
+        Http::fake([
+            '*/models' => Http::response(['error' => ['message' => 'nope']], 500),
+            '*/chat/completions' => Http::response(['error' => ['message' => 'nope']], 500),
+        ]);
+
+        Livewire::test(AdminAiProviders::class)
+            ->set('quickPreset', 'openrouter')
+            ->set('quickKey', 'sk-bad-12345678')
+            ->call('quickSave')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('ai_providers', ['key' => 'openrouter', 'is_enabled' => true]);
     }
 }

@@ -73,4 +73,58 @@ class OpenAiCompatibleClient
 
         return 'Lỗi nhà cung cấp AI ('.$response->status().'): '.mb_substr((string) $message, 0, 400);
     }
+
+    /**
+     * Lấy danh sách model từ endpoint /models (chuẩn OpenAI).
+     *
+     * @return array<int, array{id: string, name: string, free: bool}>
+     */
+    public function models(string $baseUrl, ?string $apiKey): array
+    {
+        $request = Http::acceptJson()->timeout(30);
+
+        if (filled($apiKey)) {
+            $request = $request->withToken($apiKey);
+        }
+
+        $response = $request->get(rtrim($baseUrl, '/').'/models');
+
+        if ($response->failed()) {
+            throw new AiException($this->errorMessage($response));
+        }
+
+        $models = [];
+
+        foreach ((array) $response->json('data', []) as $item) {
+            if (! is_array($item) || blank($item['id'] ?? null)) {
+                continue;
+            }
+
+            $id = (string) $item['id'];
+            $free = str_ends_with($id, ':free');
+            $pricing = $item['pricing'] ?? null;
+
+            if (is_array($pricing)) {
+                $prompt = (float) ($pricing['prompt'] ?? 1);
+                $completion = (float) ($pricing['completion'] ?? 1);
+                $free = $prompt <= 0 && $completion <= 0;
+            }
+
+            $models[] = [
+                'id' => $id,
+                'name' => (string) ($item['name'] ?? $id),
+                'free' => $free,
+            ];
+        }
+
+        usort($models, function (array $a, array $b): int {
+            if ($a['free'] !== $b['free']) {
+                return $a['free'] ? -1 : 1;
+            }
+
+            return strcmp($a['id'], $b['id']);
+        });
+
+        return $models;
+    }
 }

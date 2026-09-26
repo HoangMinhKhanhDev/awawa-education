@@ -5,6 +5,7 @@ namespace App\Livewire\Admin\AiProviders;
 use App\Enums\AiPurpose;
 use App\Models\AiProvider;
 use App\Services\Ai\AiManager;
+use App\Services\Ai\AiProviderProbe;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
@@ -35,6 +36,13 @@ class Index extends Component
     public string $quickPreset = 'openrouter';
 
     public string $quickKey = '';
+
+    /**
+     * @var array<int, array{id: string, name: string, free: bool}>
+     */
+    public array $modelList = [];
+
+    public ?string $probeMessage = null;
 
     public function mount(): void
     {
@@ -142,7 +150,61 @@ class Index extends Component
 
         $this->quickKey = '';
 
-        session()->flash('status', 'Đã lưu API key cho '.$provider->label.'.');
+        $probe = app(AiProviderProbe::class)->probe($provider->base_url, $provider->api_key, $provider->default_model);
+
+        if ($probe['ok']) {
+            $suffix = $probe['models'] !== [] ? ' ('.count($probe['models']).' model)' : '';
+            session()->flash('status', 'Đã lưu và kết nối OK cho '.$provider->label.$suffix.'.');
+        } else {
+            session()->flash('error', 'Đã lưu key nhưng kiểm tra thất bại: '.$probe['error']);
+        }
+    }
+
+    public function checkProvider(int $id, AiProviderProbe $probeService): void
+    {
+        $provider = AiProvider::query()->findOrFail($id);
+        Gate::authorize('update', $provider);
+
+        $result = $probeService->probe($provider->base_url, $provider->api_key, $provider->default_model);
+
+        if (! $result['ok']) {
+            session()->flash('error', 'Lỗi '.$provider->label.': '.$result['error']);
+
+            return;
+        }
+
+        $count = count($result['models']);
+
+        if (blank($provider->default_model) && $count > 0) {
+            $provider->forceFill(['default_model' => $result['models'][0]['id']])->save();
+        }
+
+        session()->flash('status', 'OK — '.$provider->label.' kết nối thành công'.($count > 0 ? " ({$count} model)" : '').'.');
+    }
+
+    public function fetchFormModels(AiProviderProbe $probeService): void
+    {
+        $this->resetErrorBag();
+        $this->probeMessage = null;
+
+        $existingKey = $this->editingId !== null
+            ? AiProvider::query()->find($this->editingId)?->api_key
+            : null;
+
+        $key = filled($this->apiKey) ? $this->apiKey : $existingKey;
+
+        $result = $probeService->probe($this->baseUrl ?: null, $key, $this->defaultModel ?: null);
+        $this->modelList = $result['models'];
+
+        if ($result['ok']) {
+            $this->probeMessage = $result['models'] !== []
+                ? 'Kết nối OK — tìm thấy '.count($result['models']).' model.'
+                : 'Kết nối OK (nhà cung cấp không liệt kê model).';
+
+            return;
+        }
+
+        $this->addError('apiKey', 'Không kết nối được: '.$result['error']);
     }
 
     public function usePreset(string $presetKey): void
@@ -191,6 +253,8 @@ class Index extends Component
         $this->defaultModel = (string) $provider->default_model;
         $this->isEnabled = $provider->is_enabled;
         $this->isDefault = $provider->is_default;
+        $this->modelList = [];
+        $this->probeMessage = null;
         $this->showForm = true;
         $this->resetErrorBag();
     }
@@ -358,6 +422,8 @@ class Index extends Component
         $this->defaultModel = '';
         $this->isEnabled = true;
         $this->isDefault = false;
+        $this->modelList = [];
+        $this->probeMessage = null;
         $this->resetErrorBag();
     }
 
