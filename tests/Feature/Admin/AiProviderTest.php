@@ -152,6 +152,32 @@ class AiProviderTest extends TestCase
             ->assertSet('baseUrl', '');
     }
 
+    public function test_quick_setup_agnes_uses_real_endpoint_and_picks_model(): void
+    {
+        $admin = User::factory()->superAdmin()->create();
+        $this->actingAs($admin);
+
+        Http::fake([
+            '*/models' => Http::response([
+                'data' => [
+                    ['id' => 'agnes-2.0-flash', 'name' => 'Agnes 2.0 Flash'],
+                    ['id' => 'agnes-2.5-flash', 'name' => 'Agnes 2.5 Flash'],
+                ],
+            ], 200),
+        ]);
+
+        Livewire::test(AdminAiProviders::class)
+            ->set('quickPreset', 'agnes')
+            ->set('quickKey', 'agnes-key-12345678')
+            ->call('quickSave')
+            ->assertHasNoErrors();
+
+        $provider = AiProvider::query()->where('key', 'agnes')->firstOrFail();
+
+        $this->assertSame('https://apihub.agnes-ai.com/v1', $provider->base_url);
+        $this->assertSame('agnes-2.0-flash', $provider->default_model);
+    }
+
     public function test_admin_can_open_api_keys_page(): void
     {
         $admin = User::factory()->superAdmin()->create();

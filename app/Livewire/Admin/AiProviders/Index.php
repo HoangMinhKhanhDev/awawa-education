@@ -68,10 +68,10 @@ class Index extends Component
             'agnes' => [
                 'key' => 'agnes',
                 'label' => 'Agnes AI',
-                'base_url' => '',
-                'model' => 'agnes-chat',
-                'docs' => '',
-                'hint' => 'Điền Base URL do Agnes cung cấp (chuẩn OpenAI) và key.',
+                'base_url' => 'https://apihub.agnes-ai.com/v1',
+                'model' => '',
+                'docs' => 'https://platform.agnes-ai.com/',
+                'hint' => 'Chuẩn OpenAI. Tạo key tại platform.agnes-ai.com.',
             ],
             'openai' => [
                 'key' => 'openai',
@@ -154,11 +154,37 @@ class Index extends Component
         $probe = app(AiProviderProbe::class)->probe($provider->base_url, $provider->api_key, $provider->default_model);
 
         if ($probe['ok']) {
+            $picked = $this->pickModel($provider->default_model, $probe['models']);
+
+            if ($picked !== null) {
+                $provider->forceFill(['default_model' => $picked])->save();
+            }
+
             $suffix = $probe['models'] !== [] ? ' ('.count($probe['models']).' model)' : '';
             session()->flash('status', 'Đã lưu và kết nối OK cho '.$provider->label.$suffix.'.');
         } else {
             session()->flash('error', 'Đã lưu key nhưng kiểm tra thất bại: '.$probe['error']);
         }
+    }
+
+    /**
+     * Chọn model: giữ model hiện tại nếu có trong danh sách, ngược lại lấy model đầu (ưu tiên miễn phí).
+     *
+     * @param  array<int, array{id: string, name: string, free: bool}>  $models
+     */
+    protected function pickModel(?string $current, array $models): ?string
+    {
+        if ($models === []) {
+            return $current;
+        }
+
+        $ids = array_column($models, 'id');
+
+        if (filled($current) && in_array($current, $ids, true)) {
+            return $current;
+        }
+
+        return $models[0]['id'];
     }
 
     public function checkProvider(int $id, AiProviderProbe $probeService): void
@@ -176,8 +202,10 @@ class Index extends Component
 
         $count = count($result['models']);
 
-        if (blank($provider->default_model) && $count > 0) {
-            $provider->forceFill(['default_model' => $result['models'][0]['id']])->save();
+        $picked = $this->pickModel($provider->default_model, $result['models']);
+
+        if ($picked !== null && $picked !== $provider->default_model) {
+            $provider->forceFill(['default_model' => $picked])->save();
         }
 
         session()->flash('status', 'OK — '.$provider->label.' kết nối thành công'.($count > 0 ? " ({$count} model)" : '').'.');
@@ -280,6 +308,15 @@ class Index extends Component
         $this->probeMessage = null;
         $this->showForm = true;
         $this->resetErrorBag();
+
+        if (filled($provider->base_url) && filled($provider->api_key)) {
+            $result = app(AiProviderProbe::class)->probe($provider->base_url, $provider->api_key, $provider->default_model);
+
+            if ($result['ok'] && $result['models'] !== []) {
+                $this->modelList = $result['models'];
+                $this->probeMessage = 'Đã tải '.count($result['models']).' model từ nhà cung cấp.';
+            }
+        }
     }
 
     public function closeForm(): void

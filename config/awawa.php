@@ -92,9 +92,9 @@ return [
             ],
             'agnes' => [
                 'label' => 'Agnes AI',
-                'base_url' => env('AGNES_BASE_URL'),
+                'base_url' => env('AGNES_BASE_URL', 'https://apihub.agnes-ai.com/v1'),
                 'api_key' => env('AGNES_API_KEY'),
-                'model' => env('AGNES_DEFAULT_MODEL', 'agnes-chat'),
+                'model' => env('AGNES_DEFAULT_MODEL', ''),
             ],
         ],
     ],

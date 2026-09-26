@@ -142,12 +142,16 @@
                                 <span wire:loading wire:target="fetchFormModels">Đang tải…</span>
                             </button>
                         </div>
-                        <input id="provider-model" list="model-options" class="input" wire:model="defaultModel" placeholder="openrouter/free">
-                        <datalist id="model-options">
-                            @foreach ($modelList as $model)
-                                <option value="{{ $model['id'] }}">{{ $model['name'] }}{{ $model['free'] ? ' (miễn phí)' : '' }}</option>
-                            @endforeach
-                        </datalist>
+                        @if ($modelList !== [])
+                            <select id="provider-model" class="input" wire:model="defaultModel">
+                                <option value="">— Chọn model —</option>
+                                @foreach ($modelList as $model)
+                                    <option value="{{ $model['id'] }}">{{ $model['id'] }}{{ $model['free'] ? ' · miễn phí' : '' }}</option>
+                                @endforeach
+                            </select>
+                        @else
+                            <input id="provider-model" type="text" class="input" wire:model="defaultModel" placeholder="Bấm “Tải danh sách model” để chọn">
+                        @endif
                         @if ($probeMessage)
                             <p class="mt-1.5 text-xs text-success">{{ $probeMessage }}</p>
                         @endif
