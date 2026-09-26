@@ -1,6 +1,11 @@
 import { registerSW } from 'virtual:pwa-register';
 
-registerSW({ immediate: true });
+// Không đăng ký service worker ở môi trường local để tránh cache bản cũ khi phát triển.
+const isLocalhost = ['localhost', '127.0.0.1', '::1', ''].includes(window.location.hostname);
+
+if (! isLocalhost && 'serviceWorker' in navigator) {
+    registerSW({ immediate: true });
+}
 
 const storedTheme = () => {
     try {

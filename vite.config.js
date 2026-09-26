@@ -1,6 +1,5 @@
 import { defineConfig } from 'vite';
 import laravel from 'laravel-vite-plugin';
-import { bunny } from 'laravel-vite-plugin/fonts';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
@@ -9,18 +8,6 @@ export default defineConfig({
         laravel({
             input: ['resources/css/app.css', 'resources/js/app.js', 'resources/js/whiteboard.jsx'],
             refresh: true,
-            fonts: [
-                bunny('Be Vietnam Pro', {
-                    weights: [400, 500, 600, 700],
-                    subsets: ['latin', 'latin-ext', 'vietnamese'],
-                    optimizedFallbacks: false,
-                }),
-                bunny('Source Serif 4', {
-                    weights: [600, 700],
-                    subsets: ['latin', 'latin-ext', 'vietnamese'],
-                    optimizedFallbacks: false,
-                }),
-            ],
         }),
         tailwindcss(),
         VitePWA({
@@ -34,8 +21,7 @@ export default defineConfig({
             injectManifest: {
                 globPatterns: [
                     'build/assets/app-*.{js,css}',
-                    'build/assets/fonts-*.css',
-                    'build/assets/*.woff2',
+                    'fonts/*.woff2',
                     'icons/*.png',
                     'favicon.svg',
                     'manifest.webmanifest',
