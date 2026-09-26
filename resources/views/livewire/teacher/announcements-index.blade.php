@@ -23,7 +23,7 @@
                     <div class="flex flex-wrap items-start justify-between gap-3">
                         <div class="min-w-0 flex-1">
                             <div class="flex flex-wrap items-center gap-2">
-                                <h2 class="font-serif text-[17px] font-semibold text-ink dark:text-white">{{ $announcement->title }}</h2>
+                                <h2 class="text-[17px] font-semibold text-ink dark:text-white">{{ $announcement->title }}</h2>
                                 @if ($announcement->is_pinned)
                                     <span class="chip chip-brand">Đã ghim</span>
                                 @endif
@@ -57,7 +57,7 @@
             x-data x-on:keydown.escape.window="$wire.closeForm()">
             <div class="w-full max-w-lg rounded-t-[14px] bg-white p-6 sm:rounded-[14px] dark:bg-night-800" @click.stop>
                 <div class="mb-5 flex items-center justify-between">
-                    <h2 class="font-serif text-lg font-semibold text-ink dark:text-white">{{ $editingId ? 'Sửa thông báo' : 'Tạo thông báo' }}</h2>
+                    <h2 class="text-lg font-semibold text-ink dark:text-white">{{ $editingId ? 'Sửa thông báo' : 'Tạo thông báo' }}</h2>
                     <button type="button" wire:click="closeForm" class="rounded-[10px] p-1.5 text-ink-faint hover:bg-paper-2 dark:hover:bg-white/5" aria-label="Đóng">
                         <x-icon name="x" class="h-5 w-5" />
                     </button>

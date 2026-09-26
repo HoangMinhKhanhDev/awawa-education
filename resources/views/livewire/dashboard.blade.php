@@ -41,7 +41,7 @@
         @endif
 
         <section class="space-y-3">
-            <h2 class="font-serif text-lg font-semibold text-ink dark:text-white">Bài sắp tới</h2>
+            <h2 class="text-lg font-semibold text-ink dark:text-white">Bài sắp tới</h2>
             <div class="panel">
                 <div class="divide-y divide-rule dark:divide-night-700">
                     @forelse ($studentData['available'] as $exam)
@@ -71,7 +71,7 @@
         </section>
 
         <section class="space-y-3">
-            <h2 class="font-serif text-lg font-semibold text-ink dark:text-white">Kết quả gần đây</h2>
+            <h2 class="text-lg font-semibold text-ink dark:text-white">Kết quả gần đây</h2>
             <div class="panel">
                 <div class="divide-y divide-rule dark:divide-night-700">
                     @forelse ($studentData['recent'] as $attempt)
@@ -83,7 +83,7 @@
                                     {{ $attempt->status->label() }}@if ($attempt->submitted_at) · {{ $attempt->submitted_at->format('d/m/Y H:i') }}@endif
                                 </p>
                             </div>
-                            <span class="tnum font-serif text-lg font-semibold text-ink dark:text-white">{{ (float) $attempt->score }}<span class="text-sm font-normal text-ink-faint">/{{ (float) $attempt->max_score }}</span></span>
+                            <span class="tnum text-lg font-semibold text-ink dark:text-white">{{ (float) $attempt->score }}<span class="text-sm font-normal text-ink-faint">/{{ (float) $attempt->max_score }}</span></span>
                         </a>
                     @empty
                         <p class="empty">Chưa có kết quả nào.</p>
@@ -93,7 +93,7 @@
         </section>
 
         <section class="space-y-3">
-            <h2 class="font-serif text-lg font-semibold text-ink dark:text-white">Tài liệu công khai</h2>
+            <h2 class="text-lg font-semibold text-ink dark:text-white">Tài liệu công khai</h2>
             <div class="panel">
                 <div class="divide-y divide-rule dark:divide-night-700">
                     @forelse ($studentData['documents'] as $document)

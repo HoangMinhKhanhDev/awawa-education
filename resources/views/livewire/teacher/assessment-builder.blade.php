@@ -106,7 +106,7 @@
                 <div class="divide-y divide-rule dark:divide-night-700">
                     @forelse ($examQuestions as $index => $examQuestion)
                         <div class="flex items-start gap-3 px-5 py-3.5" wire:key="eq-{{ $examQuestion->id }}">
-                            <span class="tnum mt-0.5 w-5 shrink-0 font-serif text-sm font-semibold text-ink-faint dark:text-slate-500">{{ $index + 1 }}</span>
+                            <span class="tnum mt-0.5 w-5 shrink-0 text-sm font-semibold text-ink-faint dark:text-slate-500">{{ $index + 1 }}</span>
                             <div class="min-w-0 flex-1">
                                 <p class="line-clamp-2 text-sm leading-relaxed text-ink dark:text-slate-200">{{ $examQuestion->question?->content }}</p>
                                 <p class="mt-1 flex flex-wrap items-center gap-x-2.5 text-xs text-ink-faint dark:text-slate-500">

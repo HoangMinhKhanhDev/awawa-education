@@ -29,7 +29,7 @@
     <div class="panel sticky top-14 z-20">
         <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5">
             <div class="min-w-0">
-                <h1 class="truncate font-serif text-lg font-semibold text-ink dark:text-white">{{ $exam->title }}</h1>
+                <h1 class="truncate text-lg font-semibold text-ink dark:text-white">{{ $exam->title }}</h1>
                 <p class="tnum mt-0.5 text-xs text-ink-faint dark:text-slate-500">{{ $answered }}/{{ $total }} câu đã trả lời</p>
             </div>
 
@@ -69,7 +69,7 @@
             @php $question = $examQuestion->question; @endphp
             <div class="panel p-4 sm:p-5" wire:key="take-q-{{ $examQuestion->id }}">
                 <div class="flex items-start gap-3">
-                    <span class="tnum mt-0.5 w-5 shrink-0 font-serif text-sm font-semibold text-ink-faint dark:text-slate-500">{{ $index + 1 }}</span>
+                    <span class="tnum mt-0.5 w-5 shrink-0 text-sm font-semibold text-ink-faint dark:text-slate-500">{{ $index + 1 }}</span>
                     <div class="min-w-0 flex-1">
                         <div class="flex flex-wrap items-center gap-2">
                             <span class="chip chip-neutral">{{ $question->type->label() }}</span>

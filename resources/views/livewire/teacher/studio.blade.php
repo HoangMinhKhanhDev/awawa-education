@@ -36,7 +36,7 @@
                                 <p class="font-medium text-ink dark:text-slate-100">{{ $section['feature']->label() }}</p>
                                 <p class="mt-0.5 text-sm text-ink-soft dark:text-slate-400">{{ $section['description'] }}</p>
                             </div>
-                            <span class="tnum shrink-0 font-serif text-lg font-semibold text-ink-faint dark:text-slate-500">{{ $section['count']() }}</span>
+                            <span class="tnum shrink-0 text-lg font-semibold text-ink-faint dark:text-slate-500">{{ $section['count']() }}</span>
                         </a>
                     @else
                         <div class="flex items-center gap-4 px-5 py-4 opacity-60">

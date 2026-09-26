@@ -45,7 +45,7 @@
                             {{ $attempt->student?->email }}@if ($attempt->submitted_at)<span class="mx-1.5">—</span>nộp {{ $attempt->submitted_at->format('d/m/Y H:i') }}@endif
                         </p>
                     </div>
-                    <span class="tnum shrink-0 font-serif text-lg font-semibold text-ink dark:text-white">
+                    <span class="tnum shrink-0 text-lg font-semibold text-ink dark:text-white">
                         {{ $attempt->score === null ? '—' : (float) $attempt->score }}<span class="text-sm font-normal text-ink-faint">/{{ (float) $attempt->max_score }}</span>
                     </span>
                     <button type="button" wire:click="openGrading({{ $attempt->id }})" class="btn btn-outline px-3.5 py-2 text-xs">
@@ -63,7 +63,7 @@
             <div class="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-[14px] bg-white p-6 sm:rounded-[14px] dark:bg-night-800">
                 <div class="mb-5 flex items-center justify-between">
                     <div>
-                        <h2 class="font-serif text-lg font-semibold text-ink dark:text-white">{{ $gradingAttempt->student?->name }}</h2>
+                        <h2 class="text-lg font-semibold text-ink dark:text-white">{{ $gradingAttempt->student?->name }}</h2>
                         <p class="tnum text-xs text-ink-faint dark:text-slate-500">{{ $gradingAttempt->status->label() }} — {{ (float) $gradingAttempt->auto_score }} điểm tự động</p>
                     </div>
                     <button type="button" wire:click="closeGrading" class="rounded-[10px] p-1.5 text-ink-faint hover:bg-paper-2 dark:hover:bg-white/5" aria-label="Đóng">

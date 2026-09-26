@@ -15,7 +15,7 @@
     <div class="panel panel-pad">
         <div class="flex flex-wrap items-center gap-x-8 gap-y-5">
             <div>
-                <p class="font-serif text-4xl font-semibold leading-none text-ink tnum dark:text-white">
+                <p class="tnum font-serif text-4xl font-semibold leading-none text-ink dark:text-white">
                     {{ (float) $attempt->score }}<span class="text-lg font-normal text-ink-faint">/{{ (float) $attempt->max_score }}</span>
                 </p>
                 <p class="mt-1.5 text-xs text-ink-faint dark:text-slate-500">điểm của bạn</p>
@@ -56,7 +56,7 @@
             @endphp
             <div class="panel p-4 sm:p-5" wire:key="result-q-{{ $examQuestion->id }}">
                 <div class="flex items-start gap-3">
-                    <span class="tnum mt-0.5 w-5 shrink-0 font-serif text-sm font-semibold {{ $pending ? 'text-warning' : ($answer?->is_correct ? 'text-success' : 'text-signal') }}">
+                    <span class="tnum mt-0.5 w-5 shrink-0 text-sm font-semibold {{ $pending ? 'text-warning' : ($answer?->is_correct ? 'text-success' : 'text-signal') }}">
                         {{ $index + 1 }}
                     </span>
                     <div class="min-w-0 flex-1">

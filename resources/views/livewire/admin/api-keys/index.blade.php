@@ -1,7 +1,7 @@
 <div class="space-y-5">
     <div class="flex flex-wrap items-end justify-between gap-3">
         <div>
-            <h2 class="font-serif text-lg font-semibold text-ink dark:text-white">Khóa truy cập API</h2>
+            <h2 class="text-lg font-semibold text-ink dark:text-white">Khóa truy cập API</h2>
             <p class="mt-1 text-sm text-ink-soft dark:text-slate-400">Cấp khóa cho ứng dụng bên ngoài gọi vào awawa. Khóa chỉ hiện đầy đủ một lần khi tạo.</p>
         </div>
         <button type="button" wire:click="openCreate" class="btn btn-primary">
@@ -70,7 +70,7 @@
             x-data x-on:keydown.escape.window="$wire.closeForm()">
             <div class="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-[14px] bg-white p-6 sm:rounded-[14px] dark:bg-night-800" @click.stop>
                 <div class="mb-5 flex items-center justify-between">
-                    <h2 class="font-serif text-lg font-semibold text-ink dark:text-white">Tạo khóa truy cập</h2>
+                    <h2 class="text-lg font-semibold text-ink dark:text-white">Tạo khóa truy cập</h2>
                     <button type="button" wire:click="closeForm" class="rounded-[10px] p-1.5 text-ink-faint hover:bg-paper-2 dark:hover:bg-white/5" aria-label="Đóng">
                         <x-icon name="x" class="h-5 w-5" />
                     </button>

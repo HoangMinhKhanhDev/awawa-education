@@ -68,7 +68,7 @@
             <div class="divide-y divide-rule border-t border-rule dark:divide-night-700 dark:border-night-700">
                 @foreach ($versions as $version)
                     <div class="flex items-center gap-4 px-5 py-3" wire:key="ver-{{ $version->id }}">
-                        <span class="tnum w-12 shrink-0 font-serif text-sm font-semibold text-ink-soft dark:text-slate-300">v{{ $version->version }}</span>
+                        <span class="tnum w-12 shrink-0 text-sm font-semibold text-ink-soft dark:text-slate-300">v{{ $version->version }}</span>
                         <div class="min-w-0 flex-1">
                             <p class="truncate text-sm text-ink dark:text-slate-200">{{ $version->label ?? 'Bản lưu' }}</p>
                             <p class="mt-0.5 text-xs text-ink-faint dark:text-slate-500">

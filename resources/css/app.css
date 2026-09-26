@@ -59,12 +59,6 @@
         @apply bg-paper text-ink antialiased dark:bg-night-900 dark:text-slate-100;
     }
 
-    h1,
-    h2,
-    h3 {
-        @apply font-serif;
-    }
-
     ::-webkit-scrollbar {
         width: 10px;
         height: 10px;
@@ -200,12 +194,14 @@
 
     /* ----- Data / numbers ----- */
     .tnum {
-        font-variant-numeric: tabular-nums;
+        font-variant-numeric: tabular-nums lining-nums;
+        font-feature-settings: 'tnum' 1, 'lnum' 1;
     }
 
     .stat-num {
         @apply font-serif text-3xl font-semibold leading-none text-ink dark:text-white;
-        font-variant-numeric: tabular-nums;
+        font-variant-numeric: tabular-nums lining-nums;
+        font-feature-settings: 'tnum' 1, 'lnum' 1;
     }
 
     .rank-row {

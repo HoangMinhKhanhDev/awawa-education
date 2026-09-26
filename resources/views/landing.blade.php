@@ -50,7 +50,7 @@
         <section class="grid items-center gap-10 py-10 lg:grid-cols-[1.05fr_0.95fr] lg:gap-14 lg:py-16">
             <div>
                 <h1 class="max-w-[18ch] font-serif text-[34px] font-semibold leading-[1.12] tracking-[-0.015em] text-ink sm:text-[42px] dark:text-white">
-                    Soạn đề, giao bài, chấm điểm — một chỗ cho cả đội tuyển.
+                    Soạn đề, giao bài, chấm điểm. Một chỗ cho cả đội tuyển.
                 </h1>
                 <p class="mt-5 max-w-[54ch] text-[15px] leading-relaxed text-ink-soft dark:text-slate-400">
                     Giáo viên mỗi môn có ngân hàng câu hỏi, đề thi, bài tập và tài liệu riêng. Học sinh trong đội làm bài, xem điểm và dựng sơ đồ kiến thức. Dữ liệu giữ tách biệt theo từng môn.
@@ -70,7 +70,7 @@
             <div class="relative">
                 <div class="panel overflow-hidden">
                     <div class="flex items-center justify-between border-b border-rule px-5 py-3 dark:border-night-700">
-                        <p class="font-serif text-sm font-semibold text-ink dark:text-white">Đề số 01 · Toán</p>
+                        <p class="text-sm font-semibold text-ink dark:text-white">Đề số 01 · Toán</p>
                         <p class="tnum text-sm text-ink-faint dark:text-slate-500">45 phút</p>
                     </div>
 
@@ -98,14 +98,14 @@
 
                     <div class="flex items-center justify-between border-t border-rule bg-paper-2 px-5 py-3 dark:border-night-700 dark:bg-night-900/40">
                         <p class="text-[13px] text-ink-soft dark:text-slate-400">Giáo viên chấm tự luận, nhận xét từng câu</p>
-                        <p class="font-serif text-xl font-semibold text-ink dark:text-white">8.5<span class="text-sm font-normal text-ink-faint">/10</span></p>
+                        <p class="tnum font-serif text-xl font-semibold text-ink dark:text-white">8.5<span class="text-sm font-normal text-ink-faint">/10</span></p>
                     </div>
                 </div>
             </div>
         </section>
 
         <section class="border-t border-rule pt-10 dark:border-night-700">
-            <h2 class="max-w-[30ch] font-serif text-xl font-semibold text-ink dark:text-white">Những gì có trong awawa</h2>
+            <h2 class="max-w-[30ch] text-xl font-semibold text-ink dark:text-white">Trong awawa có gì</h2>
             <dl class="mt-6 grid gap-x-10 gap-y-6 sm:grid-cols-2">
                 @foreach ([
                     ['Studio theo môn', 'Mỗi môn có bộ tính năng riêng và dữ liệu tách biệt, không lẫn sang nhau.'],
