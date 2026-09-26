@@ -28,17 +28,7 @@
         </section>
 
         <section class="min-w-0 {{ $mobileTab === 'studio' ? '' : 'hidden' }} lg:block">
-            <div class="panel">
-                <div class="border-b border-rule px-5 py-3 dark:border-night-700">
-                    <h2 class="text-[15px] font-semibold text-ink dark:text-white">Studio</h2>
-                </div>
-                <div class="space-y-2 p-5">
-                    <p class="text-sm text-ink-soft dark:text-slate-400">
-                        Tạo nội dung từ nguồn: câu hỏi, đề thi, tài liệu, flashcards, sơ đồ tư duy, đề cương, bản tin.
-                    </p>
-                    <p class="text-xs text-ink-faint dark:text-slate-500">Sẽ bổ sung ở bước tiếp theo.</p>
-                </div>
-            </div>
+            <livewire:notebook.studio :notebook-id="$notebook->id" :key="'studio-'.$notebook->id" />
         </section>
     </div>
 </div>
