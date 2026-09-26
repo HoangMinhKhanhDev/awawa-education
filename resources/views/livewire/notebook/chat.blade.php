@@ -63,9 +63,20 @@
             @endif
         @empty
             @unless ($streaming)
-                <div class="py-10 text-center">
+                <div class="py-8 text-center">
                     <p class="text-sm text-ink-soft dark:text-slate-400">Bắt đầu hỏi hoặc yêu cầu nội dung từ nguồn.</p>
-                    <p class="mt-1 text-xs text-ink-faint dark:text-slate-500">Ví dụ: "Tóm tắt các dạng bài trong nguồn", "Soạn 5 câu trắc nghiệm về bất đẳng thức".</p>
+                    <div class="mt-3 flex flex-wrap justify-center gap-2">
+                        @foreach ([
+                            'Tóm tắt các ý chính trong nguồn.',
+                            'Liệt kê các dạng bài quan trọng trong nguồn.',
+                            'Soạn 5 câu trắc nghiệm về nội dung trong nguồn.',
+                        ] as $suggestion)
+                            <button type="button" wire:click="$set('prompt', @js($suggestion))"
+                                class="rounded-full border border-rule px-3 py-1.5 text-xs text-ink-soft transition-colors hover:bg-paper-2 dark:border-night-700 dark:text-slate-400 dark:hover:bg-white/5">
+                                {{ $suggestion }}
+                            </button>
+                        @endforeach
+                    </div>
                 </div>
             @endunless
         @endforelse

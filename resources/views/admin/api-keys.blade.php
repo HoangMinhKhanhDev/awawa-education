@@ -11,5 +11,6 @@
 
         <livewire:admin.api-keys.index />
         <livewire:admin.ai-providers.index />
+        <livewire:admin.integrations />
     </div>
 </x-layouts.app>

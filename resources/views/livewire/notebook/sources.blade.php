@@ -67,13 +67,63 @@
                 </div>
 
                 <div class="tabs mb-4">
-                    @foreach (['file' => 'Tải tệp', 'text' => 'Dán văn bản', 'document' => 'Tài liệu trong môn'] as $key => $label)
+                    @foreach (['file' => 'Tải tệp', 'text' => 'Dán văn bản', 'document' => 'Tài liệu trong môn', 'web' => 'Tìm trên web'] as $key => $label)
                         <button type="button" wire:click="$set('addType', '{{ $key }}')"
                             class="tab {{ $addType === $key ? 'tab-active' : '' }}">{{ $label }}</button>
                     @endforeach
                 </div>
 
-                @if ($addType === 'file')
+                @if ($addType === 'web')
+                    <div class="space-y-4">
+                        @unless ($webConfigured)
+                            <div class="alert alert-warning">Chưa cấu hình Tavily API key. Báo quản trị viên thêm trong mục API key.</div>
+                        @endunless
+
+                        <div class="flex items-end gap-2">
+                            <div class="flex-1">
+                                <label class="label" for="web-topic">Chủ đề cần tìm nguồn</label>
+                                <input id="web-topic" type="text" class="input" wire:model="webTopic"
+                                    wire:keydown.enter.prevent="searchWeb" placeholder="VD: bất đẳng thức Cauchy nâng cao">
+                                @error('webTopic') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
+                            </div>
+                            <button type="button" wire:click="searchWeb" class="btn btn-primary shrink-0"
+                                wire:loading.attr="disabled" wire:target="searchWeb">
+                                <span wire:loading.remove wire:target="searchWeb">Tìm nguồn</span>
+                                <span wire:loading wire:target="searchWeb">Đang tìm…</span>
+                            </button>
+                        </div>
+
+                        @if ($webResults !== [])
+                            <div class="max-h-72 space-y-2 overflow-y-auto">
+                                @foreach ($webResults as $index => $result)
+                                    <label class="flex cursor-pointer items-start gap-2.5 rounded-[10px] border border-rule p-3 dark:border-night-700" wire:key="web-{{ $index }}">
+                                        <input type="checkbox" value="{{ $index }}" wire:model="webSelected"
+                                            class="mt-0.5 h-4 w-4 rounded border-rule-strong text-brand-600 focus:ring-brand-500 dark:border-night-700">
+                                        <span class="min-w-0">
+                                            <span class="flex flex-wrap items-center gap-2">
+                                                <span class="text-sm font-medium text-ink dark:text-slate-100">{{ $result['title'] }}</span>
+                                                @if (! empty($result['keep']))
+                                                    <span class="chip chip-success">Nên dùng</span>
+                                                @endif
+                                            </span>
+                                            <span class="mt-0.5 block truncate text-[11px] text-ink-faint dark:text-slate-500">{{ $result['url'] }}</span>
+                                            <span class="mt-1 line-clamp-2 block text-xs text-ink-soft dark:text-slate-400">{{ \Illuminate\Support\Str::limit($result['content'], 200) }}</span>
+                                            @if (! empty($result['reason']))
+                                                <span class="mt-0.5 block text-[11px] text-brand-700 dark:text-brand-300">{{ $result['reason'] }}</span>
+                                            @endif
+                                        </span>
+                                    </label>
+                                @endforeach
+                            </div>
+
+                            <div class="flex justify-end">
+                                <button type="button" wire:click="addWebSources" class="btn btn-primary" wire:loading.attr="disabled" wire:target="addWebSources">
+                                    Thêm {{ count($webSelected) }} nguồn đã chọn
+                                </button>
+                            </div>
+                        @endif
+                    </div>
+                @elseif ($addType === 'file')
                     <div class="space-y-4">
                         <div>
                             <label class="label" for="src-title">Tiêu đề (không bắt buộc)</label>

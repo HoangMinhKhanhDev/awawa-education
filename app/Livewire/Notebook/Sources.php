@@ -6,6 +6,7 @@ use App\Models\Document;
 use App\Models\Notebook;
 use App\Models\NotebookSource;
 use App\Services\Notebook\SourceIngestor;
+use App\Services\Notebook\WebSourceFinder;
 use App\Support\NotebookConfig;
 use Illuminate\Contracts\View\View;
 use Illuminate\Validation\Rule;
@@ -33,6 +34,20 @@ class Sources extends Component
     public ?int $viewingSourceId = null;
 
     public ?string $error = null;
+
+    public string $webTopic = '';
+
+    /**
+     * @var array<int, array<string, mixed>>
+     */
+    public array $webResults = [];
+
+    /**
+     * @var array<int, int|string>
+     */
+    public array $webSelected = [];
+
+    public bool $webSearching = false;
 
     public function mount(int $notebookId): void
     {
@@ -188,6 +203,91 @@ class Sources extends Component
         $this->dispatch('notebook-open-viewer');
     }
 
+    public function searchWeb(WebSourceFinder $finder): void
+    {
+        $this->guard();
+        $this->resetErrorBag();
+        $this->error = null;
+        $this->webResults = [];
+        $this->webSelected = [];
+
+        $this->validate([
+            'webTopic' => ['required', 'string', 'min:3', 'max:300'],
+        ], [
+            'webTopic.required' => 'Nhập chủ đề để tìm nguồn web.',
+        ]);
+
+        if (! $finder->configured()) {
+            $this->error = 'Chưa cấu hình Tavily API key. Báo quản trị viên thêm trong mục API key.';
+
+            return;
+        }
+
+        $this->webSearching = true;
+
+        try {
+            $results = $finder->find($this->webTopic, $this->notebook()->subject_id, auth()->id());
+        } catch (\Throwable $exception) {
+            $this->error = $exception->getMessage();
+            $this->webSearching = false;
+
+            return;
+        }
+
+        $this->webSearching = false;
+        $this->webResults = $results;
+
+        foreach ($results as $index => $result) {
+            if (! empty($result['keep'])) {
+                $this->webSelected[] = $index;
+            }
+        }
+
+        if ($results === []) {
+            $this->error = 'Không tìm thấy nguồn phù hợp. Thử chủ đề khác.';
+        }
+    }
+
+    public function addWebSources(SourceIngestor $ingestor): void
+    {
+        $this->guard();
+        $this->error = null;
+
+        if ($this->webSelected === []) {
+            $this->error = 'Chọn ít nhất một nguồn để thêm.';
+
+            return;
+        }
+
+        $added = 0;
+
+        foreach ($this->webSelected as $index) {
+            $result = $this->webResults[(int) $index] ?? null;
+
+            if ($result === null || blank($result['content'] ?? null)) {
+                continue;
+            }
+
+            if (! $this->canAddSource()) {
+                break;
+            }
+
+            $ingestor->fromText($this->notebook(), $result['title'] ?: 'Nguồn web', $result['content'], 'web', [
+                'url' => $result['url'] ?: null,
+            ]);
+
+            $added++;
+        }
+
+        $this->webResults = [];
+        $this->webSelected = [];
+        $this->webTopic = '';
+
+        if ($added > 0) {
+            session()->flash('notebook_status', "Đã thêm {$added} nguồn web.");
+        }
+    }
+
     public function closeViewer(): void
     {
         $this->viewingSourceId = null;
@@ -204,6 +304,7 @@ class Sources extends Component
                 ? NotebookSource::query()->with('chunks')->find($this->viewingSourceId)
                 : null,
             'maxSources' => NotebookConfig::maxSources(),
+            'webConfigured' => app(WebSourceFinder::class)->configured(),
         ]);
     }
 }
