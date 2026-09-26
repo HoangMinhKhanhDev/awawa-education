@@ -55,4 +55,71 @@ class AiProviderTest extends TestCase
         $this->assertNotSame('secret-key-value', $raw);
         $this->assertSame('secret-key-value', $provider->fresh()->api_key);
     }
+
+    public function test_quick_setup_creates_provider_and_sets_default(): void
+    {
+        $admin = User::factory()->superAdmin()->create();
+        $this->actingAs($admin);
+
+        Livewire::test(AdminAiProviders::class)
+            ->set('quickPreset', 'openrouter')
+            ->set('quickKey', 'sk-or-test-12345678')
+            ->call('quickSave')
+            ->assertHasNoErrors();
+
+        $provider = AiProvider::query()->where('key', 'openrouter')->firstOrFail();
+
+        $this->assertTrue($provider->is_enabled);
+        $this->assertTrue($provider->is_default);
+        $this->assertSame('openrouter/free', $provider->default_model);
+        $this->assertSame('sk-or-test-12345678', $provider->api_key);
+    }
+
+    public function test_quick_setup_replaces_existing_key_without_duplicate(): void
+    {
+        $admin = User::factory()->superAdmin()->create();
+        $this->actingAs($admin);
+
+        AiProvider::create(['key' => 'openrouter', 'label' => 'OpenRouter', 'base_url' => 'https://openrouter.ai/api/v1', 'api_key' => 'old-key']);
+
+        Livewire::test(AdminAiProviders::class)
+            ->set('quickPreset', 'openrouter')
+            ->set('quickKey', 'new-key-12345678')
+            ->call('quickSave');
+
+        $this->assertSame(1, AiProvider::query()->where('key', 'openrouter')->count());
+        $this->assertSame('new-key-12345678', AiProvider::query()->where('key', 'openrouter')->first()->api_key);
+    }
+
+    public function test_quick_setup_requires_key(): void
+    {
+        $admin = User::factory()->superAdmin()->create();
+        $this->actingAs($admin);
+
+        Livewire::test(AdminAiProviders::class)
+            ->set('quickPreset', 'openrouter')
+            ->set('quickKey', '')
+            ->call('quickSave')
+            ->assertHasErrors('quickKey');
+    }
+
+    public function test_custom_preset_opens_form_prefilled(): void
+    {
+        $admin = User::factory()->superAdmin()->create();
+        $this->actingAs($admin);
+
+        Livewire::test(AdminAiProviders::class)
+            ->call('openQuickCreate', 'openai')
+            ->assertSet('key', 'openai')
+            ->assertSet('baseUrl', 'https://api.openai.com/v1')
+            ->assertSet('defaultModel', 'gpt-4o-mini')
+            ->assertSet('showForm', true);
+    }
+
+    public function test_admin_can_open_api_keys_page(): void
+    {
+        $admin = User::factory()->superAdmin()->create();
+
+        $this->actingAs($admin)->get(route('admin.api-keys'))->assertOk()->assertSee('Thiết lập nhanh');
+    }
 }
