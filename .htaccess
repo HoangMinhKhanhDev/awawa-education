@@ -1,0 +1,11 @@
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  RewriteRule ^(app|bootstrap|config|database|resources|routes|tests|vendor)(/|$) - [F,L]
+  RewriteRule ^(artisan|composer\.(json|lock)|phpunit\.xml|deploy)(/|$) - [F,L]
+  RewriteRule ^(\.env.*|\.git.*)$ - [F,L]
+
+  RewriteCond %{REQUEST_URI} !^/public/
+  RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
+DirectoryIndex index.php
