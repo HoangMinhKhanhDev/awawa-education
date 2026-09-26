@@ -87,6 +87,7 @@ class AiProviderTest extends TestCase
         $this->assertTrue($provider->is_default);
         $this->assertSame('openrouter/free', $provider->default_model);
         $this->assertSame('sk-or-test-12345678', $provider->api_key);
+        $this->assertSame('https://openrouter.ai/api/v1', $provider->base_url);
     }
 
     public function test_quick_setup_replaces_existing_key_without_duplicate(): void
@@ -129,6 +130,26 @@ class AiProviderTest extends TestCase
             ->assertSet('baseUrl', 'https://api.openai.com/v1')
             ->assertSet('defaultModel', 'gpt-4o-mini')
             ->assertSet('showForm', true);
+    }
+
+    public function test_preset_sets_endpoint_automatically_without_admin_input(): void
+    {
+        $admin = User::factory()->superAdmin()->create();
+        $this->actingAs($admin);
+
+        Livewire::test(AdminAiProviders::class)
+            ->call('openQuickCreate', 'openrouter')
+            ->assertSet('baseUrl', 'https://openrouter.ai/api/v1');
+    }
+
+    public function test_custom_preset_has_empty_endpoint_field(): void
+    {
+        $admin = User::factory()->superAdmin()->create();
+        $this->actingAs($admin);
+
+        Livewire::test(AdminAiProviders::class)
+            ->call('openQuickCreate', 'custom')
+            ->assertSet('baseUrl', '');
     }
 
     public function test_admin_can_open_api_keys_page(): void

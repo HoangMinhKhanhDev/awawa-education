@@ -44,6 +44,7 @@
                 @if ($activePreset['docs'])
                     <a href="{{ $activePreset['docs'] }}" target="_blank" rel="noopener" class="ml-1 font-medium text-brand-700 hover:underline dark:text-brand-300">Lấy API key</a>
                 @endif
+                <span class="mx-1">·</span>Endpoint tự đặt theo dịch vụ.
             </p>
         @endif
     </div>
@@ -109,11 +110,22 @@
                 @endunless
 
                 <form wire:submit="save" class="space-y-4">
-                    <div>
-                        <label class="label" for="provider-base">Base URL</label>
-                        <input id="provider-base" type="url" class="input" wire:model="baseUrl" placeholder="https://openrouter.ai/api/v1">
-                        @error('baseUrl') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
-                    </div>
+                    @if ($baseUrl === '')
+                        <div>
+                            <label class="label" for="provider-base">Endpoint (Base URL)</label>
+                            <input id="provider-base" type="url" class="input" wire:model="baseUrl" placeholder="https://...">
+                            <p class="mt-1.5 text-xs text-ink-faint dark:text-slate-500">Chỉ nhập khi dùng dịch vụ không có trong danh sách.</p>
+                            @error('baseUrl') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
+                        </div>
+                    @else
+                        <div>
+                            <span class="label">Endpoint</span>
+                            <div class="flex items-center justify-between gap-2 rounded-[10px] border border-rule bg-paper-2 px-3.5 py-2.5 dark:border-night-700 dark:bg-night-900/40">
+                                <span class="truncate font-mono text-xs text-ink-soft dark:text-slate-400">{{ $baseUrl }}</span>
+                                <button type="button" wire:click="$set('baseUrl', '')" class="shrink-0 text-xs text-ink-faint hover:text-brand-700 dark:text-slate-500">Đổi</button>
+                            </div>
+                        </div>
+                    @endif
 
                     <div>
                         <label class="label" for="provider-apikey">API key {{ $editingId ? '(để trống nếu giữ nguyên)' : '' }}</label>

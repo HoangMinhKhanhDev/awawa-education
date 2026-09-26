@@ -121,8 +121,9 @@ class Index extends Component
         ]);
 
         $preset = $this->presets()[$this->quickPreset] ?? $this->presets()['custom'];
+        $base = $this->knownBaseFor($this->quickPreset);
 
-        if ($preset['key'] === '' || $preset['base_url'] === '') {
+        if ($preset['key'] === '' || blank($base)) {
             $this->openCreate();
             $this->usePreset($this->quickPreset);
             $this->apiKey = $this->quickKey;
@@ -133,7 +134,7 @@ class Index extends Component
 
         $provider = AiProvider::query()->firstOrNew(['key' => $preset['key']]);
         $provider->label = $provider->label ?: $preset['label'];
-        $provider->base_url = $preset['base_url'];
+        $provider->base_url = $base;
         $provider->api_key = $this->quickKey;
         $provider->default_model = $provider->default_model ?: $preset['model'];
         $provider->is_enabled = true;
@@ -217,10 +218,32 @@ class Index extends Component
 
         $this->key = $preset['key'];
         $this->label = $preset['label'];
-        $this->baseUrl = $preset['base_url'];
+        $this->baseUrl = (string) ($this->knownBaseFor($presetKey) ?? '');
         $this->defaultModel = $preset['model'];
         $this->isEnabled = true;
         $this->resetErrorBag();
+    }
+
+    /**
+     * Endpoint tự suy ra theo dịch vụ (không cần admin nhập).
+     */
+    public function knownBaseFor(string $presetKey): ?string
+    {
+        $preset = $this->presets()[$presetKey] ?? null;
+
+        if ($preset === null) {
+            return null;
+        }
+
+        if (filled($preset['base_url'])) {
+            return $preset['base_url'];
+        }
+
+        if ($preset['key'] === '') {
+            return null;
+        }
+
+        return config("awawa.ai.providers.{$preset['key']}.base_url") ?: null;
     }
 
     public function openQuickCreate(string $presetKey): void
