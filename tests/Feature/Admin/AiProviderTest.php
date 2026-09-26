@@ -6,6 +6,7 @@ use App\Livewire\Admin\AiProviders\Index as AdminAiProviders;
 use App\Models\AiProvider;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
@@ -176,6 +177,28 @@ class AiProviderTest extends TestCase
 
         $this->assertSame('https://apihub.agnes-ai.com/v1', $provider->base_url);
         $this->assertSame('agnes-2.0-flash', $provider->default_model);
+    }
+
+    public function test_check_provider_surfaces_connection_error_without_crashing(): void
+    {
+        $admin = User::factory()->superAdmin()->create();
+        $this->actingAs($admin);
+
+        Http::fake(function (): void {
+            throw new ConnectionException('SSL certificate problem');
+        });
+
+        $provider = AiProvider::create([
+            'key' => 'openrouter',
+            'label' => 'OpenRouter',
+            'base_url' => 'https://openrouter.ai/api/v1',
+            'api_key' => 'sk-test-12345678',
+            'is_enabled' => true,
+        ]);
+
+        Livewire::test(AdminAiProviders::class)
+            ->call('checkProvider', $provider->id)
+            ->assertSee('Lỗi');
     }
 
     public function test_admin_can_open_api_keys_page(): void

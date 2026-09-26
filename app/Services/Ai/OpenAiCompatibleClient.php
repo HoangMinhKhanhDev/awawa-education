@@ -40,7 +40,11 @@ class OpenAiCompatibleClient
             $request = $request->withToken($apiKey);
         }
 
-        $response = $request->post(rtrim($baseUrl, '/').'/chat/completions', $payload);
+        try {
+            $response = $request->post(rtrim($baseUrl, '/').'/chat/completions', $payload);
+        } catch (\Throwable $exception) {
+            throw new AiException('Không kết nối được tới nhà cung cấp AI: '.$exception->getMessage());
+        }
 
         if ($response->failed()) {
             throw new AiException($this->errorMessage($response));
@@ -87,7 +91,11 @@ class OpenAiCompatibleClient
             $request = $request->withToken($apiKey);
         }
 
-        $response = $request->get(rtrim($baseUrl, '/').'/models');
+        try {
+            $response = $request->get(rtrim($baseUrl, '/').'/models');
+        } catch (\Throwable $exception) {
+            throw new AiException('Không kết nối được tới nhà cung cấp AI: '.$exception->getMessage());
+        }
 
         if ($response->failed()) {
             throw new AiException($this->errorMessage($response));

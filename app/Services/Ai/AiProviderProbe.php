@@ -29,7 +29,7 @@ class AiProviderProbe
             if ($models !== []) {
                 return ['ok' => true, 'models' => $models, 'error' => null];
             }
-        } catch (AiException $exception) {
+        } catch (\Throwable $exception) {
             $error = $exception->getMessage();
         }
 
