@@ -713,6 +713,57 @@ class Studio extends Component
         $this->redirect(route('studio.builder', $exam), navigate: true);
     }
 
+    /**
+     * Tạo đề thi và giao thẳng cho học sinh trong đội tuyển.
+     */
+    public function deliverExam(int $id, ArtifactPublisher $publisher): void
+    {
+        $this->guard();
+
+        $artifact = $this->notebook()->artifacts()->findOrFail($id);
+
+        if (ArtifactType::tryFrom($artifact->type) !== ArtifactType::Exam) {
+            $this->error = 'Chỉ đề thi mới giao cho học sinh được.';
+
+            return;
+        }
+
+        if ($artifact->isGenerating()) {
+            $this->error = 'Đề thi đang được soạn, vui lòng đợi xong rồi giao.';
+
+            return;
+        }
+
+        if ($artifact->isPublished()) {
+            $exam = $artifact->ref_id ? Exam::query()->find($artifact->ref_id) : null;
+
+            if ($exam !== null) {
+                $this->redirect(route('studio.builder', $exam), navigate: true);
+
+                return;
+            }
+        }
+
+        if (! $this->isAvailableType($artifact->type)) {
+            $this->error = 'Tính năng xuất bản nội dung này chưa được bật cho môn của bạn.';
+
+            return;
+        }
+
+        try {
+            $publisher->publish($artifact, $this->publishPublic, true);
+        } catch (\Throwable $exception) {
+            $this->error = 'Không giao được đề thi: '.$exception->getMessage();
+
+            return;
+        }
+
+        $subjectName = $this->notebook()->subject?->name ?? 'môn của bạn';
+        session()->flash('notebook_status', 'Đã giao đề cho học sinh '.$subjectName.'. Họ sẽ thấy ở Bài sắp tới.');
+
+        $this->dispatch('notebook-artifact-published');
+    }
+
     public function delete(int $id): void
     {
         $this->guard();
@@ -803,6 +854,7 @@ class Studio extends Component
             'hasSources' => $this->notebook()->enabledSourceIds() !== [],
             'isGenerating' => $this->notebook()->artifacts()->where('status', 'generating')->exists(),
             'notice' => $this->collectNotices(),
+            'subjectName' => $this->notebook()->subject?->name,
         ]);
     }
 

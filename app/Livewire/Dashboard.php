@@ -53,6 +53,7 @@ class Dashboard extends Component
 
         $exams = Exam::query()
             ->where('status', ExamStatus::Published->value)
+            ->when($user->subject_id !== null, fn ($query) => $query->where('subject_id', $user->subject_id))
             ->where(fn ($query) => $query->whereNull('ends_at')->orWhere('ends_at', '>=', now()))
             ->withCount('examQuestions')
             ->get();

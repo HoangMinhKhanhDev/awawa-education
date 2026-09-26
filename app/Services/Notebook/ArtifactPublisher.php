@@ -4,6 +4,7 @@ namespace App\Services\Notebook;
 
 use App\Enums\ArtifactType;
 use App\Enums\Difficulty;
+use App\Enums\ExamStatus;
 use App\Enums\ExamType;
 use App\Enums\MapVisibility;
 use App\Enums\QuestionType;
@@ -14,6 +15,7 @@ use App\Models\KnowledgeMap;
 use App\Models\KnowledgeMapVersion;
 use App\Models\NotebookArtifact;
 use App\Models\Question;
+use App\Services\NotificationDispatcher;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -22,7 +24,7 @@ use Illuminate\Support\Str;
  */
 class ArtifactPublisher
 {
-    public function publish(NotebookArtifact $artifact, bool $isPublic = true): void
+    public function publish(NotebookArtifact $artifact, bool $isPublic = true, bool $deliverExam = false): void
     {
         $subjectId = $artifact->subject_id;
         $userId = $artifact->user_id ?? auth()->id();
@@ -30,7 +32,7 @@ class ArtifactPublisher
 
         match ($type) {
             ArtifactType::Questions => $this->publishQuestions($artifact, $subjectId, $userId),
-            ArtifactType::Exam => $this->publishExam($artifact, $subjectId, $userId),
+            ArtifactType::Exam => $this->publishExam($artifact, $subjectId, $userId, $deliverExam),
             ArtifactType::MindMap => $this->publishMindMap($artifact, $userId),
             default => $this->publishDocument($artifact, $subjectId, $userId, $isPublic),
         };
@@ -51,7 +53,7 @@ class ArtifactPublisher
         $artifact->forceFill(['status' => 'published', 'ref_type' => null, 'ref_id' => null])->save();
     }
 
-    protected function publishExam(NotebookArtifact $artifact, int $subjectId, ?int $userId): void
+    protected function publishExam(NotebookArtifact $artifact, int $subjectId, ?int $userId, bool $deliver = false): void
     {
         $settings = is_array($artifact->payload['settings'] ?? null) ? $artifact->payload['settings'] : [];
 
@@ -79,7 +81,7 @@ class ArtifactPublisher
                 : null,
             'shuffle_questions' => (bool) ($settings['shuffle_questions'] ?? false),
             'shuffle_options' => (bool) ($settings['shuffle_options'] ?? false),
-            'status' => 'draft',
+            'status' => $deliver ? ExamStatus::Published : ExamStatus::Draft,
         ]);
 
         $order = 0;
@@ -111,6 +113,10 @@ class ArtifactPublisher
             'ref_type' => $exam->getMorphClass(),
             'ref_id' => $exam->id,
         ])->save();
+
+        if ($deliver) {
+            app(NotificationDispatcher::class)->examPublished($exam);
+        }
     }
 
     protected function publishDocument(NotebookArtifact $artifact, int $subjectId, ?int $userId, bool $isPublic): void

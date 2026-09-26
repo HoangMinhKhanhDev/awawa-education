@@ -408,7 +408,8 @@ class ExamArtifactTest extends TestCase
             ->assertSee('Chọn một đáp án đúng nhất')
             ->assertSee('Xem đáp án')
             ->assertSee('Bảng đáp án', escape: false)
-            ->assertSee('Mở trong trình soạn đề')
+            ->assertSee('Xem trước khi giao')
+            ->assertSee('Giao cho học sinh ngay')
             ->assertSee('45 phút')
             ->assertSee('(4 điểm)');
     }

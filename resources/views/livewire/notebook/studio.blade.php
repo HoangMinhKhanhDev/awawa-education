@@ -673,17 +673,30 @@
                             </label>
                         @endif
                         @if ($previewType === \App\Enums\ArtifactType::Exam)
-                            <span class="mr-auto text-xs text-ink-faint dark:text-slate-500">
+                            @php $examSubjectName = $subjectName ?? 'môn của bạn'; @endphp
+                            <span class="mr-auto max-w-[22rem] text-xs text-ink-faint dark:text-slate-500">
                                 @if ($preview->isPublished())
-                                    Đề đã tạo trong danh sách Đề thi.
+                                    Đề đã tạo. Mở trình soạn để chỉnh lịch, trộn câu hoặc đóng lại.
                                 @else
-                                    Tạo đề nháp rồi mở trình soạn đề để chỉnh lịch, trộn câu và giao cho học sinh.
+                                    Bấm “Giao cho học sinh ngay” để đề xuất hiện ở Bài sắp tới của học sinh {{ $examSubjectName }}.
                                 @endif
                             </span>
-                            <button type="button" wire:click="publishAndOpen({{ $preview->id }})"
-                                wire:loading.attr="disabled" wire:target="publishAndOpen({{ $preview->id }})" class="btn btn-primary">
-                                Mở trong trình soạn đề
-                            </button>
+                            @if ($preview->isPublished())
+                                <a href="{{ route('studio.builder', $preview->ref_id) }}" wire:navigate class="btn btn-primary">
+                                    Mở trình soạn đề
+                                </a>
+                            @else
+                                <button type="button" wire:click="publishAndOpen({{ $preview->id }})"
+                                    wire:loading.attr="disabled" wire:target="publishAndOpen({{ $preview->id }})" class="btn btn-outline">
+                                    Xem trước khi giao
+                                </button>
+                                <button type="button" wire:click="deliverExam({{ $preview->id }})"
+                                    wire:loading.attr="disabled" wire:target="deliverExam({{ $preview->id }})"
+                                    wire:confirm="Giao đề này cho học sinh ngay? Họ sẽ thấy và làm được ngay."
+                                    class="btn btn-primary">
+                                    Giao cho học sinh ngay
+                                </button>
+                            @endif
                         @else
                             <span class="mr-auto text-xs text-ink-faint dark:text-slate-500">Xuất bản vào: {{ $previewType->publishTarget() }}</span>
                             <button type="button" wire:click="publish({{ $preview->id }})" class="btn btn-primary" wire:loading.attr="disabled" wire:target="publish">

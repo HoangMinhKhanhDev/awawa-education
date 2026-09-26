@@ -29,41 +29,111 @@ class ArtifactGenerator
     {
         $instruction = trim((string) ($params['instruction'] ?? ''));
 
-        $messages = $this->composer->artifactMessages($notebook, $this->buildInstruction($notebook, $type, $instruction, $params), $this->schemaHint($type));
+        $this->guardAgainstOversizedRequest($type, $params);
 
         $pinned = $this->ai->pinnedSelection($notebook->settings['ai_provider'] ?? null, $notebook->settings['ai_model'] ?? null);
 
-        $result = $this->ai->chat($messages, [
-            'purpose' => AiPurpose::Artifact,
-            'subject_id' => $subjectId,
-            'user_id' => $userId,
-            'provider_key' => $pinned['provider_key'],
-            'model' => $pinned['model'],
-            'temperature' => 0.5,
-            'max_tokens' => 3500,
-        ]);
+        $decoded = null;
+        $result = null;
+        $lastError = null;
+
+        // Lần 1 soạn bình thường; nếu JSON hỏng thì yêu cầu lại lần 2 với chỉ dẫn gọn.
+        foreach ([0, 1] as $round) {
+            $messages = $this->composer->artifactMessages(
+                $notebook,
+                $this->buildInstruction($notebook, $type, $instruction, $params, $round === 1),
+                $this->schemaHint($type),
+            );
+
+            $result = $this->ai->chat($messages, [
+                'purpose' => AiPurpose::Artifact,
+                'subject_id' => $subjectId,
+                'user_id' => $userId,
+                'provider_key' => $pinned['provider_key'],
+                'model' => $pinned['model'],
+                'temperature' => $round === 1 ? 0.2 : 0.5,
+                'max_tokens' => $this->maxTokensFor($type, $params),
+            ]);
+
+            if (! $type->isJson()) {
+                break;
+            }
+
+            try {
+                $decoded = $this->decodeJson($result->text);
+
+                return [
+                    'title' => $this->titleFrom($notebook, $type, $instruction, $params, $decoded),
+                    'payload' => $this->normalize($type, $decoded, $params),
+                    'text' => null,
+                    'provider' => $result->providerKey,
+                    'model' => $result->model,
+                    'tokens' => $result->totalTokens(),
+                ];
+            } catch (RuntimeException $exception) {
+                $lastError = $exception;
+            }
+        }
 
         if (! $type->isJson()) {
             return [
                 'title' => $this->titleFrom($notebook, $type, $instruction, $params),
                 'payload' => null,
-                'text' => trim($result->text),
-                'provider' => $result->providerKey,
-                'model' => $result->model,
-                'tokens' => $result->totalTokens(),
+                'text' => trim((string) $result?->text),
+                'provider' => $result?->providerKey ?? '',
+                'model' => $result?->model ?? '',
+                'tokens' => $result?->totalTokens() ?? 0,
             ];
         }
 
-        $decoded = $this->decodeJson($result->text);
+        throw $lastError ?? new RuntimeException('AI không trả về nội dung hợp lệ.');
+    }
 
-        return [
-            'title' => $this->titleFrom($notebook, $type, $instruction, $params, $decoded),
-            'payload' => $this->normalize($type, $decoded, $params),
-            'text' => null,
-            'provider' => $result->providerKey,
-            'model' => $result->model,
-            'tokens' => $result->totalTokens(),
-        ];
+    /**
+     * Ngân sách token cho câu trả lời, tăng theo số câu để đề lớn không bị cắt cụt.
+     *
+     * @param  array<string, mixed>  $params
+     */
+    protected function maxTokensFor(ArtifactType $type, array $params): int
+    {
+        $cap = max(2000, (int) config('awawa.notebook.max_artifact_tokens', 8000));
+        $base = 1200;
+
+        if ($type === ArtifactType::Exam) {
+            $questions = max(1, (int) ($params['exam_sections'] ?? 2)) * max(1, (int) ($params['exam_questions_per_section'] ?? 5));
+
+            return min($cap, $base + $questions * 150);
+        }
+
+        if ($type === ArtifactType::Questions) {
+            return min($cap, $base + max(1, (int) ($params['count'] ?? 5)) * 150);
+        }
+
+        return min($cap, $base + 40 * 150);
+    }
+
+    /**
+     * Chặn sớm cấu hình vượt quá khả năng sinh, thay vì để AI trả cụt giữa chừng.
+     *
+     * @param  array<string, mixed>  $params
+     */
+    protected function guardAgainstOversizedRequest(ArtifactType $type, array $params): void
+    {
+        if ($type !== ArtifactType::Exam) {
+            return;
+        }
+
+        $sections = max(1, (int) ($params['exam_sections'] ?? 2));
+        $perSection = max(1, (int) ($params['exam_questions_per_section'] ?? 5));
+        $cap = max(2000, (int) config('awawa.notebook.max_artifact_tokens', 8000));
+        $allowed = (int) floor(($cap - 1200) / 150);
+
+        if ($sections * $perSection > $allowed) {
+            throw new RuntimeException(
+                "Đề này yêu cầu {$sections}×{$perSection} = ".($sections * $perSection).' câu, vượt giới hạn '.max(1, $allowed)
+                .' câu mỗi lần soạn. Hãy giảm số câu mỗi phần, hoặc soạn 2 đề rồi ghép lại.'
+            );
+        }
     }
 
     /**
@@ -71,7 +141,7 @@ class ArtifactGenerator
      *
      * @param  array<string, mixed>  $params
      */
-    protected function buildInstruction(Notebook $notebook, ArtifactType $type, string $instruction, array $params): string
+    protected function buildInstruction(Notebook $notebook, ArtifactType $type, string $instruction, array $params, bool $strictJson = false): string
     {
         if ($instruction === '') {
             $subjectName = $notebook->subject?->name;
@@ -105,6 +175,10 @@ class ArtifactGenerator
                 ."\n- Phần phải có \"title\" (VD: PHẦN I) và \"instructions\" (hướng dẫn làm phần, VD: Chọn một đáp án đúng nhất)."
                 ."\n- Câu trắc nghiệm: đúng 4 lựa chọn và đúng 1 đáp án có is_correct=true. Câu tự luận/điền khuyết không có lựa chọn."
                 ."\n- Mỗi câu cần \"difficulty\" và \"explanation\" ngắn gọn.";
+        }
+
+        if ($strictJson) {
+            $base .= "\n\nQUAN TRỌNG: trả về DUY NHẤT đúng một JSON hợp lệ theo định dạng đã nêu, không thêm bất kỳ chữ nào khác, không bọc trong khối code.";
         }
 
         return $base;
@@ -176,32 +250,239 @@ class ArtifactGenerator
     }
 
     /**
-     * @return array<string, mixed>
+     * Đọc JSON từ câu trả lời của AI, chịu được nhiều lỗi thường gặp: có chữ thừa trước/sau,
+     * bọc trong khối ```json, JSON bị bọc kép, dấu phẩy thừa, và cả trường hợp bị cắt cụt giữa chừng.
+     *
+     * @return array<mixed>
      */
     protected function decodeJson(string $text): array
     {
-        $clean = trim($text);
-        $clean = preg_replace('/^```(?:json)?|```$/m', '', $clean) ?? $clean;
-        $clean = trim($clean);
+        $clean = $this->stripCodeFence(trim($text));
 
-        $startArray = strpos($clean, '[');
-        $startObject = strpos($clean, '{');
+        $decoded = $this->tryDecode($clean);
 
-        if ($startArray !== false && ($startObject === false || $startArray < $startObject)) {
-            $end = strrpos($clean, ']');
-            $json = ($end !== false && $end > $startArray) ? substr($clean, $startArray, $end - $startArray + 1) : null;
-        } else {
-            $end = strrpos($clean, '}');
-            $json = ($startObject !== false && $end !== false && $end > $startObject) ? substr($clean, $startObject, $end - $startObject + 1) : null;
+        if ($decoded !== null) {
+            return $decoded;
         }
 
-        $decoded = $json !== null ? json_decode($json, true) : null;
+        // Ngoặc chưa khép nghĩa là AI bị cắt cụt: cứu phần đầu còn nguyên trước.
+        $salvaged = $this->salvageTruncatedJson($clean);
 
-        if (! is_array($decoded)) {
-            throw new RuntimeException('AI không trả về JSON hợp lệ. Hãy thử lại.');
+        if ($salvaged !== null) {
+            return $salvaged;
         }
 
-        return $decoded;
+        foreach ($this->jsonCandidates($clean) as $candidate) {
+            $decoded = $this->tryDecode($candidate) ?? $this->tryDecode($this->repairJson($candidate));
+
+            if ($decoded !== null) {
+                return $decoded;
+            }
+        }
+
+        throw new RuntimeException('AI không trả về JSON hợp lệ. Hãy thử lại.');
+    }
+
+    protected function stripCodeFence(string $text): string
+    {
+        $text = preg_replace('/^```(?:json|JSON)?\s*/u', '', $text) ?? $text;
+        $text = preg_replace('/\s*```$/u', '', $text) ?? $text;
+
+        return trim($text);
+    }
+
+    /**
+     * @return array<mixed>|null
+     */
+    protected function tryDecode(string $json): ?array
+    {
+        if ($json === '') {
+            return null;
+        }
+
+        $decoded = json_decode($json, true);
+
+        if (is_array($decoded)) {
+            return $decoded;
+        }
+
+        // AI đôi khi trả JSON dưới dạng chuỗi đã escape một lần nữa.
+        if (is_string($decoded)) {
+            $inner = json_decode($decoded, true);
+
+            if (is_array($inner)) {
+                return $inner;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Các mảng JSON ứng viên: nội dung từ ngoặc mở đầu tiên tới ngoặc đóng cân bằng.
+     *
+     * @return array<int, string>
+     */
+    protected function jsonCandidates(string $text): array
+    {
+        $candidates = [];
+
+        for ($offset = 0, $length = strlen($text); $offset < $length; $offset++) {
+            $char = $text[$offset];
+
+            if ($char !== '{' && $char !== '[') {
+                continue;
+            }
+
+            $slice = $this->balancedSlice($text, $offset);
+
+            if ($slice !== null) {
+                $candidates[] = $slice;
+            }
+        }
+
+        if ($candidates === []) {
+            $candidates[] = $text;
+        }
+
+        return $candidates;
+    }
+
+    /**
+     * Cắt từ vị trí mở tới ngoặc đóng tương ứng, bỏ qua dấu ngoặc nằm trong chuỗi.
+     */
+    protected function balancedSlice(string $text, int $start): ?string
+    {
+        $stack = [];
+        $inString = false;
+        $escaped = false;
+        $length = strlen($text);
+
+        for ($index = $start; $index < $length; $index++) {
+            $char = $text[$index];
+
+            if ($inString) {
+                if ($escaped) {
+                    $escaped = false;
+                } elseif ($char === '\\') {
+                    $escaped = true;
+                } elseif ($char === '"') {
+                    $inString = false;
+                }
+
+                continue;
+            }
+
+            if ($char === '"') {
+                $inString = true;
+            } elseif ($char === '{' || $char === '[') {
+                $stack[] = $char === '{' ? '}' : ']';
+            } elseif ($char === '}' || $char === ']') {
+                $expected = array_pop($stack);
+
+                if ($expected === null || $expected !== $char) {
+                    return null;
+                }
+
+                if ($stack === []) {
+                    return substr($text, $start, $index - $start + 1);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Vá lỗi JSON thường gặp: dấu phẩy trước ngoặc đóng và ký tự xuống dòng thô trong chuỗi.
+     */
+    protected function repairJson(string $json): string
+    {
+        $repaired = preg_replace('/,\s*([}\]])/u', '$1', $json) ?? $json;
+        $repaired = preg_replace_callback('/"(?:[^"\\\\]|\\\\.)*"/us', function (array $match): string {
+            return str_replace(["\r", "\n", "\t"], [' ', ' ', ' '], $match[0]);
+        }, $repaired) ?? $repaired;
+
+        return $repaired;
+    }
+
+    /**
+     * Cứu phần JSON còn nguyên khi AI bị cắt cụt: lùi về phần tử cuối còn đóng ngoặc rồi đóng ngoặc còn thiếu.
+     *
+     * @return array<mixed>|null
+     */
+    protected function salvageTruncatedJson(string $text): ?array
+    {
+        if ($this->openBrackets($text) === []) {
+            return null;
+        }
+
+        $lastObjectEnd = null;
+
+        if (preg_match_all('/\}\s*(?=,\s*\{)/u', $text, $matches, PREG_OFFSET_CAPTURE) && $matches[0] !== []) {
+            $last = end($matches[0]);
+            $lastObjectEnd = (int) $last[1] + 1;
+        }
+
+        if ($lastObjectEnd === null) {
+            return null;
+        }
+
+        $head = substr($text, 0, $lastObjectEnd);
+        $decoded = $this->tryDecode($head);
+
+        if ($decoded !== null) {
+            return $decoded;
+        }
+
+        $open = $this->openBrackets($head);
+
+        if ($open === []) {
+            return null;
+        }
+
+        return $this->tryDecode($this->repairJson($head.implode('', $open)));
+    }
+
+    /**
+     * Danh sách ngoặc đang mở, theo thứ tự cần đóng lại.
+     *
+     * @return array<int, string>
+     */
+    protected function openBrackets(string $text): array
+    {
+        $stack = [];
+        $inString = false;
+        $escaped = false;
+        $length = strlen($text);
+
+        for ($index = 0; $index < $length; $index++) {
+            $char = $text[$index];
+
+            if ($inString) {
+                if ($escaped) {
+                    $escaped = false;
+                } elseif ($char === '\\') {
+                    $escaped = true;
+                } elseif ($char === '"') {
+                    $inString = false;
+                }
+
+                continue;
+            }
+
+            if ($char === '"') {
+                $inString = true;
+            } elseif ($char === '{') {
+                $stack[] = '}';
+            } elseif ($char === '[') {
+                $stack[] = ']';
+            } elseif ($char === '}' || $char === ']') {
+                array_pop($stack);
+            }
+        }
+
+        return array_reverse($stack);
     }
 
     /**
@@ -297,12 +578,21 @@ class ArtifactGenerator
 
         $out = [];
 
-        foreach ((array) ($decoded['sections'] ?? []) as $section) {
+        $rawSections = $decoded['sections'] ?? null;
+
+        // AI đôi khi trả về danh sách câu phẳng thay vì chia phần: tự gói thành một phần.
+        if (! is_array($rawSections) || $rawSections === []) {
+            $rawSections = array_filter((array) $this->listFrom($decoded), 'is_array') === []
+                ? []
+                : [['title' => 'Phần I', 'instructions' => '', 'questions' => $this->listFrom($decoded)]];
+        }
+
+        foreach ((array) $rawSections as $section) {
             if (! is_array($section)) {
                 continue;
             }
 
-            $questions = $this->normalizeQuestions($this->listFrom(['questions' => $section['questions'] ?? []]), $params);
+            $questions = $this->normalizeQuestions($this->listFrom(['questions' => $section['questions'] ?? $section]), $params);
 
             if ($questions === []) {
                 continue;

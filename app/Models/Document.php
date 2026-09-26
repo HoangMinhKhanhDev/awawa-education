@@ -7,7 +7,6 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Number;
 
 class Document extends Model
 {
@@ -52,6 +51,14 @@ class Document extends Model
 
     public function sizeForHumans(): string
     {
-        return Number::fileSize($this->size);
+        $bytes = max(0, (int) $this->size);
+
+        foreach (['GB' => 1073741824, 'MB' => 1048576, 'KB' => 1024] as $unit => $step) {
+            if ($bytes >= $step) {
+                return round($bytes / $step, $bytes / $step >= 10 ? 0 : 1).' '.$unit;
+            }
+        }
+
+        return $bytes.' B';
     }
 }
