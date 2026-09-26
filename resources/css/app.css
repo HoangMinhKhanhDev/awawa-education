@@ -55,6 +55,10 @@
         -webkit-tap-highlight-color: transparent;
     }
 
+    [x-cloak] {
+        display: none !important;
+    }
+
     body {
         @apply bg-paper text-ink antialiased dark:bg-night-900 dark:text-slate-100;
     }

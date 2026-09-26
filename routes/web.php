@@ -18,11 +18,11 @@ use App\Livewire\Info;
 use App\Livewire\Maps\Editor as MapEditor;
 use App\Livewire\Maps\Index as MapsIndex;
 use App\Livewire\Maps\Shared as MapsShared;
+use App\Livewire\Notebook\Workspace as NotebookWorkspace;
 use App\Livewire\Notifications\Index as NotificationsIndex;
 use App\Livewire\Profile\Show as ProfileShow;
 use App\Livewire\Student\Result as StudentResult;
 use App\Livewire\Student\Take as StudentTake;
-use App\Livewire\Teacher\AiGenerate;
 use App\Livewire\Teacher\AnnouncementsIndex;
 use App\Livewire\Teacher\AssessmentBuilder;
 use App\Livewire\Teacher\AssignmentsIndex;
@@ -113,7 +113,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/studio/thong-bao', AnnouncementsIndex::class)
             ->middleware('feature:announcements')->name('studio.announcements');
 
-        Route::get('/studio/ai', AiGenerate::class)
+        Route::get('/studio/ai', NotebookWorkspace::class)
             ->middleware('feature:ai_tools')->name('studio.ai');
 
         Route::get('/studio/{exam}/soan', AssessmentBuilder::class)->name('studio.builder');

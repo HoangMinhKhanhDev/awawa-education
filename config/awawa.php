@@ -111,4 +111,27 @@ return [
         'private_key' => env('VAPID_PRIVATE_KEY'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Notebook (AI Studio)
+    |--------------------------------------------------------------------------
+    */
+
+    'notebook' => [
+        'max_sources' => (int) env('NOTEBOOK_MAX_SOURCES', 20),
+        'max_file_mb' => (int) env('NOTEBOOK_MAX_FILE_MB', 10),
+        'max_source_chars' => (int) env('NOTEBOOK_MAX_SOURCE_CHARS', 200000),
+        'max_prompt_chars' => (int) env('NOTEBOOK_MAX_PROMPT_CHARS', 400000),
+        'chunk_size' => (int) env('NOTEBOOK_CHUNK_SIZE', 1000),
+        'chunk_overlap' => (int) env('NOTEBOOK_CHUNK_OVERLAP', 150),
+        'stream' => (bool) env('AI_STREAM', true),
+        'history_messages' => (int) env('NOTEBOOK_HISTORY_MESSAGES', 8),
+
+        'tavily' => [
+            'base_url' => env('TAVILY_BASE_URL', 'https://api.tavily.com'),
+            'api_key' => env('TAVILY_API_KEY'),
+            'max_results' => (int) env('TAVILY_MAX_RESULTS', 8),
+        ],
+    ],
+
 ];
