@@ -47,13 +47,13 @@ class OpenAiCompatibleClient
         }
 
         if ($response->failed()) {
-            throw new AiException($this->errorMessage($response));
+            throw $this->providerError($response);
         }
 
         $text = (string) $response->json('choices.0.message.content', '');
 
         if ($text === '') {
-            throw new AiException('Nhà cung cấp AI trả về nội dung rỗng.');
+            throw new AiException('Nhà cung cấp AI không trả về nội dung. Có thể streaming không được hỗ trợ, thử lại.');
         }
 
         return new AiResult(
@@ -79,6 +79,33 @@ class OpenAiCompatibleClient
     }
 
     /**
+     * 429 là giới hạn lượt gọi: cần biết để không gọi lại ngay và làm nặng thêm giới hạn.
+     */
+    public function providerError(Response $response): AiException
+    {
+        if ($response->status() === 429) {
+            return AiException::rateLimited($this->errorMessage($response), $this->retryAfterSeconds($response));
+        }
+
+        return new AiException($this->errorMessage($response));
+    }
+
+    /**
+     * Số giây provider yêu cầu chờ. Không có cửa sổ Retry-After thì dùng thời gian chờ
+     * ngắn mặc định, tránh khoá người dùng 60 giây chỉ vì provider im lặng.
+     */
+    public function retryAfterSeconds(Response $response): int
+    {
+        $retryAfter = $response->header('Retry-After');
+
+        if (is_numeric($retryAfter)) {
+            return max(1, (int) $retryAfter);
+        }
+
+        return max(1, (int) config('awawa.ai.rate_limit.retry_delay', 10));
+    }
+
+    /**
      * Lấy danh sách model từ endpoint /models (chuẩn OpenAI).
      *
      * @return array<int, array{id: string, name: string, free: bool}>
@@ -98,7 +125,7 @@ class OpenAiCompatibleClient
         }
 
         if ($response->failed()) {
-            throw new AiException($this->errorMessage($response));
+            throw $this->providerError($response);
         }
 
         $models = [];

@@ -34,19 +34,34 @@ class NotebookConfig
             ?: (int) config('awawa.notebook.max_prompt_chars', 400000);
     }
 
+    public static function maxContextChunks(): int
+    {
+        return max(1, (int) config('awawa.notebook.max_context_chunks', 24));
+    }
+
     public static function maxSources(): int
     {
-        return (int) config('awawa.notebook.max_sources', 20);
+        return max(1, NotebookSetting::getInt('notebook_max_sources') ?: (int) config('awawa.notebook.max_sources', 20));
+    }
+
+    public static function maxFileMegabytes(): int
+    {
+        return max(1, NotebookSetting::getInt('notebook_max_file_mb') ?: (int) config('awawa.notebook.max_file_mb', 10));
     }
 
     public static function maxFileBytes(): int
     {
-        return (int) config('awawa.notebook.max_file_mb', 10) * 1024 * 1024;
+        return self::maxFileMegabytes() * 1024 * 1024;
+    }
+
+    public static function maxFileKilobytes(): int
+    {
+        return self::maxFileMegabytes() * 1024;
     }
 
     public static function maxSourceChars(): int
     {
-        return (int) config('awawa.notebook.max_source_chars', 200000);
+        return max(1000, NotebookSetting::getInt('notebook_max_source_chars') ?: (int) config('awawa.notebook.max_source_chars', 200000));
     }
 
     public static function chunkSize(): int
@@ -64,5 +79,10 @@ class NotebookConfig
     public static function historyMessages(): int
     {
         return (int) config('awawa.notebook.history_messages', 8);
+    }
+
+    public static function maxNotebooksPerUser(): int
+    {
+        return max(1, (int) config('awawa.notebook.max_notebooks', 20));
     }
 }

@@ -51,6 +51,22 @@ enum ArtifactType: string
         };
     }
 
+    /**
+     * Màu nhấn riêng cho từng loại, để phân biệt nhanh trong Studio.
+     */
+    public function tone(): string
+    {
+        return match ($this) {
+            self::Questions => 'bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300',
+            self::Exam => 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+            self::Document => 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
+            self::Flashcards => 'bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300',
+            self::MindMap => 'bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300',
+            self::StudyGuide => 'bg-cyan-50 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300',
+            self::Briefing => 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300',
+        };
+    }
+
     public function isJson(): bool
     {
         return in_array($this, [self::Questions, self::Exam, self::Flashcards, self::MindMap], true);

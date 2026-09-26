@@ -18,6 +18,12 @@ class Integrations extends Component
 
     public int $maxPromptChars = 400000;
 
+    public int $maxSources = 20;
+
+    public int $maxFileMegabytes = 10;
+
+    public int $maxSourceChars = 200000;
+
     public function mount(): void
     {
         $this->guard();
@@ -25,6 +31,9 @@ class Integrations extends Component
         $this->tavilyConfigured = filled(NotebookConfig::tavilyKey());
         $this->aiStream = NotebookConfig::streamEnabled();
         $this->maxPromptChars = NotebookConfig::maxPromptChars();
+        $this->maxSources = NotebookConfig::maxSources();
+        $this->maxFileMegabytes = NotebookConfig::maxFileMegabytes();
+        $this->maxSourceChars = NotebookConfig::maxSourceChars();
     }
 
     protected function guard(): void
@@ -39,6 +48,9 @@ class Integrations extends Component
         $this->validate([
             'tavilyApiKey' => ['nullable', 'string', 'max:300'],
             'maxPromptChars' => ['required', 'integer', 'min:10000', 'max:2000000'],
+            'maxSources' => ['required', 'integer', 'min:1', 'max:100'],
+            'maxFileMegabytes' => ['required', 'integer', 'min:1', 'max:100'],
+            'maxSourceChars' => ['required', 'integer', 'min:1000', 'max:2000000'],
         ], [
             'maxPromptChars.min' => 'Tối thiểu 10.000 ký tự.',
         ]);
@@ -49,6 +61,9 @@ class Integrations extends Component
 
         NotebookSetting::set('ai_stream', $this->aiStream ? '1' : '0');
         NotebookSetting::set('notebook_max_prompt_chars', (string) $this->maxPromptChars);
+        NotebookSetting::set('notebook_max_sources', (string) $this->maxSources);
+        NotebookSetting::set('notebook_max_file_mb', (string) $this->maxFileMegabytes);
+        NotebookSetting::set('notebook_max_source_chars', (string) $this->maxSourceChars);
 
         $this->tavilyApiKey = '';
         $this->tavilyConfigured = filled(NotebookConfig::tavilyKey());

@@ -8,6 +8,7 @@ use App\Models\Notebook;
 use App\Models\NotebookChunk;
 use App\Models\NotebookSource;
 use App\Models\Question;
+use App\Services\Notebook\HighlightPicker as HighlightPickerService;
 use App\Support\NotebookConfig;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -30,7 +31,7 @@ class SourceIngestor
             'status' => 'processing',
         ], $extra));
 
-        $this->storeText($source, $this->normalize($text));
+        $this->storeText($source, $this->normalize($type === 'web' ? app(WebPageCleaner::class)->clean($text) : $text));
 
         return $source->refresh();
     }
@@ -110,6 +111,59 @@ class SourceIngestor
         return $source->refresh();
     }
 
+    public function retry(NotebookSource $source, ?string $replacementText = null): NotebookSource
+    {
+        $source->forceFill(['status' => 'processing', 'error' => null])->save();
+
+        if ($replacementText !== null) {
+            $text = $source->type === 'web'
+                ? app(WebPageCleaner::class)->clean($replacementText)
+                : $replacementText;
+
+            $this->storeText($source, $this->normalize($text));
+
+            return $source->refresh();
+        }
+
+        if (in_array($source->type, ['file', 'document'], true)) {
+            if (blank($source->file_path)) {
+                return $this->markFailed($source, 'Không tìm thấy tệp nguồn để thử lại.');
+            }
+
+            $absolutePath = Storage::disk('public')->path($source->file_path);
+
+            $this->extractAndStore($source, $absolutePath, (string) $source->original_name, (string) $source->mime);
+
+            return $source->refresh();
+        }
+
+        if (in_array($source->type, ['text', 'web'], true)) {
+            if (blank($source->raw_content)) {
+                return $this->markFailed($source, 'Nguồn không còn nội dung để thử lại.');
+            }
+
+            $this->storeText($source, (string) $source->raw_content);
+
+            return $source->refresh();
+        }
+
+        $reference = $source->ref;
+
+        if ($source->type === 'question' && $reference instanceof Question) {
+            $this->storeText($source, $this->normalize($this->questionToText($reference)));
+
+            return $source->refresh();
+        }
+
+        if ($source->type === 'exam' && $reference instanceof Exam) {
+            $this->storeText($source, $this->normalize($this->examToText($reference)));
+
+            return $source->refresh();
+        }
+
+        return $this->markFailed($source, 'Không tìm thấy dữ liệu gốc của nguồn để thử lại.');
+    }
+
     public function remove(NotebookSource $source): void
     {
         if ($source->file_path !== null && ! $source->ref_id) {
@@ -147,10 +201,8 @@ class SourceIngestor
     protected function storeText(NotebookSource $source, string $text): void
     {
         if ($text === '') {
-            $source->forceFill([
-                'status' => 'failed',
-                'error' => 'Không trích được nội dung văn bản từ nguồn này.',
-            ])->save();
+            $source->forceFill(['raw_content' => ''])->save();
+            $this->markFailed($source, 'Không trích được nội dung văn bản từ nguồn này.');
 
             return;
         }
@@ -163,24 +215,47 @@ class SourceIngestor
 
         NotebookChunk::query()->where('source_id', $source->id)->delete();
 
-        $position = 0;
+        $created = [];
 
-        foreach ($this->chunkText($text) as $chunk) {
-            NotebookChunk::create([
+        foreach ($this->chunkText($text) as $position => $chunk) {
+            $created[] = NotebookChunk::create([
                 'notebook_id' => $source->notebook_id,
                 'source_id' => $source->id,
-                'position' => $position++,
+                'position' => $position,
                 'content' => $chunk['content'],
                 'char_start' => $chunk['start'],
                 'char_end' => $chunk['end'],
             ]);
         }
 
+        $highlightIds = app(HighlightPickerService::class)->highlightedChunkIds(
+            array_map(fn (NotebookChunk $chunk): array => [
+                'id' => $chunk->id,
+                'position' => $chunk->position,
+                'content' => (string) $chunk->content,
+            ], $created),
+        );
+
+        if ($highlightIds !== []) {
+            NotebookChunk::query()->whereIn('id', $highlightIds)->update(['is_highlight' => true]);
+        }
+
         $source->forceFill([
             'status' => 'ready',
             'error' => null,
+            'raw_content' => $text,
             'char_count' => mb_strlen($text),
         ])->save();
+    }
+
+    protected function markFailed(NotebookSource $source, string $message): NotebookSource
+    {
+        $source->forceFill([
+            'status' => 'failed',
+            'error' => mb_substr($message, 0, 500),
+        ])->save();
+
+        return $source->refresh();
     }
 
     /**

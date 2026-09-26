@@ -29,23 +29,23 @@ class ArtifactGenerator
     {
         $instruction = trim((string) ($params['instruction'] ?? ''));
 
-        if ($instruction === '') {
-            throw new RuntimeException('Vui lòng nhập yêu cầu cho nội dung cần tạo.');
-        }
+        $messages = $this->composer->artifactMessages($notebook, $this->buildInstruction($notebook, $type, $instruction, $params), $this->schemaHint($type));
 
-        $messages = $this->composer->artifactMessages($notebook, $this->buildInstruction($type, $instruction, $params), $this->schemaHint($type));
+        $pinned = $this->ai->pinnedSelection($notebook->settings['ai_provider'] ?? null, $notebook->settings['ai_model'] ?? null);
 
         $result = $this->ai->chat($messages, [
             'purpose' => AiPurpose::Artifact,
             'subject_id' => $subjectId,
             'user_id' => $userId,
+            'provider_key' => $pinned['provider_key'],
+            'model' => $pinned['model'],
             'temperature' => 0.5,
             'max_tokens' => 3500,
         ]);
 
         if (! $type->isJson()) {
             return [
-                'title' => $this->titleFrom($type, $instruction, $params),
+                'title' => $this->titleFrom($notebook, $type, $instruction, $params),
                 'payload' => null,
                 'text' => trim($result->text),
                 'provider' => $result->providerKey,
@@ -57,7 +57,7 @@ class ArtifactGenerator
         $decoded = $this->decodeJson($result->text);
 
         return [
-            'title' => $this->titleFrom($type, $instruction, $params, $decoded),
+            'title' => $this->titleFrom($notebook, $type, $instruction, $params, $decoded),
             'payload' => $this->normalize($type, $decoded, $params),
             'text' => null,
             'provider' => $result->providerKey,
@@ -67,11 +67,21 @@ class ArtifactGenerator
     }
 
     /**
+     * Yêu cầu của giáo viên chỉ là gợi ý: để trống thì AI tự soạn từ nguồn đang bật.
+     *
      * @param  array<string, mixed>  $params
      */
-    protected function buildInstruction(ArtifactType $type, string $instruction, array $params): string
+    protected function buildInstruction(Notebook $notebook, ArtifactType $type, string $instruction, array $params): string
     {
-        $base = 'Nhiệm vụ: '.$instruction;
+        if ($instruction === '') {
+            $subjectName = $notebook->subject?->name;
+
+            $base = $subjectName
+                ? 'Soạn '.$type->label().' cho môn '.$subjectName.' dựa trên các nguồn đang được bật. Tự chọn nội dung trọng tâm, bám sát tài liệu và không hỏi lại.'
+                : 'Soạn '.$type->label().' dựa trên các nguồn đang được bật. Tự chọn nội dung trọng tâm, bám sát tài liệu và không hỏi lại.';
+        } else {
+            $base = 'Nhiệm vụ: '.$instruction;
+        }
 
         if ($type === ArtifactType::Questions) {
             $base .= "\nSố lượng: ".(int) ($params['count'] ?? 5).' câu.'
@@ -81,10 +91,38 @@ class ArtifactGenerator
         }
 
         if ($type === ArtifactType::Exam) {
-            $base .= "\nĐề gồm nhiều phần và câu hỏi, tổng điểm hợp lý (thang 10).";
+            $sections = max(1, (int) ($params['exam_sections'] ?? 2));
+            $perSection = max(1, (int) ($params['exam_questions_per_section'] ?? 5));
+            $total = (float) ($params['exam_total_points'] ?? 10);
+            $points = self::examPointsPerQuestion($sections, $perSection, $total);
+            $duration = max(1, (int) ($params['exam_duration_minutes'] ?? 45));
+
+            $base .= "\nCấu trúc đề thi bắt buộc: ".$sections.' phần, mỗi phần '.$perSection.' câu, tổng '.($sections * $perSection).' câu.'
+                ."\n- Mỗi câu đúng ".$this->number($points).' điểm, tổng điểm đề '.$this->number($total).'.'
+                ."\n- Thời gian làm bài gợi ý: ".$duration.' phút.'
+                ."\n- Tỉ lệ câu hỏi: ".$this->questionTypeLabel((string) ($params['question_type'] ?? 'mixed')).'.'
+                .' Độ khó chung: '.$this->difficultyLabel((string) ($params['difficulty'] ?? 'medium')).'.'
+                ."\n- Phần phải có \"title\" (VD: PHẦN I) và \"instructions\" (hướng dẫn làm phần, VD: Chọn một đáp án đúng nhất)."
+                ."\n- Câu trắc nghiệm: đúng 4 lựa chọn và đúng 1 đáp án có is_correct=true. Câu tự luận/điền khuyết không có lựa chọn."
+                ."\n- Mỗi câu cần \"difficulty\" và \"explanation\" ngắn gọn.";
         }
 
         return $base;
+    }
+
+    /**
+     * Điểm mỗi câu khi chia đều tổng điểm cho toàn bộ câu của đề.
+     */
+    public static function examPointsPerQuestion(int $sections, int $perSection, float $totalPoints): float
+    {
+        $count = max(1, max(1, $sections) * max(1, $perSection));
+
+        return round($totalPoints / $count, 2);
+    }
+
+    protected function number(float $value): string
+    {
+        return rtrim(rtrim(number_format($value, 2, '.', ''), '0'), '.');
     }
 
     protected function schemaHint(ArtifactType $type): string
@@ -92,14 +130,16 @@ class ArtifactGenerator
         return match ($type) {
             ArtifactType::Questions => 'Một mảng JSON các câu hỏi. Mỗi câu: {"type":"multiple_choice|fill_blank|essay","content":"...","options":[{"content":"...","is_correct":true}],"answer":"...","explanation":"...","difficulty":"easy|medium|hard","points":1,"topic":"..."}. '
                 .'Với multiple_choice cần 4 lựa chọn và đúng 1 đáp án is_correct=true. Chỉ trả về JSON, không kèm chữ nào khác.',
-            ArtifactType::Exam => 'Một object JSON: {"title":"...","description":"...","sections":[{"title":"Phần I","instructions":"...","questions":[<câu hỏi như trên>]}]}. Chỉ trả về JSON.',
+            ArtifactType::Exam => 'Một object JSON: {"title":"...","description":"...","sections":[{"title":"PHẦN I","instructions":"...","questions":[<câu hỏi như trên>]}]}. '
+                .'Câu hỏi trong đề dùng đúng cấu trúc: {"type":"multiple_choice|fill_blank|essay","content":"...","options":[{"content":"...","is_correct":true}],"answer":"...","explanation":"...","difficulty":"easy|medium|hard","points":1,"topic":"..."}. '
+                .'Chỉ trả về JSON, không kèm chữ nào khác.',
             ArtifactType::Flashcards => 'Một mảng JSON: [{"front":"câu hỏi/khái niệm","back":"trả lời ngắn"}]. 8–15 thẻ. Chỉ trả về JSON.',
             ArtifactType::MindMap => 'Một object JSON: {"title":"...","nodes":[{"id":"n1","label":"...","parent":null},{"id":"n2","label":"...","parent":"n1"}]}. Chỉ trả về JSON.',
             default => 'Văn bản Markdown tiếng Việt có tiêu đề, mục rõ ràng, ngắn gọn.',
         };
     }
 
-    protected function titleFrom(ArtifactType $type, string $instruction, array $params, ?array $decoded = null): string
+    protected function titleFrom(Notebook $notebook, ArtifactType $type, string $instruction, array $params, ?array $decoded = null): string
     {
         if (is_array($decoded) && isset($decoded['title']) && is_string($decoded['title']) && trim($decoded['title']) !== '') {
             return Str::limit(trim($decoded['title']), 180, '');
@@ -109,6 +149,12 @@ class ArtifactGenerator
 
         if ($title !== '') {
             return Str::limit($title, 180, '');
+        }
+
+        $subjectName = $notebook->subject?->name;
+
+        if ($instruction === '' && $subjectName !== null && $subjectName !== '') {
+            return Str::limit($type->label().' - '.$subjectName, 180, '');
         }
 
         return Str::limit($type->label().': '.$instruction, 180, '');
@@ -244,7 +290,12 @@ class ArtifactGenerator
      */
     protected function normalizeExam(array $decoded, array $params): array
     {
-        $sections = [];
+        $sections = max(1, (int) ($params['exam_sections'] ?? 2));
+        $perSection = max(1, (int) ($params['exam_questions_per_section'] ?? 5));
+        $totalPoints = (float) ($params['exam_total_points'] ?? 10);
+        $pointsPerQuestion = self::examPointsPerQuestion($sections, $perSection, $totalPoints);
+
+        $out = [];
 
         foreach ((array) ($decoded['sections'] ?? []) as $section) {
             if (! is_array($section)) {
@@ -257,21 +308,68 @@ class ArtifactGenerator
                 continue;
             }
 
-            $sections[] = [
+            $out[] = [
                 'title' => (string) ($section['title'] ?? 'Phần'),
                 'instructions' => (string) ($section['instructions'] ?? ''),
-                'questions' => $questions,
+                'questions' => array_map(function (array $question) use ($pointsPerQuestion): array {
+                    $question['points'] = $pointsPerQuestion;
+
+                    return $this->normalizeAnswers($question);
+                }, $questions),
             ];
         }
 
-        if ($sections === []) {
+        if ($out === []) {
             throw new RuntimeException('Đề thi AI trả về không có phần/câu hỏi hợp lệ.');
         }
 
         return [
             'description' => (string) ($decoded['description'] ?? ''),
-            'sections' => $sections,
+            'settings' => [
+                'duration_minutes' => max(1, (int) ($params['exam_duration_minutes'] ?? 45)),
+                'total_points' => $totalPoints,
+                'shuffle_questions' => (bool) ($params['exam_shuffle_questions'] ?? false),
+                'shuffle_options' => (bool) ($params['exam_shuffle_options'] ?? false),
+            ],
+            'sections' => $out,
         ];
+    }
+
+    /**
+     * Trắc nghiệm phải có đúng 1 đáp án đúng; câu không có đáp án đúng thì đổi sang điền khuyết.
+     *
+     * @param  array<string, mixed>  $question
+     * @return array<string, mixed>
+     */
+    protected function normalizeAnswers(array $question): array
+    {
+        if ($question['type'] !== QuestionType::MultipleChoice->value) {
+            $question['options'] = [];
+
+            return $question;
+        }
+
+        $options = $question['options'];
+        $correct = array_values(array_filter($options, fn (array $option): bool => $option['is_correct']));
+
+        if ($correct === []) {
+            $question['type'] = QuestionType::FillBlank->value;
+            $question['options'] = [];
+
+            return $question;
+        }
+
+        $seen = false;
+        $question['options'] = array_values(array_map(function (array $option) use (&$seen): array {
+            if ($option['is_correct']) {
+                $option['is_correct'] = ! $seen;
+                $seen = true;
+            }
+
+            return $option;
+        }, $options));
+
+        return $question;
     }
 
     /**

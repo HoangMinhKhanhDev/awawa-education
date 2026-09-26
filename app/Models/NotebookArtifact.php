@@ -61,4 +61,25 @@ class NotebookArtifact extends Model
     {
         return $this->status === 'published';
     }
+
+    public function isGenerating(): bool
+    {
+        return $this->status === 'generating';
+    }
+
+    public function isFailed(): bool
+    {
+        return $this->status === 'failed';
+    }
+
+    public function failedReason(): ?string
+    {
+        if (! $this->isFailed()) {
+            return null;
+        }
+
+        $reason = $this->payload['_error'] ?? null;
+
+        return is_string($reason) && trim($reason) !== '' ? trim($reason) : 'AI không tạo được nội dung.';
+    }
 }

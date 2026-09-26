@@ -18,6 +18,7 @@ class NotebookChunk extends Model
         'source_id',
         'position',
         'content',
+        'is_highlight',
         'char_start',
         'char_end',
     ];
@@ -29,6 +30,7 @@ class NotebookChunk extends Model
     {
         return [
             'position' => 'integer',
+            'is_highlight' => 'boolean',
             'char_start' => 'integer',
             'char_end' => 'integer',
         ];

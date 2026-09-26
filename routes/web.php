@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\ApiKeysPageController;
 use App\Http\Controllers\Auth\GoogleController;
 use App\Http\Controllers\Auth\LogoutController;
 use App\Http\Controllers\HomeController;
+use App\Http\Controllers\NotebookArtifactExportController;
 use App\Http\Controllers\PushSubscriptionController;
 use App\Livewire\Admin\Stats as AdminStats;
 use App\Livewire\Admin\Subjects\Index as AdminSubjects;
@@ -18,6 +19,7 @@ use App\Livewire\Info;
 use App\Livewire\Maps\Editor as MapEditor;
 use App\Livewire\Maps\Index as MapsIndex;
 use App\Livewire\Maps\Shared as MapsShared;
+use App\Livewire\Notebook\Activity;
 use App\Livewire\Notebook\Workspace as NotebookWorkspace;
 use App\Livewire\Notifications\Index as NotificationsIndex;
 use App\Livewire\Profile\Show as ProfileShow;
@@ -115,6 +117,16 @@ Route::middleware('auth')->group(function () {
 
         Route::get('/studio/ai', NotebookWorkspace::class)
             ->middleware('feature:ai_tools')->name('studio.ai');
+
+        Route::get('/studio/ai/notebook/{notebookId}', NotebookWorkspace::class)
+            ->whereNumber('notebookId')
+            ->middleware('feature:ai_tools')->name('studio.ai.notebook');
+
+        Route::get('/studio/ai/artifacts/{artifact}/export/{format}', NotebookArtifactExportController::class)
+            ->middleware('feature:ai_tools')->name('studio.ai.artifacts.export');
+
+        Route::get('/studio/ai/hoat-dong', Activity::class)
+            ->middleware('feature:ai_tools')->name('studio.ai.activity');
 
         Route::get('/studio/{exam}/soan', AssessmentBuilder::class)->name('studio.builder');
 

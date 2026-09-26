@@ -21,6 +21,15 @@ class WebSourceFinder
     }
 
     /**
+     * @param  array<int, string>  $urls
+     * @return array<string, string>
+     */
+    public function extract(array $urls): array
+    {
+        return $this->tavily->extract($urls);
+    }
+
+    /**
      * @return array<int, array{title: string, url: string, content: string, score: float, keep: bool, reason: string}>
      */
     public function find(string $topic, ?int $subjectId = null, ?int $userId = null): array
@@ -34,7 +43,7 @@ class WebSourceFinder
         $verdicts = $this->pickQuality($results, $topic, $subjectId, $userId);
 
         return array_map(function (array $result, int $index) use ($verdicts): array {
-            $verdict = $verdicts[$index + 1] ?? ['keep' => true, 'reason' => ''];
+            $verdict = $verdicts[$index + 1] ?? ['keep' => false, 'reason' => 'Chưa chấm được nguồn, hãy tự chọn.'];
 
             return $result + ['keep' => (bool) $verdict['keep'], 'reason' => (string) $verdict['reason']];
         }, $results, array_keys($results));

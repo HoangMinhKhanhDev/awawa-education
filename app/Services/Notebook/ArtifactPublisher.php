@@ -4,6 +4,7 @@ namespace App\Services\Notebook;
 
 use App\Enums\ArtifactType;
 use App\Enums\Difficulty;
+use App\Enums\ExamType;
 use App\Enums\MapVisibility;
 use App\Enums\QuestionType;
 use App\Models\Document;
@@ -37,7 +38,13 @@ class ArtifactPublisher
 
     protected function publishQuestions(NotebookArtifact $artifact, int $subjectId, ?int $userId): void
     {
-        foreach ($artifact->payload['items'] ?? [] as $item) {
+        $items = array_values(array_filter($artifact->payload['items'] ?? [], fn (array $item): bool => ($item['included'] ?? true) !== false));
+
+        if ($items === []) {
+            throw new \RuntimeException('Chọn ít nhất một câu hỏi để xuất bản.');
+        }
+
+        foreach ($items as $item) {
             $this->createQuestion($item, $subjectId, $userId);
         }
 
@@ -46,18 +53,38 @@ class ArtifactPublisher
 
     protected function publishExam(NotebookArtifact $artifact, int $subjectId, ?int $userId): void
     {
+        $settings = is_array($artifact->payload['settings'] ?? null) ? $artifact->payload['settings'] : [];
+
+        $sections = array_values(array_filter(array_map(function (array $section): array {
+            $section['questions'] = array_values(array_filter(
+                $section['questions'] ?? [],
+                fn (array $question): bool => ($question['included'] ?? true) !== false,
+            ));
+
+            return $section;
+        }, $artifact->payload['sections'] ?? []), fn (array $section): bool => $section['questions'] !== []));
+
+        if ($sections === []) {
+            throw new \RuntimeException('Chọn ít nhất một câu hỏi trong đề để xuất bản.');
+        }
+
         $exam = Exam::create([
             'subject_id' => $subjectId,
             'created_by' => $userId,
-            'type' => 'exam',
+            'type' => ExamType::Exam,
             'title' => $artifact->title,
             'description' => $artifact->payload['description'] ?? null,
+            'duration_minutes' => filled($settings['duration_minutes'] ?? null)
+                ? max(1, (int) $settings['duration_minutes'])
+                : null,
+            'shuffle_questions' => (bool) ($settings['shuffle_questions'] ?? false),
+            'shuffle_options' => (bool) ($settings['shuffle_options'] ?? false),
             'status' => 'draft',
         ]);
 
         $order = 0;
 
-        foreach ($artifact->payload['sections'] ?? [] as $sectionIndex => $section) {
+        foreach ($sections as $sectionIndex => $section) {
             $examSection = ExamSection::create([
                 'exam_id' => $exam->id,
                 'title' => $section['title'] ?? ('Phần '.($sectionIndex + 1)),
@@ -90,7 +117,9 @@ class ArtifactPublisher
     {
         $slug = Str::slug($artifact->title) ?: 'tai-lieu-ai';
         $path = 'notebook/ai/'.$slug.'-'.Str::lower(Str::random(6)).'.md';
-        $content = (string) ($artifact->text_content ?? '');
+        $content = $artifact->type === ArtifactType::Flashcards->value
+            ? $this->flashcardsToMarkdown($artifact->payload['cards'] ?? [], $artifact->title)
+            : (string) ($artifact->text_content ?? '');
 
         Storage::disk('public')->put($path, $content);
 
@@ -112,6 +141,22 @@ class ArtifactPublisher
             'ref_type' => $document->getMorphClass(),
             'ref_id' => $document->id,
         ])->save();
+    }
+
+    /**
+     * @param  array<int, array{front?: string, back?: string}>  $cards
+     */
+    protected function flashcardsToMarkdown(array $cards, string $title): string
+    {
+        $lines = ['# '.$title];
+
+        foreach ($cards as $index => $card) {
+            $lines[] = '## Thẻ '.($index + 1);
+            $lines[] = '**Mặt trước:** '.(string) ($card['front'] ?? '');
+            $lines[] = '**Mặt sau:** '.(string) ($card['back'] ?? '');
+        }
+
+        return implode("\n\n", $lines);
     }
 
     protected function publishMindMap(NotebookArtifact $artifact, ?int $userId): void

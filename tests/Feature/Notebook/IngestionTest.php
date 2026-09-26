@@ -71,6 +71,20 @@ class IngestionTest extends TestCase
         $this->assertNotNull($source->error);
     }
 
+    public function test_retry_rebuilds_chunks_from_the_saved_original_text(): void
+    {
+        $source = $this->ingestor->fromText($this->notebook, 'Chuyên đề', $this->longText());
+        $source->forceFill(['status' => 'failed', 'error' => 'Lỗi trích xuất trước đó'])->save();
+        $source->chunks()->delete();
+
+        $retried = $this->ingestor->retry($source);
+
+        $this->assertSame('ready', $retried->status);
+        $this->assertNull($retried->error);
+        $this->assertGreaterThan(1, $retried->chunks()->count());
+        $this->assertStringContainsString('Cauchy', $retried->raw_content);
+    }
+
     public function test_question_source_composes_text(): void
     {
         $question = Question::factory()->create([

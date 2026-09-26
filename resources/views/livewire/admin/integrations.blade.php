@@ -21,7 +21,7 @@
             <span class="chip {{ $tavilyConfigured ? 'chip-success' : 'chip-neutral' }}">{{ $tavilyConfigured ? 'Đã cấu hình' : 'Chưa cấu hình' }}</span>
         </div>
 
-        <div class="grid gap-4 sm:grid-cols-2">
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <div>
                 <label class="label" for="int-tavily">Tavily API key (để trống nếu giữ nguyên)</label>
                 <input id="int-tavily" type="password" class="input" wire:model="tavilyApiKey" autocomplete="off" placeholder="tvly-...">
@@ -31,6 +31,21 @@
                 <label class="label" for="int-max">Giới hạn ký tự nguồn mỗi lần gọi AI</label>
                 <input id="int-max" type="number" class="input tnum" min="10000" max="2000000" step="10000" wire:model="maxPromptChars">
                 @error('maxPromptChars') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
+            </div>
+            <div>
+                <label class="label" for="int-max-sources">Số nguồn tối đa mỗi Notebook</label>
+                <input id="int-max-sources" type="number" class="input tnum" min="1" max="100" wire:model="maxSources">
+                @error('maxSources') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
+            </div>
+            <div>
+                <label class="label" for="int-max-file">Dung lượng tệp tối đa (MB)</label>
+                <input id="int-max-file" type="number" class="input tnum" min="1" max="100" wire:model="maxFileMegabytes">
+                @error('maxFileMegabytes') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
+            </div>
+            <div>
+                <label class="label" for="int-max-source-chars">Ký tự tối đa trong mỗi nguồn</label>
+                <input id="int-max-source-chars" type="number" class="input tnum" min="1000" max="2000000" step="1000" wire:model="maxSourceChars">
+                @error('maxSourceChars') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
             </div>
         </div>
 

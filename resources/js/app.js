@@ -57,6 +57,119 @@ window.awawa = {
     storedTheme,
 };
 
+window.awawaNotebookPanels = () => ({
+    dragging: null,
+    sourcesWidth: 300,
+    studioWidth: 380,
+    limits: { sources: [240, 560], studio: [280, 900], chat: 380 },
+    storageKey: 'awawa.notebook.panels.v1',
+
+    get isDesktop() {
+        return window.matchMedia('(min-width: 1024px)').matches;
+    },
+
+    init() {
+        this.restore();
+        this.clamp();
+
+        if (! window.__awawaNotebookPanelsBound) {
+            window.__awawaNotebookPanelsBound = true;
+            window.addEventListener('resize', () => this.clamp());
+        }
+    },
+
+    restore() {
+        try {
+            const saved = JSON.parse(window.localStorage.getItem(this.storageKey) ?? 'null');
+
+            if (saved && Number.isFinite(saved.sources) && Number.isFinite(saved.studio)) {
+                this.sourcesWidth = saved.sources;
+                this.studioWidth = saved.studio;
+            }
+        } catch (error) {
+            // localStorage bị chặn: giữ kích thước mặc định trong CSS.
+        }
+    },
+
+    persist() {
+        try {
+            window.localStorage.setItem(this.storageKey, JSON.stringify({
+                sources: this.sourcesWidth,
+                studio: this.studioWidth,
+            }));
+        } catch (error) {
+            // Không lưu được thì bề rộng chỉ giữ trong phiên này.
+        }
+    },
+
+    clamp() {
+        const [minSources, maxSources] = this.limits.sources;
+        const [minStudio, maxStudio] = this.limits.studio;
+        const available = (this.$refs.panes?.clientWidth ?? 0) - this.limits.chat;
+
+        this.sourcesWidth = Math.min(maxSources, Math.max(minSources, this.sourcesWidth));
+        this.studioWidth = Math.min(maxStudio, Math.max(minStudio, this.studioWidth));
+
+        if (available > 0 && this.sourcesWidth + this.studioWidth > available) {
+            const overflow = this.sourcesWidth + this.studioWidth - available;
+            this.sourcesWidth = Math.max(minSources, this.sourcesWidth - overflow);
+            this.studioWidth = Math.max(minStudio, this.studioWidth - overflow);
+        }
+    },
+
+    reset() {
+        this.sourcesWidth = 300;
+        this.studioWidth = 380;
+        this.clamp();
+        this.persist();
+    },
+
+    startDrag(side, event) {
+        this.dragging = side;
+        this.startX = event.clientX;
+        this.startValue = side === 'sources' ? this.sourcesWidth : this.studioWidth;
+        document.body.style.cursor = 'col-resize';
+    },
+
+    onPointerMove(event) {
+        if (! this.dragging) {
+            return;
+        }
+
+        const delta = event.clientX - this.startX;
+        const value = this.dragging === 'sources' ? this.startValue + delta : this.startValue - delta;
+
+        if (this.dragging === 'sources') {
+            this.sourcesWidth = value;
+        } else {
+            this.studioWidth = value;
+        }
+
+        this.clamp();
+    },
+
+    onPointerUp() {
+        if (! this.dragging) {
+            return;
+        }
+
+        this.dragging = null;
+        document.body.style.removeProperty('cursor');
+        this.persist();
+    },
+
+    nudge(side, delta) {
+        if (side === 'sources') {
+            this.sourcesWidth += delta;
+        } else {
+            this.studioWidth += delta;
+        }
+
+        this.clamp();
+        this.persist();
+    },
+});
+
 window.AwawaPush = {
     supported() {
         return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;

@@ -3,6 +3,7 @@
 namespace App\Livewire\Notebook;
 
 use App\Models\Notebook;
+use App\Models\User;
 use Illuminate\Contracts\View\View;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -14,11 +15,24 @@ class Workspace extends Component
 
     public string $mobileTab = 'chat';
 
-    public function mount(): void
+    public function mount(?int $notebookId = null): void
     {
-        abort_unless(auth()->user()?->isTeacher(), 403);
+        $user = auth()->user();
 
-        $this->notebookId = Notebook::forOwner(auth()->user())->id;
+        abort_unless($user?->isTeacher(), 403);
+
+        $this->notebookId = $notebookId !== null
+            ? $this->resolveNotebook($user, $notebookId)->id
+            : Notebook::defaultFor($user)->id;
+    }
+
+    protected function resolveNotebook(User $user, int $notebookId): Notebook
+    {
+        $notebook = Notebook::query()->findOrFail($notebookId);
+
+        abort_unless($notebook->isOwnedBy($user), 404);
+
+        return $notebook;
     }
 
     public function render(): View

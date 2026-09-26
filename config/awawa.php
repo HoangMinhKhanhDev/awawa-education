@@ -97,6 +97,16 @@ return [
                 'model' => env('AGNES_DEFAULT_MODEL', ''),
             ],
         ],
+
+        /*
+         * Khi nhà cung cấp miễn phí trả 429, chờ một chút rồi thử lại cùng provider
+         * trước khi báo lỗi, tránh bắt giáo viên ngồi chờ hẹn giờ 60 giây.
+         */
+        'rate_limit' => [
+            'retry_delay' => (int) env('AI_RATE_LIMIT_RETRY_DELAY', 10),
+            'max_attempts' => (int) env('AI_RATE_LIMIT_MAX_ATTEMPTS', 2),
+            'max_total_wait' => (int) env('AI_RATE_LIMIT_MAX_TOTAL_WAIT', 20),
+        ],
     ],
 
     /*
@@ -122,10 +132,12 @@ return [
         'max_file_mb' => (int) env('NOTEBOOK_MAX_FILE_MB', 10),
         'max_source_chars' => (int) env('NOTEBOOK_MAX_SOURCE_CHARS', 200000),
         'max_prompt_chars' => (int) env('NOTEBOOK_MAX_PROMPT_CHARS', 400000),
+        'max_context_chunks' => (int) env('NOTEBOOK_MAX_CONTEXT_CHUNKS', 24),
         'chunk_size' => (int) env('NOTEBOOK_CHUNK_SIZE', 1000),
         'chunk_overlap' => (int) env('NOTEBOOK_CHUNK_OVERLAP', 150),
         'stream' => (bool) env('AI_STREAM', true),
         'history_messages' => (int) env('NOTEBOOK_HISTORY_MESSAGES', 8),
+        'max_notebooks' => (int) env('NOTEBOOK_MAX_NOTEBOOKS', 20),
 
         'tavily' => [
             'base_url' => env('TAVILY_BASE_URL', 'https://api.tavily.com'),

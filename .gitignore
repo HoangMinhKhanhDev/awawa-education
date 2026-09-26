@@ -3,6 +3,9 @@
 .env
 .env.backup
 .env.production
+.agents/
+.claude/
+.mcp.json
 .phpactor.json
 .phpunit.result.cache
 /database/*.sqlite
@@ -15,7 +18,9 @@
 /.vscode
 /.zed
 /auth.json
+/boost.json
 /node_modules
+/opencode.json
 /public/fonts-manifest.dev.json
 /public/hot
 /public/storage
