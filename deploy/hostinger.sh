@@ -43,10 +43,16 @@ echo "==> [3/6] Cài dependencies (no-dev)"
 echo "==> [4/6] Migrate database"
 "$PHP_BIN" artisan migrate --force
 
-echo "==> [5/6] Storage link"
+echo "==> [5/6] Storage"
 mkdir -p storage/app/public
-if [ ! -L public/storage ]; then
-    ln -s "$APP_DIR/storage/app/public" public/storage || true
+PUBLIC_DISK_ROOT_VALUE="$(grep -E '^PUBLIC_DISK_ROOT=' .env 2>/dev/null | head -n1 | cut -d= -f2- | tr -d '"' || true)"
+if [ -n "$PUBLIC_DISK_ROOT_VALUE" ]; then
+    echo "    PUBLIC_DISK_ROOT=$PUBLIC_DISK_ROOT_VALUE -> bỏ qua symlink"
+    mkdir -p "$PUBLIC_DISK_ROOT_VALUE"
+else
+    if [ ! -L public/storage ]; then
+        ln -s "$APP_DIR/storage/app/public" public/storage || true
+    fi
 fi
 
 echo "==> [6/6] Tối ưu cache"
