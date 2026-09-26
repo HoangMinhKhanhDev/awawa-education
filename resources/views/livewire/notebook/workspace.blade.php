@@ -1,34 +1,23 @@
-<div class="space-y-5">
-    <div class="page-head">
-        <div>
-            <h1 class="page-title">Notebook</h1>
-            <p class="page-sub">
-                {{ $notebook->title }}
-                <span class="mx-1.5 text-rule-strong dark:text-night-700">/</span>
-                <span style="color: {{ $notebook->subject?->color }}">{{ $notebook->subject?->name }}</span>
-            </p>
-        </div>
-    </div>
-
+<div class="flex h-full min-h-0 flex-col pb-14 lg:pb-0">
     {{-- Tab cho mobile --}}
-    <div class="tabs lg:hidden">
+    <div class="tabs shrink-0 border-b border-rule px-3 lg:hidden dark:border-night-700">
         @foreach (['sources' => 'Nguồn', 'chat' => 'Chat', 'studio' => 'Studio'] as $key => $label)
             <button type="button" wire:click="$set('mobileTab', '{{ $key }}')"
                 class="tab {{ $mobileTab === $key ? 'tab-active' : '' }}">{{ $label }}</button>
         @endforeach
     </div>
 
-    <div class="grid gap-5 lg:grid-cols-[minmax(0,290px)_minmax(0,1fr)_minmax(0,330px)]">
-        <section class="min-w-0 {{ $mobileTab === 'sources' ? '' : 'hidden' }} lg:block">
+    <div class="flex min-h-0 flex-1">
+        <aside class="{{ $mobileTab === 'sources' ? 'flex' : 'hidden' }} min-h-0 w-full flex-col border-rule lg:flex lg:w-[300px] lg:shrink-0 lg:border-r dark:border-night-700">
             <livewire:notebook.sources :notebook-id="$notebook->id" :key="'sources-'.$notebook->id" />
-        </section>
+        </aside>
 
-        <section class="min-w-0 {{ $mobileTab === 'chat' ? '' : 'hidden' }} lg:block">
+        <section class="{{ $mobileTab === 'chat' ? 'flex' : 'hidden' }} min-h-0 min-w-0 flex-1 flex-col lg:flex">
             <livewire:notebook.chat :notebook-id="$notebook->id" :key="'chat-'.$notebook->id" />
         </section>
 
-        <section class="min-w-0 {{ $mobileTab === 'studio' ? '' : 'hidden' }} lg:block">
+        <aside class="{{ $mobileTab === 'studio' ? 'flex' : 'hidden' }} min-h-0 w-full flex-col border-rule lg:flex lg:w-[360px] lg:shrink-0 lg:border-l dark:border-night-700">
             <livewire:notebook.studio :notebook-id="$notebook->id" :key="'studio-'.$notebook->id" />
-        </section>
+        </aside>
     </div>
 </div>

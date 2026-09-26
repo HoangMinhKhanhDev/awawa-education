@@ -1,4 +1,4 @@
-@props(['title' => null])
+@props(['title' => null, 'fullBleed' => false])
 
 @php
     $user = auth()->user();
@@ -46,7 +46,7 @@
     @livewireStyles
 </head>
 <body class="min-h-full">
-    <div class="min-h-dvh lg:flex" x-data="{ drawer: false }">
+    <div class="{{ $fullBleed ? 'h-dvh overflow-hidden' : 'min-h-dvh' }} lg:flex" x-data="{ drawer: false }">
         {{-- Rail desktop --}}
         <aside class="hidden w-64 shrink-0 border-r border-rule bg-white lg:flex lg:flex-col dark:border-night-700 dark:bg-night-800">
             <div class="flex h-16 items-center justify-between pl-5 pr-3">
@@ -107,7 +107,7 @@
             </div>
         </aside>
 
-        <div class="flex min-w-0 flex-1 flex-col">
+        <div class="flex min-w-0 flex-1 flex-col {{ $fullBleed ? 'min-h-0' : '' }}">
             {{-- Top bar mobile --}}
             <header class="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-rule bg-white/95 px-3 backdrop-blur lg:hidden dark:border-night-700 dark:bg-night-800/95">
                 <div class="flex items-center gap-2">
@@ -132,10 +132,12 @@
                 </div>
             </header>
 
-            <main class="flex-1">
-                <div class="mx-auto w-full max-w-5xl px-4 pb-28 pt-6 lg:px-8 lg:pb-14 lg:pt-8">
-                    {{ $slot }}
-                </div>
+            <main class="{{ $fullBleed ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : 'flex-1' }}">
+                @if ($fullBleed)
+                    <div class="flex h-full min-h-0 w-full flex-col">{{ $slot }}</div>
+                @else
+                    <div class="mx-auto w-full max-w-5xl px-4 pb-28 pt-6 lg:px-8 lg:pb-14 lg:pt-8">{{ $slot }}</div>
+                @endif
             </main>
         </div>
 

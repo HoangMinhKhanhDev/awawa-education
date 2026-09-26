@@ -170,8 +170,12 @@ class Chat extends Component
 
     public function render(): View
     {
+        $notebook = $this->notebook()->loadMissing('subject');
+
         return view('livewire.notebook.chat', [
-            'messages' => $this->notebook()->messages()->get(),
+            'messages' => $notebook->messages()->get(),
+            'notebook' => $notebook,
+            'sourceCount' => count($notebook->enabledSourceIds()),
         ]);
     }
 }

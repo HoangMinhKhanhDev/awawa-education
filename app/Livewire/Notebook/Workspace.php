@@ -4,11 +4,9 @@ namespace App\Livewire\Notebook;
 
 use App\Models\Notebook;
 use Illuminate\Contracts\View\View;
-use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
-#[Layout('components.layouts.app')]
 #[Title('Notebook')]
 class Workspace extends Component
 {
@@ -29,6 +27,6 @@ class Workspace extends Component
 
         return view('livewire.notebook.workspace', [
             'notebook' => $notebook,
-        ]);
+        ])->layout('components.layouts.app', ['fullBleed' => true]);
     }
 }

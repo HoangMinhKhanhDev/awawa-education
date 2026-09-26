@@ -1,69 +1,67 @@
-<div class="panel flex min-h-[420px] flex-col">
-    <div class="flex items-center justify-between border-b border-rule px-4 py-3 dark:border-night-700">
-        <h2 class="text-[15px] font-semibold text-ink dark:text-white">Studio</h2>
+<div class="flex h-full min-h-0 flex-col">
+    <div class="flex h-12 shrink-0 items-center justify-between px-4">
+        <h2 class="text-sm font-semibold text-ink dark:text-white">Studio</h2>
         <span class="tnum text-xs text-ink-faint dark:text-slate-500">{{ $artifacts->count() }}</span>
     </div>
 
-    @if (session('notebook_status'))
-        <div class="border-b border-rule px-4 py-3 dark:border-night-700">
-            <div class="alert alert-success">{{ session('notebook_status') }}</div>
-        </div>
-    @endif
+    <div class="min-h-0 flex-1 overflow-y-auto">
+        <div class="space-y-2 px-4 pb-4">
+            @if (session('notebook_status'))
+                <div class="alert alert-success">{{ session('notebook_status') }}</div>
+            @endif
 
-    @if ($error)
-        <div class="border-b border-rule px-4 py-3 dark:border-night-700">
-            <div class="alert alert-error">{{ $error }}</div>
-        </div>
-    @endif
+            @if ($error)
+                <div class="alert alert-error">{{ $error }}</div>
+            @endif
 
-    <div class="space-y-2 p-4">
-        @forelse ($types as $type)
-            <button type="button" wire:click="openForm('{{ $type->value }}')"
-                class="flex w-full items-center gap-3 rounded-[10px] border border-rule px-3.5 py-2.5 text-left transition-colors hover:bg-paper-2 dark:border-night-700 dark:hover:bg-white/5">
-                <x-icon :name="$type->icon()" class="h-4 w-4 shrink-0 text-brand-600 dark:text-brand-400" />
-                <span class="min-w-0 flex-1">
-                    <span class="block text-sm font-medium text-ink dark:text-slate-100">{{ $type->label() }}</span>
-                    <span class="block text-[11px] text-ink-faint dark:text-slate-500">{{ $type->description() }}</span>
-                </span>
-            </button>
-        @empty
-            <p class="empty">Môn này chưa bật tính năng AI/tạo nội dung.</p>
-        @endforelse
-    </div>
-
-    <div class="border-t border-rule dark:border-night-700">
-        <div class="flex items-center justify-between px-4 py-3">
-            <h3 class="text-[13px] font-semibold text-ink dark:text-white">Nội dung đã tạo</h3>
-            <select class="rounded-[10px] border border-rule bg-white px-2 py-1 text-xs text-ink-soft dark:border-night-700 dark:bg-night-800 dark:text-slate-300"
-                wire:model.live="filterType">
-                <option value="">Tất cả</option>
-                @foreach ($types as $type)
-                    <option value="{{ $type->value }}">{{ $type->label() }}</option>
-                @endforeach
-            </select>
-        </div>
-
-        <div class="max-h-80 divide-y divide-rule overflow-y-auto dark:divide-night-700">
-            @forelse ($artifacts as $artifact)
-                <div class="flex items-start gap-2 px-4 py-3" wire:key="artifact-{{ $artifact->id }}">
-                    <button type="button" wire:click="openPreview({{ $artifact->id }})" class="min-w-0 flex-1 text-left">
-                        <p class="line-clamp-2 text-sm font-medium text-ink dark:text-slate-100">{{ $artifact->title }}</p>
-                        <p class="mt-1 flex flex-wrap items-center gap-1.5">
-                            <span class="chip chip-neutral">{{ \App\Enums\ArtifactType::from($artifact->type)->label() }}</span>
-                            <span class="chip {{ $artifact->isPublished() ? 'chip-success' : 'chip-warning' }}">{{ $artifact->isPublished() ? 'Đã xuất bản' : 'Nháp' }}</span>
-                        </p>
+            <div class="grid grid-cols-2 gap-2">
+                @forelse ($types as $type)
+                    <button type="button" wire:click="openForm('{{ $type->value }}')"
+                        class="flex items-center gap-2 rounded-[12px] border border-rule px-3 py-2.5 text-left transition-colors hover:bg-paper-2 dark:border-night-700 dark:hover:bg-white/5"
+                        title="{{ $type->description() }}">
+                        <x-icon :name="$type->icon()" class="h-4 w-4 shrink-0 text-brand-600 dark:text-brand-400" />
+                        <span class="truncate text-xs font-medium text-ink dark:text-slate-200">{{ $type->label() }}</span>
                     </button>
-                    @unless ($artifact->isPublished())
-                        <button type="button" wire:click="publish({{ $artifact->id }})" class="btn btn-outline px-2.5 py-1.5 text-[11px]">Xuất bản</button>
-                    @endunless
-                    <button type="button" wire:click="delete({{ $artifact->id }})" wire:confirm="Xóa nội dung này?"
-                        class="rounded-[10px] p-1.5 text-signal hover:bg-signal-soft dark:hover:bg-red-500/10" title="Xóa">
-                        <x-icon name="x" class="h-4 w-4" />
-                    </button>
-                </div>
-            @empty
-                <p class="empty">Chưa có nội dung nào.</p>
-            @endforelse
+                @empty
+                    <p class="empty col-span-2">Môn này chưa bật tính năng tạo nội dung.</p>
+                @endforelse
+            </div>
+        </div>
+
+        <div class="border-t border-rule px-4 py-3 dark:border-night-700">
+            <div class="flex items-center justify-between gap-2">
+                <p class="text-xs font-semibold text-ink dark:text-slate-200">Nội dung đã tạo</p>
+                <select class="rounded-[10px] border border-rule bg-white px-2 py-1 text-[11px] text-ink-soft dark:border-night-700 dark:bg-night-800 dark:text-slate-300"
+                    wire:model.live="filterType">
+                    <option value="">Tất cả</option>
+                    @foreach ($types as $type)
+                        <option value="{{ $type->value }}">{{ $type->label() }}</option>
+                    @endforeach
+                </select>
+            </div>
+
+            <div class="mt-2 divide-y divide-rule dark:divide-night-700">
+                @forelse ($artifacts as $artifact)
+                    <div class="group flex items-start gap-2 py-2.5" wire:key="artifact-{{ $artifact->id }}">
+                        <button type="button" wire:click="openPreview({{ $artifact->id }})" class="min-w-0 flex-1 text-left">
+                            <p class="line-clamp-2 text-sm text-ink dark:text-slate-100">{{ $artifact->title }}</p>
+                            <p class="mt-0.5 flex flex-wrap items-center gap-1.5">
+                                <span class="chip chip-neutral">{{ \App\Enums\ArtifactType::from($artifact->type)->label() }}</span>
+                                <span class="chip {{ $artifact->isPublished() ? 'chip-success' : 'chip-warning' }}">{{ $artifact->isPublished() ? 'Đã xuất bản' : 'Nháp' }}</span>
+                            </p>
+                        </button>
+                        @unless ($artifact->isPublished())
+                            <button type="button" wire:click="publish({{ $artifact->id }})" class="btn btn-outline shrink-0 px-2 py-1 text-[11px]">Xuất bản</button>
+                        @endunless
+                        <button type="button" wire:click="delete({{ $artifact->id }})" wire:confirm="Xóa nội dung này?"
+                            class="shrink-0 rounded-[10px] p-1.5 text-ink-faint opacity-0 transition-opacity hover:bg-signal-soft hover:text-signal group-hover:opacity-100 dark:hover:bg-red-500/10" title="Xóa">
+                            <x-icon name="x" class="h-4 w-4" />
+                        </button>
+                    </div>
+                @empty
+                    <p class="empty">Chưa có nội dung nào.</p>
+                @endforelse
+            </div>
         </div>
     </div>
 
@@ -80,7 +78,7 @@
                 </div>
 
                 @unless ($hasSources)
-                    <div class="alert alert-warning mb-4">Chưa bật nguồn nào. Hãy thêm và bật nguồn ở cột “Nguồn” để kết quả bám tài liệu.</div>
+                    <div class="alert alert-warning mb-4">Chưa bật nguồn nào. Thêm và bật nguồn ở cột “Nguồn” để kết quả bám tài liệu.</div>
                 @endunless
 
                 <form wire:submit="generate" class="space-y-4">
