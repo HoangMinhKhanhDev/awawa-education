@@ -105,14 +105,14 @@ class BackgroundGenerationTest extends TestCase
     }
 
     /**
-     * Không còn tầng chờ cron: cả hai đường nền đều tắc thì báo ngay, không xếp
-     * hàng một phút rồi mới đổ lỗi.
+     * Host không có proc_open lẫn FastCGI (như shared hosting chạy CGI) thì chạy
+     * ngay trong request: tab hiện spinner suốt lúc soạn nhưng vẫn ra sản phẩm,
+     * thay vì báo lỗi.
      */
-    public function test_generation_fails_fast_when_the_host_cannot_run_it_in_background(): void
+    public function test_generation_runs_inside_the_request_when_no_background_option_exists(): void
     {
         Queue::fake();
-        Http::preventStrayRequests();
-        $this->fakeDocumentText();
+        $this->fakeDocumentText('Nội dung soạn ngay trong request.');
 
         $this->mock(BackgroundProcess::class, function ($mock): void {
             $mock->shouldReceive('phpBinary')->once()->andReturn('/usr/bin/php');
@@ -123,13 +123,13 @@ class BackgroundGenerationTest extends TestCase
         $this->studio()
             ->call('generate')
             ->assertSet('generating', false)
-            ->assertSee('không chạy được tiến trình soạn nền');
+            ->assertSet('error', null);
 
         $artifact = NotebookArtifact::query()->firstOrFail();
 
-        $this->assertSame('failed', $artifact->status);
+        $this->assertSame('draft', $artifact->status);
+        $this->assertSame('Nội dung soạn ngay trong request.', $artifact->text_content);
         Queue::assertNothingPushed();
-        Http::assertNothingSent();
     }
 
     /**

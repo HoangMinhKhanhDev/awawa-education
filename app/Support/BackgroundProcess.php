@@ -12,9 +12,11 @@ use Illuminate\Support\Facades\Log;
  * cũng không giải quyết được vì Laravel vẫn chạy job đồng bộ trong cùng tiến trình
  * PHP (xem `Illuminate\Bus\Dispatcher::dispatchAfterResponse` gọi `dispatchSync`).
  *
- * Hai tầng theo thứ tự ưu tiên, xem `Studio::startGeneration`:
+ * Hai tầng chạy nền theo thứ tự ưu tiên, xem `Studio::startGeneration`:
  *   1. tiến trình con bằng `proc_open` — tách hẳn, không bị giới hạn thời gian;
  *   2. `defer()` — gửi response trước rồi soạn nốt, chỉ cần FastCGI.
+ * Hết hai tầng thì `Studio` chạy đồng bộ ngay trong request (tab hiện spinner
+ * suốt lúc soạn) để vẫn ra sản phẩm trên mọi SAPI.
  *
  * Cách dùng: chỉ truyền lệnh Artisan với tham số không do người dùng nhập.
  */

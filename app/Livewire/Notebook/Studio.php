@@ -15,6 +15,7 @@ use App\Services\Notebook\ArtifactPublisher;
 use App\Support\BackgroundProcess;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
 
@@ -212,11 +213,13 @@ class Studio extends Component
      * Giao việc soạn ra ngoài web request để bấm "Tạo" là thấy màn "đang soạn"
      * ngay, kể cả trên shared hosting chặn `proc_open`.
      *
-     * Hai tầng, xem `BackgroundProcess`:
+     * Ba tầng theo thứ tự ưu tiên, xem `BackgroundProcess`:
      *   1. tiến trình con nếu hosting cho phép `proc_open`;
-     *   2. gửi response trước rồi soạn nốt nếu chạy FastCGI.
+     *   2. gửi response trước rồi soạn nốt nếu chạy FastCGI;
+     *   3. chạy ngay trong request — tab hiện spinner suốt lúc soạn nhưng chạy
+     *      được trên mọi SAPI, kể cả CGI không có FastCGI.
      *
-     * Không có tầng chờ cron nữa: cấu hình sai phải báo ngay, không được xếp hàng
+     * Không có tầng chờ cron: cấu hình sai phải báo ngay, không được xếp hàng
      * một phút rồi mới đổ lỗi. `dispatch()->afterResponse()` không dùng được vì
      * Laravel vẫn chạy job đồng bộ trong chính request đó.
      * Xem `test_poll_never_calls_the_ai_from_the_web_request`.
@@ -253,11 +256,20 @@ class Studio extends Component
             return;
         }
 
-        // Không còn đường nào chạy được: báo ngay, không xếp hàng chờ vô nghĩa.
-        $artifact->markStalled('Máy chủ hiện không chạy được tiến trình soạn nền. Hãy thử lại, nếu vẫn vậy liên hệ quản trị viên.');
+        // Tầng cuối: chạy ngay trong request. Tab hiện spinner suốt lúc soạn và
+        // đóng tab giữa chừng sẽ làm dở việc (bộ dọn treo sẽ đánh dấu sau đó),
+        // nhưng chạy được trên mọi SAPI kể cả khi không có proc_open lẫn FastCGI.
+        // Giới hạn 360 giây của host đủ cho đề thi lớn nhất (tối đa ~3 phút).
+        Log::info('Studio generation running inside the web request.', ['sapi' => php_sapi_name()]);
 
-        $this->generating = false;
-        $this->error = $artifact->failedReason();
+        @set_time_limit(0);
+        @ini_set('memory_limit', (string) config('awawa.notebook.generation_memory', '1024M'));
+
+        (new GenerateArtifact($artifact->id))->handle(app(ArtifactGenerator::class));
+
+        $artifact->refresh();
+        $this->generating = $artifact->isGenerating();
+        $this->error = $artifact->isFailed() ? $artifact->failedReason() : null;
     }
 
     /**
