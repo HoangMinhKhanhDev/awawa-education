@@ -15,6 +15,7 @@ use App\Services\Ai\AiException;
 use App\Services\Notebook\ArtifactGenerator;
 use App\Services\Notebook\ArtifactPublisher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
 use Livewire\Livewire;
@@ -89,6 +90,23 @@ class AiJsonResilienceTest extends TestCase
         $payload = $this->generateFlashcards();
 
         $this->assertSame('Phép tính?', $payload['cards'][0]['front']);
+    }
+
+    public function test_first_json_generation_request_explicitly_requires_strict_json(): void
+    {
+        Http::preventStrayRequests();
+        $this->fakeResponses([[
+            'model' => 'openrouter/free',
+            'choices' => [['message' => ['content' => $this->flashcardJson()]]],
+            'usage' => ['total_tokens' => 20],
+        ]]);
+
+        $this->generateFlashcards();
+
+        Http::assertSent(fn (HttpRequest $request): bool => str_contains(
+            (string) ($request->data()['messages'][1]['content'] ?? ''),
+            'QUAN TRỌNG: trả về DUY NHẤT đúng một JSON hợp lệ',
+        ));
     }
 
     public function test_it_accepts_json_with_trailing_text_after_it(): void

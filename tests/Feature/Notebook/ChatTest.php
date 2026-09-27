@@ -207,7 +207,7 @@ class ChatTest extends TestCase
         config()->set('awawa.notebook.chunk_size', 200);
         config()->set('awawa.notebook.chunk_overlap', 0);
         config()->set('awawa.notebook.max_context_chunks', 24);
-        config()->set('awawa.notebook.max_artifact_context_chunks', 12);
+        config()->set('awawa.notebook.max_artifact_context_chunks', 8);
 
         app(SourceIngestor::class)->fromText(
             $this->notebook,
@@ -219,7 +219,7 @@ class ChatTest extends TestCase
         $artifactSystemPrompt = $composer->artifactMessages($this->notebook, 'Soạn đề về photon', 'JSON')[0]['content'];
         $chatContext = $composer->compose($this->notebook, 'Photon truyền thế nào?');
 
-        $this->assertSame(12, substr_count($artifactSystemPrompt, '(Nguồn:'));
+        $this->assertSame(8, substr_count($artifactSystemPrompt, '(Nguồn:'));
         $this->assertCount(24, $chatContext['citations']);
     }
 

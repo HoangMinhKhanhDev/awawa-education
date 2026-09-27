@@ -41,7 +41,7 @@ class ArtifactGenerator
         foreach ([0, 1] as $round) {
             $messages = $this->composer->artifactMessages(
                 $notebook,
-                $this->buildInstruction($notebook, $type, $instruction, $params, $round === 1),
+                $this->buildInstruction($notebook, $type, $instruction, $params, strictJson: $type->isJson()),
                 $this->schemaHint($type),
             );
 

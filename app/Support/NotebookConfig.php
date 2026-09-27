@@ -43,7 +43,7 @@ class NotebookConfig
     {
         return min(
             self::maxContextChunks(),
-            max(1, (int) config('awawa.notebook.max_artifact_context_chunks', 12)),
+            max(1, (int) config('awawa.notebook.max_artifact_context_chunks', 8)),
         );
     }
 
