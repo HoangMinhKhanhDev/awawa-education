@@ -4,7 +4,6 @@ namespace App\Jobs;
 
 use App\Enums\ArtifactType;
 use App\Models\NotebookArtifact;
-use App\Services\Ai\AiException;
 use App\Services\Notebook\ArtifactGenerator;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -60,14 +59,14 @@ class GenerateArtifact implements ShouldQueue
                 $artifact->user_id,
             );
         } catch (\Throwable $exception) {
-            $this->fail($artifact, $exception->getMessage(), $exception instanceof AiException && $exception->isRateLimited());
+            $this->fail($artifact, $exception->getMessage());
 
             return;
         }
 
         $payload = is_array($data['payload']) ? $data['payload'] : [];
         $payload['_generation'] = $params;
-        unset($payload['_error'], $payload['_error_is_rate_limited'], $payload['_generation_runner']);
+        unset($payload['_error'], $payload['_generation_runner']);
 
         $artifact->update([
             'title' => $data['title'],
@@ -77,19 +76,10 @@ class GenerateArtifact implements ShouldQueue
         ]);
     }
 
-    /**
-     * Ghi lý do thất bại. Cờ hạn mức được lưu riêng để giao diện hiện đúng lời nhắc
-     * "cần nhà cung cấp dự phòng" thay vì lỗi kỹ thuật chung chung.
-     */
-    private function fail(NotebookArtifact $artifact, string $reason, bool $rateLimited = false): void
+    private function fail(NotebookArtifact $artifact, string $reason): void
     {
         $payload = $artifact->payload ?? [];
         $payload['_error'] = Str::limit($reason, 500, '');
-
-        if ($rateLimited) {
-            $payload['_error_is_rate_limited'] = true;
-        }
-
         unset($payload['_generation_runner']);
 
         $artifact->update([

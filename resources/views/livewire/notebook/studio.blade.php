@@ -41,14 +41,6 @@
             </div>
         @endif
 
-        {{-- Lỗi hạn mức xảy ra ở tiến trình nền nên không nằm trong $error; nhắc riêng ở đây. --}}
-        @if ($rateLimited)
-            <div class="alert alert-error mx-3 mt-3">
-                <p>Nhà cung cấp AI đang giới hạn lượt gọi, nên các nội dung vừa soạn đã dừng.</p>
-                <p class="mt-1 text-xs">Hãy thử lại sau, hoặc nhờ quản trị viên thêm một nhà cung cấp AI dự phòng ở trang API key.</p>
-            </div>
-        @endif
-
         @if ($types->isEmpty())
             <p class="empty">Môn này chưa bật tính năng tạo nội dung. Liên hệ quản trị viên để mở ở trang Cấu hình AI.</p>
         @elseif ($view === 'type' && $activeTypeEnum)

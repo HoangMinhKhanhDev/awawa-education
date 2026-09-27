@@ -69,8 +69,8 @@ class GeneratePendingArtifact extends Command
 
         $artifact = $queued ?? NotebookArtifact::query()
             ->where('status', 'generating')
-            ->whereIn('payload->_generation_runner', NotebookArtifact::activeRunners())
-            ->where('updated_at', '<=', now()->subMinutes($this->runningStaleMinutes()))
+            ->whereIn('payload->_generation_runner', NotebookArtifact::RUNNERS_ACTIVE)
+            ->where('updated_at', '<=', now()->subMinutes($this->staleMinutes()))
             ->oldest('created_at')
             ->oldest('id')
             ->first();
@@ -79,7 +79,7 @@ class GeneratePendingArtifact extends Command
             return null;
         }
 
-        $expected = (string) $artifact->runner();
+        $expected = (string) ($artifact->payload['_generation_runner'] ?? '');
         $payload = $artifact->payload ?? [];
 
         // Claim nguyên tử: web request và cron có thể cùng nhìn thấy một nội dung,
@@ -128,8 +128,8 @@ class GeneratePendingArtifact extends Command
         return true;
     }
 
-    protected function runningStaleMinutes(): int
+    protected function staleMinutes(): int
     {
-        return max(1, (int) config('awawa.notebook.running_stale_minutes', 45));
+        return max(1, (int) config('awawa.notebook.stale_minutes', 30));
     }
 }

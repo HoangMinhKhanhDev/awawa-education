@@ -158,20 +158,11 @@ return [
         'artifact_timeout' => (int) env('NOTEBOOK_ARTIFACT_TIMEOUT', 300),
 
         /*
-        | Ngưỡng treo cho một lần soạn. Hai ngưỡng tách biệt vì trạng thái "xếp hàng
-        | chờ cron" và "tiến trình đang gọi AI" hỏng theo hai kiểu khác nhau: hàng
-        | chờ treo thì chỉ cần cron chạy, còn tiến trình chết giữa chừng thì phải
-        | chờ lâu hơn nhiều vì một lần soạn bài dài vốn đã mất vài chục giây.
+        | Một ngưỡng treo duy nhất cho mọi lần soạn đang dở: đề lớn nhất hợp lệ
+        | mất vài phút, nên quá 30 phút tức là không còn tiến trình nào lo nữa,
+        | dù là hàng chờ cron chết hay tiến trình nền chết giữa chừng.
         */
-        'queued_stale_minutes' => (int) env('NOTEBOOK_QUEUED_STALE_MINUTES', 10),
-        'running_stale_minutes' => (int) env('NOTEBOOK_RUNNING_STALE_MINUTES', 45),
-
-        /*
-        | Số nội dung một giáo viên được soạn cùng lúc. Mỗi lần soạn giữ chừng một
-        | tiến trình PHP-FPM trong lúc gọi AI, nên shared hosting chỉ có vài worker.
-        | Muốn tạo nhanh hơn thì tăng, nhưng nhiều quá sẽ làm nghẽn cả trang.
-        */
-        'max_concurrent_generations' => (int) env('NOTEBOOK_MAX_CONCURRENT_GENERATIONS', 3),
+        'stale_minutes' => (int) env('NOTEBOOK_STALE_MINUTES', 30),
 
         // Số nội dung một lượt cron được nhận, và trần thời gian cho cả lượt, để
         // giáo viên bấm "Tạo" nhiều lần không phải xếp hàng từng phút một.

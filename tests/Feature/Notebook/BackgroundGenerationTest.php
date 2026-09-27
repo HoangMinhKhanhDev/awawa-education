@@ -175,39 +175,6 @@ class BackgroundGenerationTest extends TestCase
         $this->assertSame('Nội dung tài liệu đã soạn.', $artifact->text_content);
     }
 
-    /**
-     * Mỗi lần bấm "Tạo" là một request riêng nên thật sự chạy song song, nhưng mỗi
-     * lần giữ chừng một worker PHP-FPM. Quá số thì phải chặn, nếu không cả trang
-     * sẽ nghẽn theo.
-     */
-    public function test_generation_is_capped_so_the_shared_host_keeps_serving_pages(): void
-    {
-        Queue::fake();
-        $this->fakeDocumentText();
-
-        $this->mock(BackgroundProcess::class, function ($mock): void {
-            $mock->shouldReceive('phpBinary')->andReturn('/usr/bin/php');
-            $mock->shouldReceive('start')->andReturnFalse();
-            $mock->shouldReceive('defer')->andReturnFalse();
-        });
-
-        config()->set('awawa.notebook.max_concurrent_generations', 2);
-
-        $studio = $this->studio();
-
-        $studio->call('generate')->assertSet('error', null);
-        $studio->call('backToBrowse')->call('selectType', ArtifactType::Document->value)->call('generate')
-            ->assertSet('error', null);
-
-        $this->studio()
-            ->call('backToBrowse')
-            ->call('selectType', ArtifactType::Document->value)
-            ->call('generate')
-            ->assertSee('không bị quá tải');
-
-        $this->assertSame(2, NotebookArtifact::query()->count());
-    }
-
     public function test_scheduler_generates_an_artifact_queued_by_the_web_request(): void
     {
         Http::preventStrayRequests();
@@ -351,7 +318,11 @@ class BackgroundGenerationTest extends TestCase
         return $artifact->refresh();
     }
 
-    public function test_a_rate_limited_failure_tells_the_teacher_to_ask_for_a_backup_provider(): void
+    /**
+     * Bị giới hạn thì thẻ lỗi hiện đúng lời của provider ("giới hạn… chờ một
+     * chút"), không cần thêm hộp cảnh báo riêng.
+     */
+    public function test_a_rate_limited_failure_says_limited_and_to_wait_a_bit(): void
     {
         Http::fake([
             'openrouter.ai/*' => Http::response(['error' => ['message' => 'free tier limit']], 429),
@@ -363,8 +334,7 @@ class BackgroundGenerationTest extends TestCase
         $this->assertSame('failed', $artifact->fresh()->status);
 
         Livewire::test(Studio::class, ['notebookId' => $this->notebook->id])
-            ->assertSee('giới hạn lượt gọi')
-            ->assertSee('nhà cung cấp AI dự phòng');
+            ->assertSee('giới hạn lượt gọi');
     }
 
     public function test_saving_a_draft_does_not_announce_it_as_finished_again(): void
@@ -434,40 +404,26 @@ class BackgroundGenerationTest extends TestCase
         Http::assertNothingSent();
     }
 
+    /**
+     * Một ngưỡng treo duy nhất cho mọi trạng thái: còn trong hạn thì sống, quá hạn
+     * thì dọn, không phân biệt hàng chờ hay tiến trình đang chạy.
+     */
     public function test_a_stuck_artifact_is_reported_as_failed_instead_of_spinning_forever(): void
     {
         Queue::fake();
         $this->fakeDocumentText('Nội dung hoàn tất.');
 
-        $artifact = $this->queuedArtifact('process', now()->subMinutes(90));
+        $process = $this->queuedArtifact('process', now()->subMinutes(40));
+        $queued = $this->queuedArtifact('scheduler', now()->subMinutes(40));
 
         Livewire::test(Studio::class, ['notebookId' => $this->notebook->id])
             ->call('poll')
             ->assertSet('generating', false)
             ->assertSee('Tạo lại');
 
-        $artifact->refresh();
-
-        $this->assertSame('failed', $artifact->status);
-        $this->assertStringContainsString('Tạo lại', (string) $artifact->failedReason());
-    }
-
-    /**
-     * Hàng chờ không có tiến trình nào chờ, nên treo lâu hơn vài phút là chắc chắn
-     * hỏng: phải báo để giáo viên bấm "Tạo lại" thay vì nhìn vòng quay mãi.
-     */
-    public function test_a_queued_artifact_is_given_up_sooner_than_a_running_one(): void
-    {
-        Queue::fake();
-        $this->fakeDocumentText();
-
-        $artifact = $this->queuedArtifact('scheduler', now()->subMinutes(30));
-
-        Livewire::test(Studio::class, ['notebookId' => $this->notebook->id])
-            ->call('poll')
-            ->assertSet('generating', false);
-
-        $this->assertSame('failed', $artifact->fresh()->status);
+        $this->assertSame('failed', $process->fresh()->status);
+        $this->assertSame('failed', $queued->fresh()->status);
+        $this->assertStringContainsString('Tạo lại', (string) $process->fresh()->failedReason());
     }
 
     public function test_a_notice_is_shown_once_after_the_user_comes_back(): void

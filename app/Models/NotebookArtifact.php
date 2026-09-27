@@ -87,40 +87,22 @@ class NotebookArtifact extends Model
     }
 
     /**
-     * Runner đã nhận việc và đang thực sự gọi AI, nên `updated_at` không phản ánh
-     * tiến độ: nếu tiến trình chết thì artifact mồ côi và cần được nhặt lại.
-     */
-    public function hasActiveRunner(): bool
-    {
-        return in_array($this->runner(), ['process', 'respond', 'inline', 'scheduler_running'], true);
-    }
-
-    /**
-     * Tất cả runner đã nhận việc, dùng chung cho bộ dọn treo lẫn cron cứu mồ côi.
+     * Các runner đã nhận việc: tiến trình gọi AI thật sự, nên `updated_at` không
+     * phản ánh tiến độ. Nếu tiến trình chết thì nội dung mồ côi và cron nhặt lại.
      *
-     * @return list<string>
+     * @var list<string>
      */
-    public static function activeRunners(): array
-    {
-        return ['process', 'respond', 'inline', 'scheduler_running'];
-    }
-
-    public function runner(): ?string
-    {
-        $runner = $this->payload['_generation_runner'] ?? null;
-
-        return is_string($runner) && $runner !== '' ? $runner : null;
-    }
+    public const RUNNERS_ACTIVE = ['process', 'respond', 'inline', 'scheduler_running'];
 
     /**
-     * Đóng dấu một lần soạn bị treo. Dùng chung để `Studio::poll` và cron không
-     * tự viết payload theo hai kiểu khác nhau.
+     * Đóng dấu một lần soạn bị treo. Chỗ duy nhất được phép ghi trạng thái treo,
+     * để `Studio::poll` và cron không tự viết payload theo hai kiểu khác nhau.
      */
     public function markStalled(string $reason): void
     {
         $payload = $this->payload ?? [];
         $payload['_error'] = Str::limit($reason, 500, '');
-        unset($payload['_generation_runner'], $payload['_error_is_rate_limited']);
+        unset($payload['_generation_runner']);
 
         $this->forceFill([
             'status' => self::STATUS_FAILED,
