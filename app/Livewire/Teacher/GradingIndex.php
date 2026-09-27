@@ -8,6 +8,7 @@ use App\Enums\QuestionType;
 use App\Enums\SubjectFeature;
 use App\Models\Exam;
 use App\Models\ExamAttempt;
+use App\Services\Assignments\AssignmentManager;
 use App\Services\NotificationDispatcher;
 use App\Support\SubjectContext;
 use Illuminate\Contracts\View\View;
@@ -74,6 +75,8 @@ class GradingIndex extends Component
         $attempt = ExamAttempt::query()->findOrFail($this->gradingAttemptId);
         Gate::authorize('grade', $attempt);
 
+        $exam = $attempt->exam;
+
         foreach ($this->manual as $answerId => $data) {
             $answer = $attempt->answers()->whereKey($answerId)->with('question')->first();
 
@@ -106,6 +109,11 @@ class GradingIndex extends Component
             app(NotificationDispatcher::class)->attemptGraded($attempt);
         }
 
+        if ($exam !== null) {
+            // Nộp bài xong thì đánh dấu xong trong danh sách giao bài.
+            app(AssignmentManager::class)->syncExamProgress($exam);
+        }
+
         $this->gradingAttemptId = null;
         $this->manual = [];
 
@@ -127,8 +135,11 @@ class GradingIndex extends Component
             'attempts' => ExamAttempt::query()
                 ->with('student')
                 ->where('exam_id', $exam->id)
-                ->orderByDesc('submitted_at')
-                ->get(),
+                ->orderByDesc('student_id')
+                ->newestAttempt()
+                ->get()
+                ->groupBy('student_id')
+                ->sortByDesc(fn ($rows) => $rows->max(fn (ExamAttempt $attempt) => $attempt->percent() ?? -1)),
             'gradingAttempt' => $gradingAttempt,
         ]);
     }

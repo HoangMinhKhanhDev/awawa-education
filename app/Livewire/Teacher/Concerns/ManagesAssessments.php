@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\Gate;
 
 trait ManagesAssessments
 {
+    use AssignsContent;
+
     public bool $showForm = false;
 
     public string $title = '';
@@ -19,6 +21,14 @@ trait ManagesAssessments
     public string $description = '';
 
     abstract protected function assessmentType(): ExamType;
+
+    /**
+     * Số lần làm mặc định: đề thi chỉ một lần, bài tập cho luyện thêm.
+     */
+    protected function defaultMaxAttempts(): int
+    {
+        return $this->assessmentType() === ExamType::Exam ? 1 : 3;
+    }
 
     protected function assessmentsQuery(): Builder
     {
@@ -59,6 +69,7 @@ trait ManagesAssessments
             'title' => $this->title,
             'description' => $this->description ?: null,
             'status' => ExamStatus::Draft,
+            'settings' => ['max_attempts' => $this->defaultMaxAttempts()],
             'created_by' => auth()->id(),
         ]);
 

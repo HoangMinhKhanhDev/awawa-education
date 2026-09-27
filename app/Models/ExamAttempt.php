@@ -23,6 +23,7 @@ class ExamAttempt extends Model
         'exam_id',
         'student_id',
         'status',
+        'attempt_no',
         'started_at',
         'expires_at',
         'submitted_at',
@@ -32,6 +33,7 @@ class ExamAttempt extends Model
         'max_score',
         'auto_score',
         'manual_score',
+        'time_spent_seconds',
         'anti_cheat',
         'ip',
         'user_agent',
@@ -44,6 +46,7 @@ class ExamAttempt extends Model
     {
         return [
             'status' => AttemptStatus::class,
+            'attempt_no' => 'integer',
             'started_at' => 'datetime',
             'expires_at' => 'datetime',
             'submitted_at' => 'datetime',
@@ -52,6 +55,7 @@ class ExamAttempt extends Model
             'max_score' => 'decimal:2',
             'auto_score' => 'decimal:2',
             'manual_score' => 'decimal:2',
+            'time_spent_seconds' => 'integer',
             'anti_cheat' => 'array',
         ];
     }
@@ -79,6 +83,20 @@ class ExamAttempt extends Model
     public function isExpired(): bool
     {
         return $this->expires_at !== null && $this->expires_at->isPast();
+    }
+
+    /**
+     * Tỉ lệ điểm trên tổng điểm, null khi bài không có điểm.
+     */
+    public function percent(): ?float
+    {
+        $max = (float) $this->max_score;
+
+        if ($max <= 0) {
+            return null;
+        }
+
+        return round(((float) $this->score / $max) * 100, 2);
     }
 
     public function remainingSeconds(): ?int
@@ -131,5 +149,16 @@ class ExamAttempt extends Model
     public function scopeFinished(Builder $query): Builder
     {
         return $query->whereIn('status', [AttemptStatus::Submitted->value, AttemptStatus::Graded->value]);
+    }
+
+    /**
+     * Lần làm mới nhất đứng trước.
+     *
+     * Không dùng `latest()` vì tên đó bị Eloquent Builder chiếm mất và luôn
+     * sắp theo `created_at`.
+     */
+    public function scopeNewestAttempt(Builder $query): Builder
+    {
+        return $query->orderByDesc('attempt_no');
     }
 }

@@ -13,7 +13,7 @@
             @enderror
         </div>
 
-        <button type="submit" class="btn btn-primary w-full" wire:loading.attr="disabled">
+        <button type="submit" class="btn btn-primary w-full" wire:loading.attr="disabled" wire:target="sendResetLink">
             <span wire:loading.remove wire:target="sendResetLink">Gửi liên kết đặt lại</span>
             <span wire:loading wire:target="sendResetLink">Đang gửi…</span>
         </button>

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Notebook;
 
 use App\Enums\ExamType;
+use App\Jobs\GenerateArtifact;
 use App\Livewire\Notebook\Studio;
 use App\Models\AiProvider;
 use App\Models\Exam;
@@ -58,7 +59,7 @@ class ExamArtifactTest extends TestCase
     }
 
     /**
-     * Mở màn đề thi với các tuỳ chỉnh rồi bấm Tạo.
+     * Mở màn đề thi với các tuỳ chỉnh rồi bấm Tạo, sau đó chạy nốt phần soạn nền.
      *
      * @param  array<string, mixed>  $settings
      */
@@ -71,14 +72,30 @@ class ExamArtifactTest extends TestCase
             $component->set($name, $value);
         }
 
-        return $component
+        $component
             ->set('instruction', 'Soạn đề kiểm tra chuyên đề 1')
             ->call('generate');
+
+        $this->runBackgroundWork();
+
+        return $component;
     }
 
     private function artifactOf(Testable $component): NotebookArtifact
     {
         return NotebookArtifact::query()->where('notebook_id', $this->notebook->id)->latest('id')->firstOrFail();
+    }
+
+    /**
+     * Việc soạn nội dung chạy ở tiến trình nền nên test phải tự chạy phần đó.
+     */
+    private function runBackgroundWork(): void
+    {
+        NotebookArtifact::query()
+            ->where('status', 'generating')
+            ->orderBy('id')
+            ->get()
+            ->each(fn (NotebookArtifact $artifact) => (new GenerateArtifact($artifact->id))->handle(app(ArtifactGenerator::class)));
     }
 
     /**

@@ -16,6 +16,10 @@
         <div class="alert alert-success">{{ session('status') }}</div>
     @endif
 
+    @if ($assignError)
+        <div class="alert alert-error">{{ $assignError }}</div>
+    @endif
+
     <div class="panel">
         <div class="divide-y divide-rule dark:divide-night-700">
             @forelse ($announcements as $announcement)
@@ -40,6 +44,9 @@
                             <button type="button" wire:click="togglePublish({{ $announcement->id }})" class="btn btn-ghost px-3 py-2 text-xs">
                                 {{ $announcement->isPublished() ? 'Ẩn' : 'Đăng' }}
                             </button>
+                            @if ($announcement->isPublished())
+                                <x-teacher.assign-actions type="announcement" :model="$announcement" :assignments="$openAssignments" />
+                            @endif
                             <button type="button" wire:click="openEdit({{ $announcement->id }})" class="btn btn-outline px-3.5 py-2 text-xs">Sửa</button>
                             <button type="button" wire:click="delete({{ $announcement->id }})" wire:confirm="Xóa thông báo này?"
                                 class="btn btn-ghost px-3 py-2 text-xs text-signal hover:bg-signal-soft dark:text-red-400 dark:hover:bg-red-500/10">Xóa</button>
@@ -53,7 +60,7 @@
     </div>
 
     @if ($showForm)
-        <div class="fixed inset-0 z-50 flex items-end justify-center bg-night-900/50 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+        <div class="fixed inset-0 z-50 flex items-end justify-center bg-night-900/60 p-0 sm:items-center sm:p-4"
             x-data x-on:keydown.escape.window="$wire.closeForm()">
             <div class="w-full max-w-lg rounded-t-[14px] bg-white p-6 sm:rounded-[14px] dark:bg-night-800" @click.stop>
                 <div class="mb-5 flex items-center justify-between">
@@ -86,7 +93,7 @@
                     </div>
                     <div class="flex justify-end gap-2 pt-1">
                         <button type="button" wire:click="closeForm" class="btn btn-ghost">Hủy</button>
-                        <button type="submit" class="btn btn-primary" wire:loading.attr="disabled">
+                        <button type="submit" class="btn btn-primary" wire:loading.attr="disabled" wire:target="save">
                             <span wire:loading.remove wire:target="save">Lưu</span>
                             <span wire:loading wire:target="save">Đang lưu…</span>
                         </button>

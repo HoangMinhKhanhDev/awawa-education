@@ -15,8 +15,9 @@ use Illuminate\Support\Str;
 /**
  * Soạn nội dung AI cho một artefact đã tạo sẵn ở trạng thái "generating".
  *
- * Chạy nền để giáo viên đóng tab hay chuyển sang màn khác vẫn hoàn tất; kết quả
- * được ghi thẳng vào database nên lần mở sau thấy ngay.
+ * Chạy ngoài web request (tiến trình CLI do `awawa:generate-artifact` gọi) để giáo
+ * viên đóng tab hay chuyển sang màn khác vẫn hoàn tất; kết quả được ghi thẳng vào
+ * database nên lần mở sau thấy ngay.
  */
 class GenerateArtifact implements ShouldQueue
 {
@@ -91,13 +92,5 @@ class GenerateArtifact implements ShouldQueue
         }
 
         $this->fail($artifact, $exception?->getMessage() ?: 'Không hoàn tất được yêu cầu.');
-    }
-
-    /**
-     * Chạy ngay trong tiến trình hiện tại, dùng cho bản dự phòng khi máy chủ chưa bật worker.
-     */
-    public static function runInline(int $artifactId): void
-    {
-        (new self($artifactId))->handle(app(ArtifactGenerator::class));
     }
 }

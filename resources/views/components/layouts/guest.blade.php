@@ -10,7 +10,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <meta name="theme-color" content="{{ config('awawa.brand.primary') }}">
+    <meta id="theme-color-meta" name="theme-color" content="{{ config('awawa.brand.primary') }}">
     <meta name="vapid-public-key" content="{{ config('awawa.webpush.public_key') }}">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
@@ -21,19 +21,7 @@
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
     <link rel="manifest" href="/manifest.webmanifest">
 
-    <script>
-        (function () {
-            try {
-                var theme = localStorage.getItem('awawa-theme');
-                if (!theme) {
-                    theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-                }
-                if (theme === 'dark') {
-                    document.documentElement.classList.add('dark');
-                }
-            } catch (error) {}
-        })();
-    </script>
+    <x-theme-script />
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @livewireStyles
@@ -41,7 +29,7 @@
 <body class="paper-grid min-h-full">
     <div class="min-h-dvh lg:grid lg:grid-cols-[1.05fr_1fr]">
         {{-- Bìa giới thiệu (desktop) --}}
-        <aside class="hidden flex-col justify-between border-r border-rule bg-white/75 p-10 backdrop-blur lg:flex dark:border-night-700 dark:bg-night-800/70">
+        <aside class="hidden flex-col justify-between border-r border-rule bg-white/90 p-10 lg:flex dark:border-night-700 dark:bg-night-800/90">
             <x-logo class="h-10 w-10" />
 
             <div class="max-w-md">

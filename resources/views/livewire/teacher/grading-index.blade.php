@@ -21,36 +21,68 @@
 
     <div class="panel">
         <div class="divide-y divide-rule dark:divide-night-700">
-            @forelse ($attempts as $attempt)
+            @forelse ($attempts as $studentAttempts)
                 @php
-                    $statusClass = match ($attempt->status->value) {
+                    $latest = $studentAttempts->first();
+                    $older = $studentAttempts->slice(1);
+                    $statusClass = match ($latest->status->value) {
                         'graded' => 'chip-success',
                         'submitted' => 'chip-brand',
                         default => 'chip-warning',
                     };
                 @endphp
-                <div class="flex flex-wrap items-center gap-4 px-5 py-4" wire:key="attempt-{{ $attempt->id }}">
-                    <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-600 text-sm font-semibold text-white">
-                        {{ $attempt->student?->initials() }}
-                    </span>
-                    <div class="min-w-0 flex-1">
-                        <div class="flex flex-wrap items-center gap-2">
-                            <p class="font-medium text-ink dark:text-slate-100">{{ $attempt->student?->name }}</p>
-                            <span class="chip {{ $statusClass }}">{{ $attempt->status->label() }}</span>
-                            @if (count($attempt->anti_cheat ?? []) > 0)
-                                <span class="chip chip-warning" title="Số lần rời màn hình">{{ count($attempt->anti_cheat) }} cảnh báo</span>
-                            @endif
+                <div wire:key="student-{{ $latest->student_id }}">
+                    <div class="flex flex-wrap items-center gap-4 px-5 py-4">
+                        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-600 text-sm font-semibold text-white">
+                            {{ $latest->student?->initials() }}
+                        </span>
+                        <div class="min-w-0 flex-1">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <p class="font-medium text-ink dark:text-slate-100">{{ $latest->student?->name }}</p>
+                                <span class="chip {{ $statusClass }}">{{ $latest->status->label() }}</span>
+                                @if ($studentAttempts->count() > 1)
+                                    <span class="chip chip-neutral">Lần {{ $latest->attempt_no }}/{{ $exam->maxAttempts() }}</span>
+                                @endif
+                                @if (count($latest->anti_cheat ?? []) > 0)
+                                    <span class="chip chip-warning" title="Số lần rời màn hình">{{ count($latest->anti_cheat) }} cảnh báo</span>
+                                @endif
+                            </div>
+                            <p class="tnum mt-0.5 text-xs text-ink-faint dark:text-slate-500">
+                                {{ $latest->student?->email }}@if ($latest->submitted_at)<span class="mx-1.5">—</span>nộp {{ $latest->submitted_at->format('d/m/Y H:i') }}@endif
+                            </p>
                         </div>
-                        <p class="tnum mt-0.5 text-xs text-ink-faint dark:text-slate-500">
-                            {{ $attempt->student?->email }}@if ($attempt->submitted_at)<span class="mx-1.5">—</span>nộp {{ $attempt->submitted_at->format('d/m/Y H:i') }}@endif
-                        </p>
+                        <span class="tnum shrink-0 text-lg font-semibold text-ink dark:text-white">
+                            {{ $latest->score === null ? '—' : (float) $latest->score }}<span class="text-sm font-normal text-ink-faint">/{{ (float) $latest->max_score }}</span>
+                        </span>
+                        <button type="button" wire:click="openGrading({{ $latest->id }})" class="btn btn-outline px-3.5 py-2 text-xs">
+                            {{ $latest->hasPendingManualGrading() ? 'Chấm bài' : 'Xem / sửa điểm' }}
+                        </button>
                     </div>
-                    <span class="tnum shrink-0 text-lg font-semibold text-ink dark:text-white">
-                        {{ $attempt->score === null ? '—' : (float) $attempt->score }}<span class="text-sm font-normal text-ink-faint">/{{ (float) $attempt->max_score }}</span>
-                    </span>
-                    <button type="button" wire:click="openGrading({{ $attempt->id }})" class="btn btn-outline px-3.5 py-2 text-xs">
-                        {{ $attempt->hasPendingManualGrading() ? 'Chấm bài' : 'Xem / sửa điểm' }}
-                    </button>
+
+                    @if ($older->isNotEmpty())
+                        <details class="border-t border-rule dark:border-night-700">
+                            <summary class="cursor-pointer px-5 py-2.5 text-xs font-medium text-ink-soft dark:text-slate-300">
+                                Xem {{ $older->count() }} lần làm trước
+                            </summary>
+                            <div class="divide-y divide-rule border-t border-rule dark:divide-night-700 dark:border-night-700">
+                                @foreach ($older as $previous)
+                                    <div class="flex flex-wrap items-center gap-3 px-5 py-3">
+                                        <span class="chip chip-neutral">Lần {{ $previous->attempt_no }}</span>
+                                        <span class="tnum text-xs text-ink-faint dark:text-slate-500">
+                                            {{ $previous->status->label() }}
+                                            @if ($previous->submitted_at)<span class="mx-1.5">—</span>{{ $previous->submitted_at->format('d/m/Y H:i') }}@endif
+                                        </span>
+                                        <span class="tnum ml-auto text-sm font-semibold text-ink-soft dark:text-slate-200">
+                                            {{ $previous->score === null ? '—' : (float) $previous->score }}<span class="text-xs font-normal text-ink-faint">/{{ (float) $previous->max_score }}</span>
+                                        </span>
+                                        <button type="button" wire:click="openGrading({{ $previous->id }})" class="btn btn-ghost px-3 py-1.5 text-xs">
+                                            Xem
+                                        </button>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </details>
+                    @endif
                 </div>
             @empty
                 <p class="empty">Chưa có học sinh nào làm bài.</p>
@@ -59,7 +91,7 @@
     </div>
 
     @if ($gradingAttempt)
-        <div class="fixed inset-0 z-50 flex items-end justify-center bg-night-900/50 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+        <div class="fixed inset-0 z-50 flex items-end justify-center bg-night-900/60 p-0 sm:items-center sm:p-4">
             <div class="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-[14px] bg-white p-6 sm:rounded-[14px] dark:bg-night-800">
                 <div class="mb-5 flex items-center justify-between">
                     <div>
@@ -96,6 +128,13 @@
                                             </li>
                                         @endforeach
                                     </ul>
+                                @elseif ($question?->type === \App\Enums\QuestionType::TrueFalse)
+                                    <p class="mt-1.5 text-sm text-ink dark:text-slate-200">
+                                        Học sinh chọn: <span class="font-medium">{{ $question->type->trueFalseLabel($answer->answer_text) }}</span>
+                                        <span class="text-xs text-ink-faint dark:text-slate-500">
+                                            — đáp án: {{ $question->type->trueFalseLabel($question->answer) }}
+                                        </span>
+                                    </p>
                                 @else
                                     <p class="mt-1 whitespace-pre-line text-sm leading-relaxed text-ink dark:text-slate-200">{{ $answer->answer_text ?: '(bỏ trống)' }}</p>
                                 @endif
@@ -122,7 +161,7 @@
 
                 <div class="mt-5 flex justify-end gap-2">
                     <button type="button" wire:click="closeGrading" class="btn btn-ghost">Đóng</button>
-                    <button type="button" wire:click="saveGrading" class="btn btn-primary" wire:loading.attr="disabled">
+                    <button type="button" wire:click="saveGrading" class="btn btn-primary" wire:loading.attr="disabled" wire:target="saveGrading">
                         <span wire:loading.remove wire:target="saveGrading">Lưu điểm</span>
                         <span wire:loading wire:target="saveGrading">Đang lưu…</span>
                     </button>

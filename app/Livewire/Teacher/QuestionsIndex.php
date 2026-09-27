@@ -78,6 +78,20 @@ class QuestionsIndex extends Component
         $this->resetPage();
     }
 
+    /**
+     * Đổi dạng câu hỏi thì dọn phần không còn liên quan, tránh lưu nhầm đáp án của
+     * dạng cũ (ví dụ câu đúng/sai để lại lựa chọn trắc nghiệm).
+     */
+    public function updatedType(): void
+    {
+        $this->resetErrorBag(['answer', 'options']);
+        $this->options = $this->blankOptions();
+
+        $this->answer = QuestionType::from($this->type) === QuestionType::TrueFalse
+            ? QuestionType::FALSE
+            : '';
+    }
+
     public function openCreate(): void
     {
         Gate::authorize('create', Question::class);
@@ -94,7 +108,11 @@ class QuestionsIndex extends Component
         $this->editingId = $question->id;
         $this->type = $question->type->value;
         $this->content = $question->content;
-        $this->answer = (string) $question->answer;
+
+        // Câu đúng/sai tạo từ AI có thể lưu "Đúng"; đưa về giá trị chuẩn.
+        $this->answer = $question->type === QuestionType::TrueFalse
+            ? (QuestionType::normalizeTruthy((string) $question->answer) ?? QuestionType::FALSE)
+            : (string) $question->answer;
         $this->explanation = (string) $question->explanation;
         $this->difficulty = $question->difficulty->value;
         $this->points = (float) $question->points;
@@ -196,6 +214,16 @@ class QuestionsIndex extends Component
             $this->addError('answer', 'Vui lòng nhập đáp án cho câu hỏi điền khuyết.');
 
             return;
+        }
+
+        if ($type === QuestionType::TrueFalse) {
+            if (QuestionType::normalizeTruthy($this->answer) === null) {
+                $this->addError('answer', 'Vui lòng chọn đáp án Đúng hoặc Sai.');
+
+                return;
+            }
+
+            $this->answer = QuestionType::normalizeTruthy($this->answer);
         }
 
         $attributes = [
@@ -331,6 +359,7 @@ class QuestionsIndex extends Component
             'questions' => $questions,
             'subject' => $subject,
             'types' => QuestionType::cases(),
+            'trueFalseChoices' => QuestionType::TrueFalse->trueFalseChoices(),
             'difficulties' => Difficulty::cases(),
             'featureEnabled' => $subject?->hasFeature(SubjectFeature::QuestionBank) ?? false,
         ]);

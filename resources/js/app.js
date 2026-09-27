@@ -7,13 +7,75 @@ if (! isLocalhost && 'serviceWorker' in navigator) {
     registerSW({ immediate: true });
 }
 
+const THEME_STORAGE_KEY = 'awawa-theme';
+const THEME_PREFERENCES = ['system', 'light', 'dark'];
+const THEME_LABELS = {
+    system: 'Giao diện: theo hệ thống. Bấm để chuyển sang sáng',
+    light: 'Giao diện: sáng. Bấm để chuyển sang tối',
+    dark: 'Giao diện: tối. Bấm để chuyển sang theo hệ thống',
+};
+const THEME_META_LIGHT = document.querySelector('meta[name="theme-color"]')?.content ?? null;
+
+function themeMetaColor(resolved) {
+    if (THEME_META_LIGHT === null) {
+        return null;
+    }
+
+    // Nền tối lấy đúng --color-night-900 trong app.css.
+    return resolved === 'dark' ? '#0e1118' : THEME_META_LIGHT;
+}
+
+const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
 const storedTheme = () => {
     try {
-        return localStorage.getItem('awawa-theme');
+        return localStorage.getItem(THEME_STORAGE_KEY);
     } catch (error) {
         return null;
     }
 };
+
+const systemTheme = () => (darkQuery.matches ? 'dark' : 'light');
+
+const normalizePreference = (value) =>
+    THEME_PREFERENCES.includes(value) ? value : 'system';
+
+function applyTheme(preference) {
+    const normalized = normalizePreference(preference);
+    const resolved = normalized === 'system' ? systemTheme() : normalized;
+    const root = document.documentElement;
+
+    root.classList.toggle('dark', resolved === 'dark');
+    root.dataset.theme = normalized;
+    root.style.colorScheme = resolved;
+
+    const metaColor = themeMetaColor(resolved);
+    if (metaColor !== null) {
+        document
+            .querySelector('meta[name="theme-color"]')
+            ?.setAttribute('content', metaColor);
+    }
+
+    document.querySelectorAll('[data-theme-toggle]').forEach((button) => {
+        button.setAttribute('aria-label', THEME_LABELS[normalized]);
+        button.setAttribute('aria-pressed', String(normalized === 'dark'));
+        button.setAttribute('title', THEME_LABELS[normalized]);
+    });
+
+    document.dispatchEvent(
+        new CustomEvent('awawa:theme', { detail: { preference: normalized, resolved } }),
+    );
+
+    return resolved;
+}
+
+// Khi hệ thống đổi nền sáng/tối mà người dùng chưa chọn tay thì theo hệ thống;
+// đã chọn tay thì giữ nguyên lựa chọn, không nhảy.
+darkQuery.addEventListener('change', () => {
+    if (normalizePreference(storedTheme()) === 'system') {
+        applyTheme('system');
+    }
+});
 
 function urlBase64ToUint8Array(base64String) {
     const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -36,26 +98,85 @@ function jsonHeaders() {
 }
 
 window.awawa = {
-    theme() {
+    /** Lựa chọn đang lưu: 'system' | 'light' | 'dark'. */
+    preference() {
+        return normalizePreference(storedTheme());
+    },
+    /** Theme thực sự đang áp dụng sau khi đã phân giải 'system'. */
+    resolvedTheme() {
         return document.documentElement.classList.contains('dark') ? 'dark' : 'light';
     },
-    setTheme(theme) {
-        document.documentElement.classList.toggle('dark', theme === 'dark');
+    setPreference(preference) {
+        const normalized = normalizePreference(preference);
 
         try {
-            localStorage.setItem('awawa-theme', theme);
+            localStorage.setItem(THEME_STORAGE_KEY, normalized);
         } catch (error) {
-            // bỏ qua khi trình duyệt chặn localStorage
+            // bị chặn localStorage: theme chỉ giữ trong phiên này
         }
-    },
-    toggleTheme() {
-        const next = this.theme() === 'dark' ? 'light' : 'dark';
-        this.setTheme(next);
 
-        return next;
+        applyTheme(normalized);
+
+        return normalized;
+    },
+    /** Vòng lặp system -> light -> dark -> system. */
+    cyclePreference() {
+        const current = this.preference();
+        const next = THEME_PREFERENCES[(THEME_PREFERENCES.indexOf(current) + 1) % THEME_PREFERENCES.length];
+
+        return this.setPreference(next);
     },
     storedTheme,
+    applyTheme,
 };
+
+// Head script đã đặt class và data-theme; gọi lại một lần để nút toggle lấy
+// aria-label đúng và các bundle khác (whiteboard) nhận được theme hiện tại.
+applyTheme(window.awawa.preference());
+
+/*
+ * Phản hồi thị giác khi chuyển trang bằng wire:navigate.
+ *
+ * Thanh tiến trình 2px mặc định của Livewire rất khó thấy trên điện thoại, nên
+ * lúc chờ server người dùng tưởng ấn hụt rồi ấn lại. Ở đây làm mờ vùng nội
+ * dung và làm nổi tab đang chuyển, nhưng cố ý KHÔNG khoá pointer trên thanh
+ * điều hướng dưới để vẫn bấm sang tab khác được khi trang đang tải.
+ */
+const NAV_CONTENT_ID = 'app-content';
+const NAV_PENDING_CLASS = 'nav-pending';
+
+function navLinks() {
+    return Array.from(document.querySelectorAll('a[wire\\:navigate][href]'));
+}
+
+function clearPendingLinks() {
+    document.querySelectorAll(`.${NAV_PENDING_CLASS}`).forEach((link) => {
+        link.classList.remove(NAV_PENDING_CLASS);
+    });
+}
+
+document.addEventListener('livewire:navigating', (event) => {
+    const destination = event.detail?.url ? String(event.detail.url) : null;
+    const content = document.getElementById(NAV_CONTENT_ID);
+
+    content?.setAttribute('data-navigating', 'true');
+    clearPendingLinks();
+
+    if (destination === null) {
+        return;
+    }
+
+    navLinks().forEach((link) => {
+        if (link.href === destination) {
+            link.classList.add(NAV_PENDING_CLASS);
+        }
+    });
+});
+
+document.addEventListener('livewire:navigated', () => {
+    document.getElementById(NAV_CONTENT_ID)?.removeAttribute('data-navigating');
+    clearPendingLinks();
+});
 
 window.awawaNotebookPanels = () => ({
     dragging: null,

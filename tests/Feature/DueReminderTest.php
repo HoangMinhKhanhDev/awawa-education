@@ -113,4 +113,37 @@ class DueReminderTest extends TestCase
         $this->assertDatabaseHas('exam_reminders', ['exam_id' => $exam->id, 'milestone' => '1h']);
         $this->assertSame('1h', $student->notifications()->first()->data['milestone']);
     }
+
+    public function test_due_reminder_skips_students_who_already_submitted_any_attempt(): void
+    {
+        $exam = $this->makeSetup();
+        $exam->forceFill(['settings' => ['max_attempts' => 3]])->save();
+
+        // Học sinh đã nộp lần một nhưng còn lượt làm lại: vẫn không nhắc hạn nộp.
+        $this->markSubmitted($exam, $this->submitter);
+
+        $this->artisan('awawa:due-reminders')->assertSuccessful();
+
+        $this->assertSame(1, $this->nonSubmitter->notifications()->count());
+        $this->assertSame(0, $this->submitter->notifications()->count());
+    }
+
+    public function test_due_reminder_still_reaches_students_with_only_an_in_progress_attempt(): void
+    {
+        $exam = $this->makeSetup();
+        $exam->forceFill(['settings' => ['max_attempts' => 3]])->save();
+
+        ExamAttempt::create([
+            'subject_id' => $this->subject->id,
+            'exam_id' => $exam->id,
+            'student_id' => $this->submitter->id,
+            'status' => AttemptStatus::InProgress,
+            'started_at' => now(),
+            'max_score' => 10,
+        ]);
+
+        $this->artisan('awawa:due-reminders')->assertSuccessful();
+
+        $this->assertSame(1, $this->submitter->notifications()->count());
+    }
 }

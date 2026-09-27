@@ -27,6 +27,7 @@ class ExamAttemptFactory extends Factory
             'student_id' => User::factory()->student(),
             'status' => AttemptStatus::InProgress,
             'started_at' => now(),
+            'attempt_no' => 1,
             'max_score' => 10,
         ];
     }

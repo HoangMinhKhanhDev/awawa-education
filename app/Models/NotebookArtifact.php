@@ -11,6 +11,8 @@ class NotebookArtifact extends Model
 {
     use HasFactory;
 
+    public const STATUS_FAILED = 'failed';
+
     /**
      * @var list<string>
      */

@@ -139,6 +139,9 @@ return [
         'history_messages' => (int) env('NOTEBOOK_HISTORY_MESSAGES', 8),
         'max_notebooks' => (int) env('NOTEBOOK_MAX_NOTEBOOKS', 20),
 
+        // Bộ nhớ cho tiến trình nền soạn nội dung, nên có cao hơn mặc định của PHP.
+        'generation_memory' => env('NOTEBOOK_GENERATION_MEMORY', '1024M'),
+
         'tavily' => [
             'base_url' => env('TAVILY_BASE_URL', 'https://api.tavily.com'),
             'api_key' => env('TAVILY_API_KEY'),

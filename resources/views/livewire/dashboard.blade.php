@@ -13,12 +13,78 @@
         </div>
     </div>
 
+    @if (session('status'))
+        <div class="alert alert-success">{{ session('status') }}</div>
+    @endif
+
+    @if (session('error'))
+        <div class="alert alert-error">{{ session('error') }}</div>
+    @endif
+
     {{-- Học sinh --}}
     @if ($studentData)
         @if (! $user->isActiveMemberOf($user->subject_id))
             <div class="alert alert-warning">
                 Bạn chưa thuộc đội tuyển môn nào. Hiện chỉ xem được tài liệu công khai — liên hệ giáo viên bộ môn để được thêm vào đội và bắt đầu làm bài.
             </div>
+        @endif
+
+        @if ($studentData['assignments']->isNotEmpty())
+            <section class="panel border-brand-300 dark:border-brand-500/40">
+                <div class="border-b border-rule px-5 py-3 dark:border-night-700">
+                    <h2 class="text-[15px] font-semibold text-ink dark:text-white">Được giao, chưa xem xong</h2>
+                </div>
+                <div class="divide-y divide-rule dark:divide-night-700">
+                    @foreach ($studentData['assignments'] as $assignment)
+                        @php
+                            $assignType = $assignment->type();
+                            $daysLeft = $assignment->daysLeft();
+                            $assignReceipt = $assignment->receiptFor($user);
+                        @endphp
+                        <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-4" wire:key="dash-assign-{{ $assignment->id }}">
+                            <div class="flex min-w-0 items-center gap-3">
+                                <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">
+                                    <x-icon :name="$assignType?->icon() ?? 'doc'" class="h-4 w-4" />
+                                </span>
+                                <div class="min-w-0">
+                                    <p class="truncate text-sm font-medium text-ink dark:text-slate-100">
+                                        {{ $assignment->assignable?->title ?? '(Nội dung đã bị xoá)' }}
+                                    </p>
+                                    <p class="tnum mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-ink-faint dark:text-slate-500">
+                                        <span>{{ $assignType?->label() }}</span>
+                                        @if ($assignment->due_at)
+                                            <span class="mx-1.5">—</span>
+                                            <span class="{{ $assignment->isOverdue() ? 'font-medium text-signal' : '' }}">
+                                                Hạn {{ $assignment->due_at->format('d/m') }}
+                                                @unless ($assignment->isOverdue())
+                                                    @if ($daysLeft !== null && $daysLeft >= 0) (còn {{ $daysLeft }} ngày) @endif
+                                                @endunless
+                                            </span>
+                                        @endif
+                                        @if ($assignReceipt?->isOpened() && ! $assignReceipt->isCompleted())
+                                            <span class="mx-1.5">—</span>
+                                            <span class="text-brand-700 dark:text-brand-300">Đang xem</span>
+                                        @endif
+                                    </p>
+                                    @if ($assignment->note)
+                                        <p class="mt-1 text-sm text-ink-soft dark:text-slate-300">{{ $assignment->note }}</p>
+                                    @endif
+                                </div>
+                            </div>
+                            <div class="flex shrink-0 items-center gap-1.5">
+                                @unless ($assignType?->requiresSubmission())
+                                    <button type="button" wire:click="markAssignmentDone({{ $assignment->id }})" class="btn btn-ghost px-3 py-1.5 text-xs">
+                                        Đã xem xong
+                                    </button>
+                                @endunless
+                                <button type="button" wire:click="openAssignment({{ $assignment->id }})" class="btn btn-primary px-3 py-1.5 text-xs">
+                                    Mở
+                                </button>
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            </section>
         @endif
 
         @if ($studentData['inProgress']->isNotEmpty())
@@ -44,13 +110,19 @@
             <h2 class="text-lg font-semibold text-ink dark:text-white">Bài sắp tới</h2>
             <div class="panel">
                 <div class="divide-y divide-rule dark:divide-night-700">
-                    @forelse ($studentData['available'] as $exam)
-                        @php $dueSoon = $exam->due_at && $exam->due_at->diffInHours(now(), false) >= -48; @endphp
+                    @forelse ($studentData['available'] as $row)
+                        @php
+                            $exam = $row['exam'];
+                            $dueSoon = $exam->due_at && $exam->due_at->diffInHours(now(), false) >= -48;
+                        @endphp
                         <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
                             <div class="min-w-0">
                                 <div class="flex flex-wrap items-center gap-2">
                                     <p class="font-medium text-ink dark:text-slate-100">{{ $exam->title }}</p>
                                     <span class="chip chip-neutral">{{ $exam->type->label() }}</span>
+                                    @if ($exam->allowsRetake() && $row['remaining'] < $exam->maxAttempts())
+                                        <span class="chip chip-brand">Còn {{ $row['remaining'] }} lượt</span>
+                                    @endif
                                 </div>
                                 <p class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-faint dark:text-slate-500">
                                     <span class="tnum">{{ $exam->exam_questions_count }} câu</span>
@@ -80,7 +152,7 @@
                             <div class="min-w-0">
                                 <p class="font-medium text-ink dark:text-slate-100">{{ $attempt->exam?->title }}</p>
                                 <p class="mt-0.5 text-xs text-ink-faint dark:text-slate-500">
-                                    {{ $attempt->status->label() }}@if ($attempt->submitted_at) · {{ $attempt->submitted_at->format('d/m/Y H:i') }}@endif
+                                    {{ $attempt->status->label() }}@if ($attempt->attempt_no > 1) · Lần {{ $attempt->attempt_no }}@endif@if ($attempt->submitted_at) · {{ $attempt->submitted_at->format('d/m/Y H:i') }}@endif
                                 </p>
                             </div>
                             <span class="tnum text-lg font-semibold text-ink dark:text-white">{{ (float) $attempt->score }}<span class="text-sm font-normal text-ink-faint">/{{ (float) $attempt->max_score }}</span></span>
@@ -113,7 +185,7 @@
                                     {{ $document->original_name }} — {{ $document->sizeForHumans() }}@if ($document->creator)<span class="mx-1.5">—</span>{{ $document->creator->name }}@endif
                                 </p>
                             </div>
-                            <a href="{{ $document->url() }}" target="_blank" rel="noopener" class="btn btn-outline px-3.5 py-2 text-xs">Mở</a>
+                            <a href="{{ $document->viewerUrl() }}" @if (! $document->isViewable()) target="_blank" rel="noopener" @endif wire:navigate class="btn btn-outline px-3.5 py-2 text-xs">Mở</a>
                         </div>
                     @empty
                         <p class="empty">Chưa có tài liệu công khai nào.</p>

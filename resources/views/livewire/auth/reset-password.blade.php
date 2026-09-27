@@ -22,7 +22,7 @@
             autocomplete="new-password" placeholder="Nhập lại mật khẩu mới">
     </div>
 
-    <button type="submit" class="btn btn-primary w-full" wire:loading.attr="disabled">
+    <button type="submit" class="btn btn-primary w-full" wire:loading.attr="disabled" wire:target="resetPassword">
         <span wire:loading.remove wire:target="resetPassword">Đặt lại mật khẩu</span>
         <span wire:loading wire:target="resetPassword">Đang xử lý…</span>
     </button>

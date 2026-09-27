@@ -55,6 +55,13 @@ else
     fi
 fi
 
+# Ép Apache trả UTF-8 cho tài liệu Markdown, nếu thiếu thì tiếng Việt hiện lỗi
+# font khi học sinh bấm vào link tệp thay vì xem trong app.
+PUBLIC_ROOT="${PUBLIC_DISK_ROOT:-$APP_DIR/storage/app/public}"
+if [ -d "$PUBLIC_ROOT" ] && [ ! -f "$PUBLIC_ROOT/.htaccess" ]; then
+    cp "$APP_DIR/storage/app/public/.htaccess" "$PUBLIC_ROOT/.htaccess" || true
+fi
+
 echo "==> [6/6] Tối ưu cache"
 "$PHP_BIN" artisan optimize
 

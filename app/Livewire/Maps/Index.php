@@ -4,6 +4,7 @@ namespace App\Livewire\Maps;
 
 use App\Enums\MapVisibility;
 use App\Enums\SubjectFeature;
+use App\Livewire\Teacher\Concerns\AssignsContent;
 use App\Models\KnowledgeMap;
 use App\Models\KnowledgeMapVersion;
 use App\Support\SubjectContext;
@@ -18,6 +19,8 @@ use Livewire\Component;
 #[Title('Sơ đồ kiến thức')]
 class Index extends Component
 {
+    use AssignsContent;
+
     public bool $showForm = false;
 
     public ?int $editingId = null;
@@ -219,6 +222,8 @@ class Index extends Component
             'visibilities' => MapVisibility::cases(),
             'featureEnabled' => $subject?->hasFeature(SubjectFeature::KnowledgeMap) ?? false,
             'canCreate' => $user->isSuperAdmin() || $user->subject_id !== null,
+            'isTeacher' => $user->isTeacher() || $user->isSuperAdmin(),
+            'openAssignments' => $this->openAssignmentsByKey(),
         ]);
     }
 }

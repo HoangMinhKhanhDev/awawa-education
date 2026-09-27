@@ -27,23 +27,32 @@
         </section>
     @else
         <section class="space-y-3">
-            <h2 class="text-lg font-semibold text-ink dark:text-white">Bảng xếp hạng điểm tổng</h2>
-            <p class="text-sm text-ink-soft dark:text-slate-400">Tổng điểm các bài đã nộp và đã chấm trong môn.</p>
+            <h2 class="text-lg font-semibold text-ink dark:text-white">Bảng xếp hạng</h2>
+            <p class="text-sm text-ink-soft dark:text-slate-400">
+                Xếp theo điểm cao nhất của một bài, chuẩn hoá theo tổng điểm nên bài ngắn không bị tính thiên lệch.
+            </p>
 
             <div class="panel">
+                <div class="grid grid-cols-[1.5rem_1fr_auto_auto] items-center gap-x-4 border-b border-rule px-5 py-2.5 text-xs font-medium text-ink-faint dark:border-night-700 dark:text-slate-500">
+                    <span>#</span>
+                    <span>Học sinh</span>
+                    <span class="w-20 text-right">Tốt nhất</span>
+                    <span class="w-20 text-right">Tổng điểm</span>
+                </div>
                 <div class="divide-y divide-rule dark:divide-night-700">
                     @forelse ($leaderboard as $rank => $row)
                         @php $isMe = $row['student']?->id === $user->id; @endphp
-                        <div class="flex items-center gap-4 px-5 py-3.5 {{ $isMe ? 'bg-brand-50/60 dark:bg-brand-500/10' : '' }}">
-                            <span class="tnum w-6 shrink-0 text-lg font-semibold {{ $rank === 0 ? 'text-brand-700 dark:text-brand-300' : 'text-ink-faint dark:text-slate-500' }}">{{ $rank + 1 }}</span>
-                            <div class="min-w-0 flex-1">
+                        <div class="grid grid-cols-[1.5rem_1fr_auto_auto] items-center gap-x-4 px-5 py-3.5 {{ $isMe ? 'bg-brand-50/60 dark:bg-brand-500/10' : '' }}">
+                            <span class="tnum text-lg font-semibold {{ $rank === 0 ? 'text-brand-700 dark:text-brand-300' : 'text-ink-faint dark:text-slate-500' }}">{{ $rank + 1 }}</span>
+                            <div class="min-w-0">
                                 <p class="truncate text-sm font-medium text-ink dark:text-slate-100">
                                     {{ $row['student']?->name }}
                                     @if ($isMe)<span class="ml-1 text-xs font-normal text-brand-700 dark:text-brand-300">bạn</span>@endif
                                 </p>
                                 <p class="tnum mt-0.5 text-xs text-ink-faint dark:text-slate-500">{{ $row['attempts'] }} bài đã nộp</p>
                             </div>
-                            <span class="tnum shrink-0 text-lg font-semibold text-ink dark:text-white">{{ $row['total'] }}</span>
+                            <span class="tnum w-20 text-right text-lg font-semibold text-ink dark:text-white">{{ number_format($row['best_percent'], 0) }}%</span>
+                            <span class="tnum w-20 text-right text-sm text-ink-soft dark:text-slate-400">{{ number_format($row['total'], 1) }}</span>
                         </div>
                     @empty
                         <p class="empty">Chưa có học sinh trong đội tuyển.</p>

@@ -5,6 +5,7 @@ namespace Tests\Feature\Teacher;
 use App\Enums\ExamStatus;
 use App\Enums\ExamType;
 use App\Livewire\Teacher\AssessmentBuilder;
+use App\Livewire\Teacher\AssignmentsIndex;
 use App\Livewire\Teacher\ExamsIndex;
 use App\Models\Exam;
 use App\Models\Question;
@@ -46,6 +47,63 @@ class ExamBuilderTest extends TestCase
         $this->assertSame($this->subject->id, $exam->subject_id);
         $this->assertSame(ExamType::Exam, $exam->type);
         $this->assertSame(ExamStatus::Draft, $exam->status);
+    }
+
+    public function test_new_exam_defaults_to_one_attempt_but_assignment_to_three(): void
+    {
+        Livewire::test(ExamsIndex::class)
+            ->call('openCreate')
+            ->set('title', 'Kiểm tra chuyên đề 1')
+            ->call('create');
+
+        $exam = Exam::query()->where('title', 'Kiểm tra chuyên đề 1')->firstOrFail();
+
+        $this->assertSame(1, $exam->maxAttempts());
+        $this->assertFalse($exam->allowsRetake());
+
+        Livewire::test(AssignmentsIndex::class)
+            ->call('openCreate')
+            ->set('title', 'Bài tập tuần 1')
+            ->call('create');
+
+        $assignment = Exam::query()->where('title', 'Bài tập tuần 1')->firstOrFail();
+
+        $this->assertSame(3, $assignment->maxAttempts());
+        $this->assertTrue($assignment->allowsRetake());
+    }
+
+    public function test_teacher_can_set_max_attempts_in_builder(): void
+    {
+        $exam = Exam::factory()->create([
+            'subject_id' => $this->subject->id,
+            'type' => ExamType::Assignment,
+            'status' => ExamStatus::Draft,
+        ]);
+
+        Livewire::test(AssessmentBuilder::class, ['exam' => $exam])
+            ->set('title', $exam->title)
+            ->set('maxAttempts', 5)
+            ->call('saveMeta')
+            ->assertHasNoErrors();
+
+        $this->assertSame(5, $exam->fresh()->maxAttempts());
+    }
+
+    public function test_max_attempts_cannot_be_below_one(): void
+    {
+        $exam = Exam::factory()->create([
+            'subject_id' => $this->subject->id,
+            'type' => ExamType::Assignment,
+            'status' => ExamStatus::Draft,
+        ]);
+
+        Livewire::test(AssessmentBuilder::class, ['exam' => $exam])
+            ->set('title', $exam->title)
+            ->set('maxAttempts', 0)
+            ->call('saveMeta')
+            ->assertHasErrors(['maxAttempts']);
+
+        $this->assertSame(1, $exam->fresh()->maxAttempts());
     }
 
     public function test_builder_adds_questions_and_computes_total_points(): void

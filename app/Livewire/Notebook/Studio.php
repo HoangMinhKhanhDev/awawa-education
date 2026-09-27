@@ -4,11 +4,11 @@ namespace App\Livewire\Notebook;
 
 use App\Enums\ArtifactType;
 use App\Enums\SubjectFeature;
-use App\Jobs\GenerateArtifact;
 use App\Models\Exam;
 use App\Models\Notebook;
 use App\Models\NotebookArtifact;
 use App\Services\Notebook\ArtifactPublisher;
+use App\Support\BackgroundProcess;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Locked;
@@ -127,7 +127,7 @@ class Studio extends Component
             'instruction' => ['nullable', 'string', 'max:1500'],
             'count' => ['integer', 'min:1', 'max:20'],
             'points' => ['numeric', 'min:0.25', 'max:100'],
-            'questionType' => ['required', 'in:mixed,multiple_choice,fill_blank,essay'],
+            'questionType' => ['required', 'in:mixed,multiple_choice,true_false,fill_blank,essay'],
             'difficulty' => ['required', 'in:easy,medium,hard'],
             'examSections' => ['integer', 'min:1', 'max:6'],
             'examQuestionsPerSection' => ['integer', 'min:1', 'max:30'],
@@ -181,33 +181,54 @@ class Studio extends Component
     }
 
     /**
-     * Đẩy việc soạn nội dung ra khỏi request để giáo viên đóng tab vẫn có kết quả.
-     * Nếu máy chủ chưa bật worker, poll() sẽ tự chạy phần còn lại.
+     * Giao việc soạn cho một tiến trình CLI riêng.
+     *
+     * Không gọi AI tại đây: shared hosting chặn web request khoảng 30 giây nên lệnh
+     * `dispatch()->afterResponse()` vẫn chạy trong chính request đó và bị cắt giữa
+     * chừng, artefact kẹt ở trạng thái "đang soạn" mãi. Tiến trình CLI không có
+     * giới hạn đó, và cho phép giáo viên đóng tab vẫn có kết quả.
      */
     protected function startGeneration(NotebookArtifact $artifact): void
     {
-        try {
-            GenerateArtifact::dispatch($artifact->id)->afterResponse();
-        } catch (\Throwable) {
-            GenerateArtifact::runInline($artifact->id);
+        $started = BackgroundProcess::start(
+            BackgroundProcess::phpBinary(),
+            [base_path('artisan'), 'awawa:generate-artifact', (string) $artifact->id],
+        );
+
+        if ($started) {
+            return;
         }
+
+        // Máy chủ không cho mở tiến trình con: báo lỗi ngay thay vì để nó quay vô hạn.
+        $payload = $artifact->payload ?? [];
+        $payload['_error'] = 'Máy chủ không cho phép chạy tiến trình nền nên chưa soạn được nội dung.';
+
+        $artifact->update([
+            'status' => NotebookArtifact::STATUS_FAILED,
+            'payload' => $payload,
+        ]);
+
+        $this->generating = false;
+        $this->error = 'Máy chủ không cho phép chạy tiến trình nền nên chưa soạn được nội dung.';
     }
 
     /**
-     * Dự phòng cho môi trường chưa chạy queue worker: artefact đang chờ quá lâu thì tự soạn nốt.
+     * Chỉ đọc trạng thái và dọn nội dung bị treo, không gọi AI.
      */
     public function poll(): void
     {
-        $pending = $this->notebook()
+        foreach ($this->notebook()
             ->artifacts()
             ->where('status', 'generating')
-            ->where('updated_at', '<=', now()->subSeconds(5))
-            ->oldest('id')
-            ->limit(1)
-            ->get();
+            ->where('updated_at', '<=', now()->subMinutes(10))
+            ->get() as $stuck) {
+            $payload = $stuck->payload ?? [];
+            $payload['_error'] = 'Nội dung này bị treo quá lâu nên đã dừng. Nhấn "Tạo lại" để thử lần nữa.';
 
-        foreach ($pending as $artifact) {
-            GenerateArtifact::runInline($artifact->id);
+            $stuck->update([
+                'status' => NotebookArtifact::STATUS_FAILED,
+                'payload' => $payload,
+            ]);
         }
 
         $this->generating = $this->notebook()->artifacts()->where('status', 'generating')->exists();

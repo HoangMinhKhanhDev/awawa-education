@@ -63,7 +63,7 @@
     </div>
 
     @if ($showForm)
-        <div class="fixed inset-0 z-50 flex items-end justify-center bg-night-900/50 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+        <div class="fixed inset-0 z-50 flex items-end justify-center bg-night-900/60 p-0 sm:items-center sm:p-4"
             x-data x-on:keydown.escape.window="$wire.closeForm()">
             <div class="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-t-[14px] bg-white p-6 sm:rounded-[14px] dark:bg-night-800" @click.stop>
                 <div class="mb-5 flex items-center justify-between">
@@ -77,7 +77,7 @@
                     <div class="grid gap-4 sm:grid-cols-2">
                         <div>
                             <label class="label" for="subject-name">Tên môn</label>
-                            <input id="subject-name" type="text" class="input" wire:model.live.debounce.400ms="name">
+                              <input id="subject-name" type="text" class="input" wire:model="name">
                             @error('name') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
                         </div>
                         <div>
@@ -128,7 +128,7 @@
 
                     <div class="flex justify-end gap-2 pt-1">
                         <button type="button" wire:click="closeForm" class="btn btn-ghost">Hủy</button>
-                        <button type="submit" class="btn btn-primary" wire:loading.attr="disabled">
+                        <button type="submit" class="btn btn-primary" wire:loading.attr="disabled" wire:target="save">
                             <span wire:loading.remove wire:target="save">Lưu</span>
                             <span wire:loading wire:target="save">Đang lưu…</span>
                         </button>

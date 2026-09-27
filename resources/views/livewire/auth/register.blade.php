@@ -46,7 +46,7 @@
             <p class="text-[13px] text-signal dark:text-red-400">{{ $message }}</p>
         @enderror
 
-        <button type="submit" class="btn btn-primary w-full" wire:loading.attr="disabled">
+        <button type="submit" class="btn btn-primary w-full" wire:loading.attr="disabled" wire:target="register">
             <span wire:loading.remove wire:target="register">Tạo tài khoản</span>
             <span wire:loading wire:target="register">Đang tạo…</span>
         </button>

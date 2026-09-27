@@ -10,7 +10,6 @@ use App\Models\User;
 use App\Support\SubjectContext;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -47,7 +46,9 @@ class Info extends Component
     }
 
     /**
-     * @return Collection<int, array{student: User|null, total: float, attempts: int}>
+     * Xếp hạng theo điểm phần trăm cao nhất, kèm tổng điểm và số bài đã làm.
+     *
+     * @return Collection<int, array{student: User|null, best_percent: float, total: float, attempts: int}>
      */
     protected function leaderboard(): Collection
     {
@@ -56,24 +57,31 @@ class Info extends Component
             ->with('student')
             ->get();
 
-        $totals = ExamAttempt::query()
+        $rows = ExamAttempt::query()
             ->finished()
-            ->select('student_id', DB::raw('SUM(score) as total'), DB::raw('COUNT(*) as attempts'))
+            ->select('student_id')
+            ->selectRaw('MAX(CASE WHEN max_score > 0 THEN score * 100.0 / max_score ELSE 0 END) as best_percent')
+            ->selectRaw('COUNT(*) as attempts')
+            ->selectRaw('SUM(score) as total')
             ->groupBy('student_id')
             ->get()
             ->keyBy('student_id');
 
         return $members
-            ->map(function (TeamMembership $membership) use ($totals): array {
-                $row = $totals->get($membership->student_id);
+            ->map(function (TeamMembership $membership) use ($rows): array {
+                $row = $rows->get($membership->student_id);
 
                 return [
                     'student' => $membership->student,
+                    'best_percent' => $row ? (float) $row->best_percent : 0.0,
                     'total' => $row ? (float) $row->total : 0.0,
                     'attempts' => $row ? (int) $row->attempts : 0,
                 ];
             })
-            ->sortByDesc('total')
+            // Sắp theo khoá ít quan trọng trước, khoá chính sau, để thứ tự trước
+            // được giữ làm tiêu chí phụ (PHP 8 sắp xếp ổn định).
+            ->sortByDesc('attempts')
+            ->sortByDesc('best_percent')
             ->values();
     }
 }

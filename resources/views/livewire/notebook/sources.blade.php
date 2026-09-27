@@ -167,7 +167,7 @@
     </div>
 
     @if ($addOpen && $addType === '')
-        <div class="fixed inset-0 z-50 flex items-end justify-center bg-night-900/50 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+        <div class="fixed inset-0 z-50 flex items-end justify-center bg-night-900/60 p-0 sm:items-center sm:p-4">
             <div class="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-t-[14px] bg-white p-5 sm:rounded-[14px] dark:bg-night-800">
                 <div class="mb-4 flex items-center justify-between gap-3">
                     <h2 class="font-serif text-lg font-semibold text-ink dark:text-white">Thêm nguồn</h2>
@@ -225,7 +225,7 @@
     @endif
 
     @if ($addOpen && $addType !== '')
-        <div class="fixed inset-0 z-50 flex items-end justify-center bg-night-900/50 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+        <div class="fixed inset-0 z-50 flex items-end justify-center bg-night-900/60 p-0 sm:items-center sm:p-4">
             <div class="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-t-[14px] bg-white p-5 sm:rounded-[14px] dark:bg-night-800">
                 <div class="mb-4 flex items-center justify-between gap-3">
                     <button type="button" wire:click="$set('addType', '')" class="flex items-center gap-1 text-sm text-ink-faint hover:text-ink dark:text-slate-400 dark:hover:text-white">
@@ -372,7 +372,7 @@
     @endif
 
     @if ($viewing)
-        <div class="fixed inset-0 z-50 flex items-end justify-center bg-night-900/50 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+        <div class="fixed inset-0 z-50 flex items-end justify-center bg-night-900/60 p-0 sm:items-center sm:p-4">
             <div class="flex max-h-[88vh] w-full max-w-2xl flex-col rounded-t-[14px] bg-white p-5 sm:rounded-[14px] dark:bg-night-800">
                 <div class="mb-3 flex items-start justify-between gap-3">
                     <div class="min-w-0">

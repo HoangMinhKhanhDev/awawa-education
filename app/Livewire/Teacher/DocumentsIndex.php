@@ -3,6 +3,7 @@
 namespace App\Livewire\Teacher;
 
 use App\Enums\SubjectFeature;
+use App\Livewire\Teacher\Concerns\AssignsContent;
 use App\Models\Document;
 use App\Support\SubjectContext;
 use Illuminate\Contracts\View\View;
@@ -17,7 +18,7 @@ use Livewire\WithFileUploads;
 #[Title('Tài liệu')]
 class DocumentsIndex extends Component
 {
-    use WithFileUploads;
+    use AssignsContent, WithFileUploads;
 
     public bool $showForm = false;
 
@@ -143,6 +144,7 @@ class DocumentsIndex extends Component
             'documents' => Document::query()->with('creator')->orderByDesc('created_at')->get(),
             'subject' => $subject,
             'featureEnabled' => $subject?->hasFeature(SubjectFeature::Documents) ?? false,
+            'openAssignments' => $this->openAssignmentsByKey(),
         ]);
     }
 }

@@ -34,7 +34,7 @@
                 autocomplete="new-password" placeholder="Nhập lại mật khẩu mới">
         </div>
 
-        <button type="submit" class="btn btn-primary w-full" wire:loading.attr="disabled">
+        <button type="submit" class="btn btn-primary w-full" wire:loading.attr="disabled" wire:target="updatePassword">
             <span wire:loading.remove wire:target="updatePassword">Cập nhật mật khẩu</span>
             <span wire:loading wire:target="updatePassword">Đang cập nhật…</span>
         </button>

@@ -3,6 +3,7 @@ let reactRoot = null;
 let excalidrawApi = null;
 let latestScene = null;
 let dirtyFlag = false;
+let detachThemeListener = null;
 
 async function loadDeps() {
     if (deps !== null) {
@@ -18,7 +19,7 @@ async function loadDeps() {
 
     deps = {
         React: reactModule.default ?? reactModule,
-        createRoot: reactDomModule.createRoot,
+        createRoot: reactDomModule.default?.createRoot ?? reactDomModule.createRoot,
         excalidraw: excalidrawModule,
     };
 
@@ -27,6 +28,33 @@ async function loadDeps() {
 
 function currentTheme() {
     return document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+}
+
+/*
+ * Excalidraw nhét theme vào appState rồi serialize cả vào file .excalidraw, nên
+ * bản lưu sẽ "đóng băng" theme của người soạn và ghi đè lên theme của người
+ * mở. Bỏ nó ở cả lúc nạp lẫi lúc lưu để theme luôn lấy từ giao diện.
+ */
+function withoutStoredTheme(appState) {
+    if (appState === null || appState === undefined) {
+        return appState;
+    }
+
+    const { theme, ...rest } = appState;
+
+    return rest;
+}
+
+function sanitizedInitialData(initialData) {
+    if (initialData === null || initialData === undefined) {
+        return initialData;
+    }
+
+    if (Array.isArray(initialData)) {
+        return initialData;
+    }
+
+    return { ...initialData, appState: withoutStoredTheme(initialData.appState) };
 }
 
 function download(url, filename) {
@@ -67,6 +95,8 @@ const whiteboard = {
             reactRoot = null;
         }
 
+        this.stopFollowingTheme();
+
         excalidrawApi = null;
         dirtyFlag = false;
         latestScene = null;
@@ -75,7 +105,7 @@ const whiteboard = {
 
         const App = () =>
             React.createElement(excalidraw.Excalidraw, {
-                initialData: options.initialData ?? {},
+                initialData: sanitizedInitialData(options.initialData ?? {}),
                 theme: currentTheme(),
                 langCode: 'vi-VN',
                 UIOptions: {
@@ -95,6 +125,23 @@ const whiteboard = {
             });
 
         reactRoot.render(React.createElement(App));
+
+        // Theo dõi thay đổi theme để canvas không bị kẹt ở theme lúc mount.
+        const onThemeChange = (event) => {
+            const theme = event.detail?.resolved ?? currentTheme();
+
+            excalidrawApi?.updateScene?.({ appState: { theme } });
+        };
+
+        document.addEventListener('awawa:theme', onThemeChange);
+        detachThemeListener = () => document.removeEventListener('awawa:theme', onThemeChange);
+    },
+
+    stopFollowingTheme() {
+        if (typeof detachThemeListener === 'function') {
+            detachThemeListener();
+            detachThemeListener = null;
+        }
     },
 
     isDirty() {
@@ -108,12 +155,13 @@ const whiteboard = {
     getSceneJson() {
         const { excalidraw } = deps ?? {};
         const { elements, appState, files } = sceneParts();
+        const cleanAppState = withoutStoredTheme(appState);
 
         if (excalidraw?.serializeAsJSON) {
-            return excalidraw.serializeAsJSON(elements, appState, files, 'local');
+            return excalidraw.serializeAsJSON(elements, cleanAppState, files, 'local');
         }
 
-        return JSON.stringify({ type: 'excalidraw', elements, appState, files });
+        return JSON.stringify({ type: 'excalidraw', elements, appState: cleanAppState, files });
     },
 
     async exportPng(filename = 'so-do.png') {

@@ -28,10 +28,11 @@ class Navigation
             ],
             $user->isTeacher() => [
                 self::item('dashboard', 'Trang chủ', 'home', primary: true),
-                self::item('map', 'Sơ đồ', 'map', primary: true),
+                self::item('map', 'Sơ đồ', 'map'),
                 self::item('info', 'Thông tin', 'bell'),
                 self::item('profile', 'Hồ sơ', 'user'),
                 self::item('studio', 'Studio', 'sparkles', primary: true),
+                self::item('studio.assignments.hub', 'Giao bài', 'upload', primary: true),
                 self::item('students', 'Học sinh', 'users', primary: true),
             ],
             default => [

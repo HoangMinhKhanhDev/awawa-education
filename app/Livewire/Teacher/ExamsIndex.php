@@ -39,6 +39,7 @@ class ExamsIndex extends Component
             'subject' => $subject,
             'exams' => $this->assessmentsQuery()->orderByDesc('created_at')->paginate(10),
             'featureEnabled' => $subject?->hasFeature(SubjectFeature::Exams) ?? false,
+            'openAssignments' => $this->openAssignmentsByKey(),
         ]);
     }
 }

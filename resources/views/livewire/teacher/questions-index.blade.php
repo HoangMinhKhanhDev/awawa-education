@@ -70,7 +70,14 @@
                                     @endforeach
                                 </ul>
                             @elseif ($question->answer)
-                                <p class="mt-2 text-sm text-ink-soft dark:text-slate-400"><span class="font-medium">Đáp án:</span> {{ $question->answer }}</p>
+                                <p class="mt-2 text-sm text-ink-soft dark:text-slate-400">
+                                    <span class="font-medium">Đáp án:</span>
+                                    @if ($question->type === \App\Enums\QuestionType::TrueFalse)
+                                        {{ $question->type->trueFalseLabel($question->answer) }}
+                                    @else
+                                        {{ $question->answer }}
+                                    @endif
+                                </p>
                             @endif
                         </div>
 
@@ -95,7 +102,7 @@
     @endif
 
     @if ($showForm)
-        <div class="fixed inset-0 z-50 flex items-end justify-center bg-night-900/50 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+        <div class="fixed inset-0 z-50 flex items-end justify-center bg-night-900/60 p-0 sm:items-center sm:p-4"
             x-data x-on:keydown.escape.window="$wire.closeForm()">
             <div class="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-[14px] bg-white p-6 sm:rounded-[14px] dark:bg-night-800" @click.stop>
                 <div class="mb-5 flex items-center justify-between">
@@ -161,7 +168,23 @@
                                     </div>
                                 @endforeach
                             </div>
-                            @error('options') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
+                                @error('options') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
+                            </div>
+                        </div>
+                    @elseif ($type === 'true_false')
+                        <div>
+                            <label class="label" for="f-tf">Đáp án đúng</label>
+                            <div class="grid gap-2 sm:grid-cols-2" id="f-tf">
+                                @foreach ($trueFalseChoices as $value => $tfLabel)
+                                    <label class="flex cursor-pointer items-center gap-3 rounded-[10px] border border-rule px-3.5 py-3 text-sm transition-colors hover:bg-paper-2 has-[input:checked]:border-brand-500 has-[input:checked]:bg-brand-50 dark:border-night-700 dark:hover:bg-white/5 dark:has-[input:checked]:border-brand-400 dark:has-[input:checked]:bg-brand-500/10">
+                                        <input type="radio" name="f-tf-answer" value="{{ $value }}"
+                                              wire:model="answer"
+                                            class="h-4 w-4 border-rule-strong text-brand-600 focus:ring-brand-500 dark:border-night-700">
+                                        <span class="text-ink dark:text-slate-200">{{ $tfLabel }}</span>
+                                    </label>
+                                @endforeach
+                            </div>
+                            @error('answer') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
                         </div>
                     @else
                         <div>
@@ -194,7 +217,7 @@
 
                     <div class="flex justify-end gap-2 pt-1">
                         <button type="button" wire:click="closeForm" class="btn btn-ghost">Hủy</button>
-                        <button type="submit" class="btn btn-primary" wire:loading.attr="disabled">
+                        <button type="submit" class="btn btn-primary" wire:loading.attr="disabled" wire:target="save">
                             <span wire:loading.remove wire:target="save">Lưu câu hỏi</span>
                             <span wire:loading wire:target="save">Đang lưu…</span>
                         </button>

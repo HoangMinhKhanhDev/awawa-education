@@ -5,6 +5,7 @@ namespace Tests\Feature\Notebook;
 use App\Enums\ArtifactType;
 use App\Enums\MapVisibility;
 use App\Enums\SubjectFeature;
+use App\Jobs\GenerateArtifact;
 use App\Livewire\Notebook\Studio;
 use App\Models\AiProvider;
 use App\Models\Document;
@@ -14,6 +15,7 @@ use App\Models\NotebookArtifact;
 use App\Models\Question;
 use App\Models\Subject;
 use App\Models\User;
+use App\Services\Notebook\ArtifactGenerator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -81,6 +83,83 @@ class StudioTest extends TestCase
         ]);
     }
 
+    private function studioQuestions(): NotebookArtifact
+    {
+        Livewire::test(Studio::class, ['notebookId' => $this->notebook->id])
+            ->call('selectType', ArtifactType::Questions->value)
+            ->set('instruction', 'Soạn câu hỏi số học')
+            ->call('generate');
+
+        $this->runBackgroundWork();
+
+        return NotebookArtifact::query()->firstOrFail();
+    }
+
+    private function studioDocument(): NotebookArtifact
+    {
+        Livewire::test(Studio::class, ['notebookId' => $this->notebook->id])
+            ->call('selectType', ArtifactType::Document->value)
+            ->set('instruction', 'Tóm tắt chủ đề')
+            ->call('generate');
+
+        $this->runBackgroundWork();
+
+        return NotebookArtifact::query()->firstOrFail();
+    }
+
+    /**
+     * Việc soạn nội dung chạy ở tiến trình nền nên test phải tự chạy phần đó.
+     */
+    private function runBackgroundWork(): void
+    {
+        NotebookArtifact::query()
+            ->where('status', 'generating')
+            ->orderBy('id')
+            ->get()
+            ->each(fn (NotebookArtifact $artifact) => (new GenerateArtifact($artifact->id))->handle(app(ArtifactGenerator::class)));
+    }
+
+    public function test_citation_markers_are_stripped_from_generated_questions(): void
+    {
+        $this->fakeJson([[
+            'type' => 'multiple_choice',
+            'content' => 'Theo Nghị định [1], mục tiêu năm 2030 là gì?',
+            'options' => [
+                ['content' => '20 tỷ USD [2]', 'is_correct' => false],
+                ['content' => '25 tỷ USD', 'is_correct' => true],
+                ['content' => '18 tỷ USD', 'is_correct' => false],
+                ['content' => '35 tỷ USD', 'is_correct' => false],
+            ],
+            'answer' => '25 tỷ USD',
+            'explanation' => 'Nguồn [9] và [12] chỉ ra định hướng này.',
+            'difficulty' => 'medium',
+            'points' => 1,
+            'topic' => 'Kinh tế [3]',
+        ]]);
+
+        $this->studioQuestions();
+
+        $item = NotebookArtifact::query()->firstOrFail()->payload['items'][0];
+
+        $this->assertSame('Theo Nghị định, mục tiêu năm 2030 là gì?', $item['content']);
+        $this->assertSame('Nguồn và chỉ ra định hướng này.', $item['explanation']);
+        $this->assertSame('Kinh tế', $item['topic']);
+        $this->assertSame('20 tỷ USD', $item['options'][0]['content']);
+    }
+
+    public function test_citation_markers_are_stripped_from_generated_documents(): void
+    {
+        $this->fakeText("# Tài liệu\n\n- Ý một [1]\n- Ý hai [2][3]\n\nKết luận [4].");
+
+        $this->studioDocument();
+
+        $text = NotebookArtifact::query()->firstOrFail()->text_content;
+
+        $this->assertStringNotContainsString('[1]', (string) $text);
+        $this->assertStringNotContainsString('[4]', (string) $text);
+        $this->assertStringContainsString('Kết luận.', (string) $text);
+    }
+
     public function test_generate_questions_creates_draft_artifact(): void
     {
         $this->fakeJson([[
@@ -101,6 +180,8 @@ class StudioTest extends TestCase
             ->set('instruction', 'Soạn câu hỏi số học')
             ->call('generate')
             ->assertHasNoErrors();
+
+        $this->runBackgroundWork();
 
         $artifact = NotebookArtifact::query()->where('notebook_id', $this->notebook->id)->firstOrFail();
 
@@ -294,6 +375,8 @@ class StudioTest extends TestCase
             ->assertSet('activeType', ArtifactType::Questions->value)
             ->assertSet('error', null);
 
+        $this->runBackgroundWork();
+
         $artifact = NotebookArtifact::query()->where('notebook_id', $this->notebook->id)->firstOrFail();
 
         $this->assertSame('failed', $artifact->status);
@@ -321,11 +404,16 @@ class StudioTest extends TestCase
             ->set('instruction', 'Tóm tắt chủ đề quang học')
             ->call('generate')
             ->assertHasNoErrors();
+
+        $this->runBackgroundWork();
+
         $artifact = NotebookArtifact::query()->firstOrFail();
 
         $this->assertSame('Tóm tắt chủ đề quang học', $artifact->payload['_generation']['instruction']);
 
         $component->call('regenerate', $artifact->id)->assertSet('error', null);
+
+        $this->runBackgroundWork();
 
         $this->assertSame('Bản tóm tắt đã tạo lại.', $artifact->fresh()->text_content);
         $this->assertSame('draft', $artifact->fresh()->status);

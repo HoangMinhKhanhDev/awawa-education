@@ -4,20 +4,34 @@
     $percent = $total > 0 ? (int) round($answered / $total * 100) : 0;
 @endphp
 
-<div class="space-y-6" wire:poll.30s="saveProgress"
+<div class="space-y-6"
     x-data="{
         remaining: 0,
         timer: null,
+        saveTimer: null,
+        saving: false,
         init() {
             const iso = @js($expiresAtIso);
-            if (! iso) { return; }
-            const end = new Date(iso).getTime();
+            const end = iso ? new Date(iso).getTime() : null;
             const tick = () => {
+                if (end === null) { return; }
                 this.remaining = Math.max(0, Math.floor((end - Date.now()) / 1000));
-                if (this.remaining <= 0) { clearInterval(this.timer); $wire.submit(); }
+                if (this.remaining <= 0) {
+                    clearInterval(this.timer);
+                    $wire.submit();
+                }
             };
             tick();
             this.timer = setInterval(tick, 1000);
+
+            // Lưu tiến độ định kỳ, nhưng bỏ qua khi học sinh đang rời trang:
+            // request lúc đó tốn pin và dữ liệu mà không đem lại gì, lại xếp
+            // vào hàng đợi Livewire chen vào giữa các lần bấm.
+            this.saveTimer = setInterval(() => {
+                if (document.hidden || this.saving) { return; }
+                this.saving = true;
+                $wire.saveProgress().finally(() => { this.saving = false; });
+            }, 45000);
         },
         fmt(sec) {
             const h = Math.floor(sec / 3600);
@@ -29,7 +43,7 @@
     <div class="panel sticky top-14 z-20">
         <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5">
             <div class="min-w-0">
-                <h1 class="truncate text-lg font-semibold text-ink dark:text-white">{{ $exam->title }}</h1>
+                <h1 class="exam-protected truncate text-lg font-semibold text-ink dark:text-white">{{ $exam->title }}</h1>
                 <p class="tnum mt-0.5 text-xs text-ink-faint dark:text-slate-500">{{ $answered }}/{{ $total }} câu đã trả lời</p>
             </div>
 
@@ -46,7 +60,7 @@
                 @endif
 
                 <button type="button" wire:click="submit" wire:confirm="Nộp bài? Bạn không thể sửa sau khi nộp."
-                    class="btn btn-primary" wire:loading.attr="disabled">
+                    class="btn btn-primary" wire:loading.attr="disabled" wire:target="submit">
                     <span wire:loading.remove wire:target="submit">Nộp bài</span>
                     <span wire:loading wire:target="submit">Đang nộp…</span>
                 </button>
@@ -75,7 +89,7 @@
                             <span class="chip chip-neutral">{{ $question->type->label() }}</span>
                             <span class="tnum text-xs text-ink-faint dark:text-slate-500">{{ (float) ($examQuestion->points ?? $question->points) }} điểm</span>
                         </div>
-                        <p class="mt-2 whitespace-pre-line leading-relaxed text-ink dark:text-slate-100">{{ $question->content }}</p>
+                        <p class="exam-protected mt-2 whitespace-pre-line leading-relaxed text-ink dark:text-slate-100">{{ $question->content }}</p>
 
                         @if ($question->type === \App\Enums\QuestionType::MultipleChoice)
                             <div class="mt-3 space-y-2">
@@ -85,7 +99,19 @@
                                         <input type="radio" name="q-{{ $question->id }}" value="{{ $option->id }}"
                                             wire:model="answers.{{ $question->id }}.selected"
                                             class="h-4 w-4 border-rule-strong text-brand-600 focus:ring-brand-500 dark:border-night-700">
-                                        <span class="text-ink dark:text-slate-200">{{ $option->content }}</span>
+                                        <span class="exam-protected text-ink dark:text-slate-200">{{ $option->content }}</span>
+                                    </label>
+                                @endforeach
+                            </div>
+                        @elseif ($question->type === \App\Enums\QuestionType::TrueFalse)
+                            <div class="mt-3 grid gap-2 sm:grid-cols-2">
+                                @foreach ($question->type->trueFalseChoices() as $tfValue => $tfLabel)
+                                    <label class="flex cursor-pointer items-center gap-3 rounded-[10px] border border-rule px-3.5 py-3 text-sm transition-colors hover:bg-paper-2 has-[input:checked]:border-brand-500 has-[input:checked]:bg-brand-50 dark:border-night-700 dark:hover:bg-white/5 dark:has-[input:checked]:border-brand-400 dark:has-[input:checked]:bg-brand-500/10"
+                                        wire:key="tf-{{ $question->id }}-{{ $tfValue }}">
+                                        <input type="radio" name="tf-{{ $question->id }}" value="{{ $tfValue }}"
+                                            wire:model="answers.{{ $question->id }}.text"
+                                            class="h-4 w-4 border-rule-strong text-brand-600 focus:ring-brand-500 dark:border-night-700">
+                                        <span class="exam-protected text-ink dark:text-slate-200">{{ $tfLabel }}</span>
                                     </label>
                                 @endforeach
                             </div>
@@ -102,7 +128,7 @@
 
     <div class="flex justify-end">
         <button type="button" wire:click="submit" wire:confirm="Nộp bài? Bạn không thể sửa sau khi nộp."
-            class="btn btn-primary px-6 py-3" wire:loading.attr="disabled">
+            class="btn btn-primary px-6 py-3" wire:loading.attr="disabled" wire:target="submit">
             Nộp bài
         </button>
     </div>
@@ -114,15 +140,60 @@
         if (! window.__awawaExamHooks) {
             window.__awawaExamHooks = true;
 
-            const notify = (type) => {
-                if (window.__awawaExamNotify) window.__awawaExamNotify(type);
+            // Chỉ tính khi tab thực sự khuất, giữ liền tối thiểu 2 giây, và gộp
+            // mọi sự kiện trong 5 giây thành một. Trên di động, blur bắn liên tục
+            // khi bật bàn phím ảo, mở picker native hay chạm thanh địa chỉ — tính
+            // cả những cái đó sẽ thành cảnh báo sai và làm nghẽn hàng đợi Livewire.
+            const HIDDEN_GRACE_MS = 2000;
+            const COALESCE_MS = 5000;
+            const MIN_EVENT_GAP_MS = 30000;
+            let hiddenSince = null;
+            let coalesceTimer = null;
+            let lastSentAt = 0;
+
+            const flush = () => {
+                coalesceTimer = null;
+                const now = Date.now();
+
+                if (now - lastSentAt < MIN_EVENT_GAP_MS) {
+                    return;
+                }
+
+                lastSentAt = now;
+
+                if (window.__awawaExamNotify) window.__awawaExamNotify('tab_hidden');
             };
 
-            document.addEventListener('visibilitychange', () => { if (document.hidden) notify('tab_hidden'); });
-            window.addEventListener('blur', () => notify('window_blur'));
-            document.addEventListener('fullscreenchange', () => { if (! document.fullscreenElement) notify('fullscreen_exit'); });
-            document.addEventListener('copy', (event) => event.preventDefault());
-            document.addEventListener('contextmenu', (event) => event.preventDefault());
+            const onVisibilityChange = () => {
+                if (document.hidden) {
+                    hiddenSince = Date.now();
+                    return;
+                }
+
+                if (hiddenSince === null) {
+                    return;
+                }
+
+                const wasHiddenLongEnough = Date.now() - hiddenSince >= HIDDEN_GRACE_MS;
+                hiddenSince = null;
+
+                if (! wasHiddenLongEnough) {
+                    return;
+                }
+
+                if (coalesceTimer !== null) clearTimeout(coalesceTimer);
+                coalesceTimer = setTimeout(flush, COALESCE_MS);
+            };
+
+            document.addEventListener('visibilitychange', onVisibilityChange);
+
+            // Chỉ chặn sao chép khi bắt nguồn từ vùng đề; copy từ chỗ khác
+            // (kể cả từ ô trả lời ra ngoài) vẫn hoạt động để không hỏng paste.
+            document.addEventListener('copy', (event) => {
+                if (event.target?.closest?.('.exam-protected')) {
+                    event.preventDefault();
+                }
+            });
         }
     </script>
     @endscript

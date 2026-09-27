@@ -2,16 +2,31 @@ import { precacheAndRoute, cleanupOutdatedCaches, createHandlerBoundToURL } from
 import { registerRoute, NavigationRoute, setCatchHandler } from 'workbox-routing';
 import { CacheFirst, NetworkFirst, StaleWhileRevalidate } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
-import { clientsClaim } from 'workbox-core';
 
-self.skipWaiting();
-clientsClaim();
+self.addEventListener('message', (event) => {
+    if (event.data === 'SKIP_WAITING') {
+        self.skipWaiting();
+    }
+});
 
+/*
+ * Cố ý KHÔNG gọi skipWaiting()/clientsClaim().
+ *
+ * Nếu SW mới giành quyền giữa phiên, cleanupOutdatedCaches() sẽ xoá precache
+ * của bản cũ trong khi các document đang mở vẫn trỏ tới tên file hash cũ →
+ * CSS 404 → trang mất style rồi nhảy lại. Đợi tất cả tab cũ đóng hẳn rồi mới
+ * kích hoạt bản mới là cách an toàn, và người dùng vẫn nhận được bản mới ở
+ * lần tải trang kế tiếp.
+ */
 precacheAndRoute(self.__WB_MANIFEST);
 cleanupOutdatedCaches();
 
 registerRoute(
-    new NavigationRoute(new NetworkFirst({ cacheName: 'awawa-pages', networkTimeoutSeconds: 4 }), {
+    new NavigationRoute(new NetworkFirst({
+        cacheName: 'awawa-pages',
+        networkTimeoutSeconds: 2,
+        plugins: [new ExpirationPlugin({ maxEntries: 30, maxAgeSeconds: 24 * 60 * 60 })],
+    }), {
         denylist: [/^\/login/, /^\/register/, /^\/auth\//, /^\/api\//, /^\/build\//],
     }),
 );
@@ -20,7 +35,7 @@ registerRoute(
     ({ request }) => ['style', 'script', 'worker'].includes(request.destination),
     new StaleWhileRevalidate({
         cacheName: 'awawa-assets',
-        plugins: [new ExpirationPlugin({ maxEntries: 80, maxAgeSeconds: 60 * 60 * 24 * 30 })],
+        plugins: [new ExpirationPlugin({ maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 })],
     }),
 );
 

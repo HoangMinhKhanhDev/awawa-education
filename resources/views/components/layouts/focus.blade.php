@@ -10,7 +10,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <meta name="theme-color" content="{{ config('awawa.brand.primary') }}">
+    <meta id="theme-color-meta" name="theme-color" content="{{ config('awawa.brand.primary') }}">
     <meta name="vapid-public-key" content="{{ config('awawa.webpush.public_key') }}">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
@@ -21,19 +21,7 @@
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
     <link rel="manifest" href="/manifest.webmanifest">
 
-    <script>
-        (function () {
-            try {
-                var theme = localStorage.getItem('awawa-theme');
-                if (!theme) {
-                    theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-                }
-                if (theme === 'dark') {
-                    document.documentElement.classList.add('dark');
-                }
-            } catch (error) {}
-        })();
-    </script>
+    <x-theme-script />
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @livewireStyles

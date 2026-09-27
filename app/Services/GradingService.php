@@ -22,8 +22,13 @@ class GradingService
 
         $attempt->recomputeScore();
 
+        $submittedAt = $attempt->submitted_at ?? now();
+
         $attempt->forceFill([
-            'submitted_at' => $attempt->submitted_at ?? now(),
+            'submitted_at' => $submittedAt,
+            'time_spent_seconds' => $attempt->started_at !== null
+                ? max(0, (int) $attempt->started_at->diffInSeconds($submittedAt))
+                : null,
             'status' => $attempt->hasPendingManualGrading()
                 ? AttemptStatus::Submitted
                 : AttemptStatus::Graded,
@@ -45,6 +50,7 @@ class GradingService
 
         $isCorrect = match ($question->type) {
             QuestionType::MultipleChoice => $this->gradeMultipleChoice($answer),
+            QuestionType::TrueFalse => $this->gradeTrueFalse($answer),
             QuestionType::FillBlank => $this->gradeFillBlank($answer),
             default => false,
         };
@@ -80,6 +86,17 @@ class GradingService
         $given = $this->normalize((string) $answer->answer_text);
 
         return $expected !== '' && $expected === $given;
+    }
+
+    /**
+     * Câu đúng/sai so trên giá trị đã chuẩn hoá, nên "Đúng" và "true" vẫn là một.
+     */
+    protected function gradeTrueFalse(AttemptAnswer $answer): bool
+    {
+        $expected = QuestionType::normalizeTruthy((string) $answer->question->answer);
+        $given = QuestionType::normalizeTruthy((string) $answer->answer_text);
+
+        return $expected !== null && $expected === $given;
     }
 
     protected function normalize(string $value): string

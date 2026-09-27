@@ -1,5 +1,6 @@
 @php
-    $percentage = (float) $attempt->max_score > 0 ? round(((float) $attempt->score / (float) $attempt->max_score) * 100) : 0;
+    $percentage = $attempt->percent() ?? 0;
+    $delta = $previousAttempt?->percent() === null ? null : $percentage - $previousAttempt->percent();
 @endphp
 
 <div class="space-y-6">
@@ -12,6 +13,51 @@
         <span class="chip chip-neutral">{{ $attempt->status->label() }}</span>
     </div>
 
+    @if ($attempts->count() > 1 || $canRetake)
+        <div class="panel panel-pad flex flex-wrap items-center gap-x-4 gap-y-3">
+            <div class="flex flex-wrap items-center gap-2">
+                @if ($maxAttempts > 0)
+                    <span class="tnum text-sm font-medium text-ink dark:text-slate-200">Lần {{ $attempt->attempt_no }}/{{ $maxAttempts }}</span>
+                @else
+                    <span class="tnum text-sm font-medium text-ink dark:text-slate-200">Lần {{ $attempt->attempt_no }}</span>
+                @endif
+
+                @if ($delta !== null)
+                    <span class="tnum text-xs {{ $delta > 0 ? 'text-success dark:text-emerald-400' : ($delta < 0 ? 'text-signal dark:text-red-400' : 'text-ink-faint dark:text-slate-500') }}">
+                        {{ $delta > 0 ? '+' : '' }}{{ number_format($delta, 2) }} điểm so với lần trước
+                    </span>
+                @endif
+            </div>
+
+            <div class="flex flex-wrap items-center gap-1.5">
+                @foreach ($attempts as $row)
+                    @php $active = $row->id === $attempt->id; @endphp
+                    <a
+                        href="{{ route('student.result', ['exam' => $exam, 'lan' => $row->attempt_no]) }}"
+                        wire:navigate
+                        aria-current="{{ $active ? 'true' : 'false' }}"
+                        class="tnum rounded-full border px-3 py-1 text-xs font-medium transition-colors
+                            {{ $active
+                                ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300'
+                                : 'border-rule text-ink-soft hover:bg-paper-2 dark:border-night-700 dark:text-slate-400 dark:hover:bg-white/5' }}"
+                    >
+                        L{{ $row->attempt_no }} · {{ number_format($row->percent() ?? 0, 0) }}%
+                    </a>
+                @endforeach
+            </div>
+
+            @if ($canRetake)
+                <a href="{{ route('student.take', $exam) }}" wire:navigate class="btn btn-outline ml-auto">
+                    <x-icon name="refresh" class="h-4 w-4" />
+                    Làm lại
+                    @if ($remainingAttempts > 0)
+                        <span class="tnum opacity-70">(còn {{ $remainingAttempts }} lượt)</span>
+                    @endif
+                </a>
+            @endif
+        </div>
+    @endif
+
     <div class="panel panel-pad">
         <div class="flex flex-wrap items-center gap-x-8 gap-y-5">
             <div>
@@ -22,7 +68,14 @@
             </div>
 
             <div class="min-w-[200px] flex-1">
-                <div class="h-1.5 w-full overflow-hidden rounded-full bg-paper-2 dark:bg-night-700">
+                <div
+                    class="h-1.5 w-full overflow-hidden rounded-full bg-paper-2 dark:bg-night-700"
+                    role="progressbar"
+                    aria-label="Tỉ lệ điểm"
+                    aria-valuenow="{{ (int) $percentage }}"
+                    aria-valuemin="0"
+                    aria-valuemax="100"
+                >
                     <div class="h-full rounded-full bg-brand-600 dark:bg-brand-400" style="width: {{ $percentage }}%"></div>
                 </div>
                 <p class="tnum mt-2 text-xs text-ink-soft dark:text-slate-400">
@@ -32,6 +85,11 @@
                 </p>
                 @if ($attempt->submitted_at)
                     <p class="tnum mt-1 text-xs text-ink-faint dark:text-slate-500">Nộp lúc {{ $attempt->submitted_at->format('d/m/Y H:i') }}</p>
+                @endif
+                @if ($attempt->time_spent_seconds)
+                    <p class="tnum mt-1 text-xs text-ink-faint dark:text-slate-500">
+                        Thời gian làm: {{ intdiv($attempt->time_spent_seconds, 60) }} phút {{ $attempt->time_spent_seconds % 60 }} giây
+                    </p>
                 @endif
                 @if ($attempt->hasPendingManualGrading())
                     <p class="mt-1 text-xs font-medium text-warning dark:text-amber-400">Còn câu tự luận đang chờ giáo viên chấm.</p>
@@ -78,11 +136,25 @@
                             </ul>
                         @else
                             <div class="mt-3 rounded-[10px] border border-rule bg-paper-2 p-3.5 dark:border-night-700 dark:bg-night-900/40">
-                                <p class="text-xs font-medium text-ink-faint dark:text-slate-500">Bài làm của bạn</p>
-                                <p class="mt-1 whitespace-pre-line text-sm leading-relaxed text-ink dark:text-slate-200">{{ $answer?->answer_text ?: '(bỏ trống)' }}</p>
+                                <p class="text-xs font-medium text-ink-faint dark:text-slate-500">
+                                    @if ($question->type === \App\Enums\QuestionType::TrueFalse)
+                                        Bạn chọn
+                                    @else
+                                        Bài làm của bạn
+                                    @endif
+                                </p>
+                                <p class="mt-1 whitespace-pre-line text-sm leading-relaxed text-ink dark:text-slate-200">
+                                    @if ($question->type === \App\Enums\QuestionType::TrueFalse)
+                                        {{ $question->type->trueFalseLabel($answer?->answer_text) }}
+                                    @else
+                                        {{ $answer?->answer_text ?: '(bỏ trống)' }}
+                                    @endif
+                                </p>
                             </div>
                             @if ($question->answer && $question->type === \App\Enums\QuestionType::FillBlank)
                                 <p class="mt-2 text-sm text-ink-soft dark:text-slate-400"><span class="font-medium">Đáp án:</span> {{ $question->answer }}</p>
+                            @elseif ($question->answer && $question->type === \App\Enums\QuestionType::TrueFalse)
+                                <p class="mt-2 text-sm text-ink-soft dark:text-slate-400"><span class="font-medium">Đáp án:</span> {{ $question->type->trueFalseLabel($question->answer) }}</p>
                             @endif
                         @endif
 

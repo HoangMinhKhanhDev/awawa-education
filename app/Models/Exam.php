@@ -92,6 +92,42 @@ class Exam extends Model
         return $this->type === ExamType::Exam;
     }
 
+    /**
+     * Số lần làm tối đa cho mỗi học sinh. Mặc định là một lần.
+     */
+    public function maxAttempts(): int
+    {
+        $value = $this->settings['max_attempts'] ?? 1;
+
+        return max(1, is_numeric($value) ? (int) $value : 1);
+    }
+
+    public function allowsRetake(): bool
+    {
+        return $this->maxAttempts() > 1;
+    }
+
+    /**
+     * Lần làm đã dùng, tính cả lần đang làm dở.
+     */
+    public function attemptsUsedBy(User $user): int
+    {
+        return $this->attempts()
+            ->withoutSubjectScope()
+            ->where('student_id', $user->id)
+            ->count();
+    }
+
+    public function canAttemptAgain(User $user): bool
+    {
+        return $this->attemptsUsedBy($user) < $this->maxAttempts();
+    }
+
+    public function remainingAttemptsFor(User $user): int
+    {
+        return max(0, $this->maxAttempts() - $this->attemptsUsedBy($user));
+    }
+
     public function refreshTotalPoints(): void
     {
         $total = $this->examQuestions()

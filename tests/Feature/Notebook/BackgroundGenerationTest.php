@@ -74,7 +74,19 @@ class BackgroundGenerationTest extends TestCase
             ->call('selectType', ArtifactType::Document->value);
     }
 
-    public function test_generating_creates_a_pending_artifact_and_dispatches_the_job(): void
+    /**
+     * Việc soạn nội dung chạy ở tiến trình nền nên test phải tự chạy phần đó.
+     */
+    private function runBackgroundWork(): void
+    {
+        NotebookArtifact::query()
+            ->where('status', 'generating')
+            ->orderBy('id')
+            ->get()
+            ->each(fn (NotebookArtifact $artifact) => (new GenerateArtifact($artifact->id))->handle(app(ArtifactGenerator::class)));
+    }
+
+    public function test_generating_leaves_the_artifact_pending_without_queueing_it(): void
     {
         Queue::fake();
         $this->fakeDocumentText();
@@ -87,7 +99,8 @@ class BackgroundGenerationTest extends TestCase
         $this->assertStringContainsString('đang soạn', $artifact->title);
         $this->assertArrayHasKey('_generation', $artifact->payload);
 
-        Queue::assertPushed(GenerateArtifact::class, fn (GenerateArtifact $job): bool => $job->artifactId === $artifact->id);
+        // Việc soạn chạy ở tiến trình CLI riêng, không đi qua queue.
+        Queue::assertNothingPushed();
     }
 
     public function test_the_job_writes_the_result_into_the_artifact(): void
@@ -109,7 +122,11 @@ class BackgroundGenerationTest extends TestCase
         $this->assertArrayNotHasKey('_error', $artifact->payload);
     }
 
-    public function test_poll_finishes_a_pending_artifact_when_no_queue_worker_runs(): void
+    /**
+     * Nguyên nhân gốc của vòng lặp 30 giây: poll() từng tự gọi AI trong web request.
+     * Request poll phải chỉ đọc trạng thái và kết thúc ngay.
+     */
+    public function test_poll_never_calls_the_ai_from_the_web_request(): void
     {
         Queue::fake();
         $this->fakeDocumentText('Xong rồi mới có nội dung.');
@@ -117,7 +134,6 @@ class BackgroundGenerationTest extends TestCase
         $this->studio()->call('generate');
 
         $artifact = NotebookArtifact::query()->firstOrFail();
-        $this->assertSame('generating', $artifact->status);
 
         NotebookArtifact::query()
             ->whereKey($artifact->id)
@@ -125,10 +141,36 @@ class BackgroundGenerationTest extends TestCase
 
         Livewire::test(Studio::class, ['notebookId' => $this->notebook->id])
             ->call('poll')
-            ->assertSet('generating', false)
-            ->assertSee('Đã soạn xong');
+            ->assertSet('generating', true);
 
-        $this->assertSame('draft', $artifact->fresh()->status);
+        $this->assertSame('generating', $artifact->fresh()->status);
+        $this->assertNull($artifact->fresh()->text_content);
+
+        Http::assertNothingSent();
+    }
+
+    public function test_a_stuck_artifact_is_reported_as_failed_instead_of_spinning_forever(): void
+    {
+        Queue::fake();
+        $this->fakeDocumentText('Nội dung hoàn tất.');
+
+        $this->studio()->call('generate');
+
+        $artifact = NotebookArtifact::query()->firstOrFail();
+
+        NotebookArtifact::query()
+            ->whereKey($artifact->id)
+            ->update(['updated_at' => now()->subMinutes(30)]);
+
+        Livewire::test(Studio::class, ['notebookId' => $this->notebook->id])
+            ->call('poll')
+            ->assertSet('generating', false)
+            ->assertSee('Tạo lại');
+
+        $artifact->refresh();
+
+        $this->assertSame('failed', $artifact->status);
+        $this->assertStringContainsString('Tạo lại', (string) $artifact->failedReason());
     }
 
     public function test_a_notice_is_shown_once_after_the_user_comes_back(): void

@@ -79,7 +79,7 @@ class ArtifactGenerator
             return [
                 'title' => $this->titleFrom($notebook, $type, $instruction, $params),
                 'payload' => null,
-                'text' => trim((string) $result?->text),
+                'text' => CitationStripper::clean(trim((string) $result?->text)),
                 'provider' => $result?->providerKey ?? '',
                 'model' => $result?->model ?? '',
                 'tokens' => $result?->totalTokens() ?? 0,
@@ -202,10 +202,12 @@ class ArtifactGenerator
     protected function schemaHint(ArtifactType $type): string
     {
         return match ($type) {
-            ArtifactType::Questions => 'Một mảng JSON các câu hỏi. Mỗi câu: {"type":"multiple_choice|fill_blank|essay","content":"...","options":[{"content":"...","is_correct":true}],"answer":"...","explanation":"...","difficulty":"easy|medium|hard","points":1,"topic":"..."}. '
-                .'Với multiple_choice cần 4 lựa chọn và đúng 1 đáp án is_correct=true. Chỉ trả về JSON, không kèm chữ nào khác.',
+            ArtifactType::Questions => 'Một mảng JSON các câu hỏi. Mỗi câu: {"type":"multiple_choice|true_false|fill_blank|essay","content":"...","options":[{"content":"...","is_correct":true}],"answer":"...","explanation":"...","difficulty":"easy|medium|hard","points":1,"topic":"..."}. '
+                .'Với multiple_choice cần 4 lựa chọn và đúng 1 đáp án is_correct=true. '
+                .'Với true_false không có lựa chọn, "answer" phải là "true" (đúng) hoặc "false" (sai), và nội dung câu phải là một mệnh đề có thể đúng hoặc sai. '
+                .'Chỉ trả về JSON, không kèm chữ nào khác.',
             ArtifactType::Exam => 'Một object JSON: {"title":"...","description":"...","sections":[{"title":"PHẦN I","instructions":"...","questions":[<câu hỏi như trên>]}]}. '
-                .'Câu hỏi trong đề dùng đúng cấu trúc: {"type":"multiple_choice|fill_blank|essay","content":"...","options":[{"content":"...","is_correct":true}],"answer":"...","explanation":"...","difficulty":"easy|medium|hard","points":1,"topic":"..."}. '
+                .'Câu hỏi trong đề dùng đúng cấu trúc: {"type":"multiple_choice|true_false|fill_blank|essay","content":"...","options":[{"content":"...","is_correct":true}],"answer":"...","explanation":"...","difficulty":"easy|medium|hard","points":1,"topic":"..."}. '
                 .'Chỉ trả về JSON, không kèm chữ nào khác.',
             ArtifactType::Flashcards => 'Một mảng JSON: [{"front":"câu hỏi/khái niệm","back":"trả lời ngắn"}]. 8–15 thẻ. Chỉ trả về JSON.',
             ArtifactType::MindMap => 'Một object JSON: {"title":"...","nodes":[{"id":"n1","label":"...","parent":null},{"id":"n2","label":"...","parent":"n1"}]}. Chỉ trả về JSON.',
@@ -243,6 +245,7 @@ class ArtifactGenerator
     {
         return match ($value) {
             'multiple_choice' => 'trắc nghiệm',
+            'true_false' => 'đúng/sai',
             'fill_blank' => 'điền khuyết',
             'essay' => 'tự luận',
             default => 'trộn lẫn',
@@ -535,25 +538,40 @@ class ArtifactGenerator
                 continue;
             }
 
+            $type = QuestionType::tryFrom((string) ($item['type'] ?? '')) ?? QuestionType::Essay;
+
             $options = [];
 
-            foreach (array_slice((array) ($item['options'] ?? []), 0, 6) as $option) {
-                if (blank($option['content'] ?? null)) {
-                    continue;
-                }
+            // Chỉ câu trắc nghiệm mới có lựa chọn; AI hay kèm "options" rỗng vào câu
+            // tự luận hoặc đúng/sai.
+            if ($type === QuestionType::MultipleChoice) {
+                foreach (array_slice((array) ($item['options'] ?? []), 0, 6) as $option) {
+                    if (blank($option['content'] ?? null)) {
+                        continue;
+                    }
 
-                $options[] = ['content' => (string) $option['content'], 'is_correct' => (bool) ($option['is_correct'] ?? false)];
+                    $options[] = [
+                        'content' => CitationStripper::clean((string) $option['content']),
+                        'is_correct' => (bool) ($option['is_correct'] ?? false),
+                    ];
+                }
+            }
+
+            $answer = CitationStripper::clean((string) ($item['answer'] ?? ''));
+
+            if ($type === QuestionType::TrueFalse) {
+                $answer = QuestionType::normalizeTruthy($answer) ?? $this->truthyFromOptions($item) ?? QuestionType::FALSE;
             }
 
             $out[] = [
-                'type' => QuestionType::tryFrom((string) ($item['type'] ?? ''))?->value ?? 'essay',
-                'content' => (string) $item['content'],
+                'type' => $type->value,
+                'content' => CitationStripper::clean((string) $item['content']),
                 'options' => $options,
-                'answer' => (string) ($item['answer'] ?? ''),
-                'explanation' => (string) ($item['explanation'] ?? ''),
+                'answer' => $answer,
+                'explanation' => CitationStripper::clean((string) ($item['explanation'] ?? '')),
                 'difficulty' => Difficulty::tryFrom((string) ($item['difficulty'] ?? ''))?->value ?? (string) ($params['difficulty'] ?? 'medium'),
                 'points' => (float) ($item['points'] ?? $params['points'] ?? 1),
-                'topic' => (string) ($item['topic'] ?? ''),
+                'topic' => CitationStripper::clean((string) ($item['topic'] ?? '')),
             ];
         }
 
@@ -599,8 +617,8 @@ class ArtifactGenerator
             }
 
             $out[] = [
-                'title' => (string) ($section['title'] ?? 'Phần'),
-                'instructions' => (string) ($section['instructions'] ?? ''),
+                'title' => CitationStripper::clean((string) ($section['title'] ?? 'Phần')),
+                'instructions' => CitationStripper::clean((string) ($section['instructions'] ?? '')),
                 'questions' => array_map(function (array $question) use ($pointsPerQuestion): array {
                     $question['points'] = $pointsPerQuestion;
 
@@ -614,7 +632,7 @@ class ArtifactGenerator
         }
 
         return [
-            'description' => (string) ($decoded['description'] ?? ''),
+            'description' => CitationStripper::clean((string) ($decoded['description'] ?? '')),
             'settings' => [
                 'duration_minutes' => max(1, (int) ($params['exam_duration_minutes'] ?? 45)),
                 'total_points' => $totalPoints,
@@ -623,6 +641,29 @@ class ArtifactGenerator
             ],
             'sections' => $out,
         ];
+    }
+
+    /**
+     * AI có khi trả câu đúng/sai kèm hai lựa chọn "Đúng"/"Sai" thay vì đặt
+     * `answer`. Suy ra đáp án từ lựa chọn được đánh dấu đúng.
+     *
+     * @param  array<string, mixed>  $item
+     */
+    protected function truthyFromOptions(array $item): ?string
+    {
+        foreach ((array) ($item['options'] ?? []) as $option) {
+            if (! (bool) ($option['is_correct'] ?? false)) {
+                continue;
+            }
+
+            $normalized = QuestionType::normalizeTruthy((string) ($option['content'] ?? ''));
+
+            if ($normalized !== null) {
+                return $normalized;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -675,7 +716,10 @@ class ArtifactGenerator
                 continue;
             }
 
-            $cards[] = ['front' => (string) $item['front'], 'back' => (string) ($item['back'] ?? '')];
+            $cards[] = [
+                'front' => CitationStripper::clean((string) $item['front']),
+                'back' => CitationStripper::clean((string) ($item['back'] ?? '')),
+            ];
         }
 
         if ($cards === []) {
@@ -700,7 +744,7 @@ class ArtifactGenerator
 
             $nodes[] = [
                 'id' => (string) ($node['id'] ?? 'n'.($index + 1)),
-                'label' => (string) $node['label'],
+                'label' => CitationStripper::clean((string) $node['label']),
                 'parent' => $node['parent'] ?? null,
             ];
         }

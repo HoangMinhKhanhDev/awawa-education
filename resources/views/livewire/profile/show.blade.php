@@ -91,7 +91,7 @@
                     </div>
 
                     <div class="flex justify-end">
-                        <button type="submit" class="btn btn-primary" wire:loading.attr="disabled">
+                        <button type="submit" class="btn btn-primary" wire:loading.attr="disabled" wire:target="save">
                             <span wire:loading.remove wire:target="save">Lưu hồ sơ</span>
                             <span wire:loading wire:target="save">Đang lưu…</span>
                         </button>
@@ -106,11 +106,14 @@
                     <h2 class="text-[15px] font-semibold text-ink dark:text-white">Cài đặt</h2>
                 </div>
                 <div class="divide-y divide-rule dark:divide-night-700">
-                    <button type="button" onclick="window.awawa.toggleTheme()"
+                    <button type="button" data-theme-toggle onclick="window.awawa.cyclePreference()"
                         class="flex w-full items-center gap-3 px-5 py-3.5 text-left text-sm text-ink-soft transition-colors hover:bg-paper-2 dark:text-slate-300 dark:hover:bg-white/5">
-                        <x-icon name="sun" class="hidden h-[18px] w-[18px] dark:block" />
-                        <x-icon name="moon" class="h-[18px] w-[18px] dark:hidden" />
-                        Đổi chế độ sáng / tối
+                        <x-icon name="sun" class="theme-icon theme-icon-light h-[18px] w-[18px]" />
+                        <x-icon name="moon" class="theme-icon theme-icon-dark h-[18px] w-[18px]" />
+                        <x-icon name="monitor" class="theme-icon theme-icon-system h-[18px] w-[18px]" />
+                        <span class="theme-icon theme-icon-light">Giao diện: sáng</span>
+                        <span class="theme-icon theme-icon-dark">Giao diện: tối</span>
+                        <span class="theme-icon theme-icon-system">Giao diện: theo hệ thống</span>
                     </button>
 
                     <div x-data="{ push: 'idle', init() { if (window.AwawaPush) { window.AwawaPush.status().then((s) => { this.push = s; }); } } }">

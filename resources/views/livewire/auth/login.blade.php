@@ -32,7 +32,7 @@
             Ghi nhớ đăng nhập
         </label>
 
-        <button type="submit" class="btn btn-primary w-full" wire:loading.attr="disabled">
+        <button type="submit" class="btn btn-primary w-full" wire:loading.attr="disabled" wire:target="login">
             <span wire:loading.remove wire:target="login">Đăng nhập</span>
             <span wire:loading wire:target="login">Đang xử lý…</span>
         </button>

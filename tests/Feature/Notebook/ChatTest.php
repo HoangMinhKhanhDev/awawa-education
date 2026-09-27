@@ -147,6 +147,26 @@ class ChatTest extends TestCase
         $this->assertMatchesRegularExpression('/\[1\] (Lịch sử Việt Nam|Quang học)/', $system);
     }
 
+    public function test_chat_prompt_asks_for_citations_but_artifact_prompt_does_not(): void
+    {
+        app(SourceIngestor::class)->fromText($this->notebook, 'Lịch sử Việt Nam', 'Chiến thắng Bạch Đằng là dấu mốc lịch sử.');
+
+        $composer = app(PromptComposer::class);
+
+        $chat = $composer->compose($this->notebook, 'Bạch Đằng năm nào?')['messages'][0]['content'];
+        $artifact = $composer->artifactMessages($this->notebook, 'Soạn câu hỏi', 'JSON')[0]['content'];
+
+        // Chat cần marker để dựng nút trích dẫn bấm được.
+        $this->assertStringContainsString('ghi kèm số đoạn trong ngoặc vuông', $chat);
+
+        // Artefact đưa thẳng cho học sinh nên không được dánh dấu trích dẫn.
+        $this->assertStringNotContainsString('ghi kèm số đoạn trong ngoặc vuông', $artifact);
+        $this->assertStringContainsString('Không ghi số đoạn hay ký hiệu', $artifact);
+
+        // Cả hai vẫn phải có danh mục nguồn để AI bám theo tài liệu.
+        $this->assertStringContainsString('=== DANH MÁCH NGUỒN ===', $artifact);
+    }
+
     public function test_disabled_sources_are_not_used(): void
     {
         $source = app(SourceIngestor::class)->fromText($this->notebook, 'Nguồn tắt', 'Nội dung không dùng.');

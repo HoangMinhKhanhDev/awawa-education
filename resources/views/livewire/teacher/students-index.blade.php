@@ -81,7 +81,7 @@
     </div>
 
     @if ($showCreate)
-        <div class="fixed inset-0 z-50 flex items-end justify-center bg-night-900/50 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+        <div class="fixed inset-0 z-50 flex items-end justify-center bg-night-900/60 p-0 sm:items-center sm:p-4"
             x-data x-on:keydown.escape.window="$wire.closeCreate()">
             <div class="w-full max-w-md rounded-t-[14px] bg-white p-6 sm:rounded-[14px] dark:bg-night-800" @click.stop>
                 <div class="mb-5 flex items-center justify-between">
@@ -105,7 +105,7 @@
                     <p class="text-xs text-ink-faint dark:text-slate-500">Hệ thống tạo mật khẩu tạm và học sinh phải đổi khi đăng nhập lần đầu.</p>
                     <div class="flex justify-end gap-2 pt-1">
                         <button type="button" wire:click="closeCreate" class="btn btn-ghost">Hủy</button>
-                        <button type="submit" class="btn btn-primary" wire:loading.attr="disabled">
+                        <button type="submit" class="btn btn-primary" wire:loading.attr="disabled" wire:target="createStudent">
                             <span wire:loading.remove wire:target="createStudent">Tạo và thêm vào đội</span>
                             <span wire:loading wire:target="createStudent">Đang tạo…</span>
                         </button>

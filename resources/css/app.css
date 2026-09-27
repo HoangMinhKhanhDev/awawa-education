@@ -55,6 +55,19 @@
         -webkit-tap-highlight-color: transparent;
     }
 
+    /*
+     * color-scheme quyết định trình duyệt vẽ scrollbar, <input type=date>,
+     * popup của <select>, checkbox và vùng overscroll theo theme hay không.
+     * Thiếu nó thì các bề mặt do trình duyệt vẽ vẫn sáng ở chế độ tối.
+     */
+    :root {
+        color-scheme: light;
+    }
+
+    .dark {
+        color-scheme: dark;
+    }
+
     [x-cloak] {
         display: none !important;
     }
@@ -91,8 +104,51 @@
         @apply rounded-[14px] border border-rule bg-white p-5 dark:border-night-700 dark:bg-night-800;
     }
 
+    /*
+     * Phản hồi khi đang chuyển trang bằng wire:navigate. Chỉ khoá vùng nội
+     * dung, thanh điều hướng dưới vẫn bấm được để chuyển sang tab khác khi
+     * trang hiện tại chưa tải xong.
+     */
+    [data-navigating='true'] #app-content {
+        pointer-events: none;
+        opacity: 0.6;
+    }
+
+    .nav-pending {
+        color: var(--color-brand-700);
+    }
+
+    .dark .nav-pending {
+        color: var(--color-brand-300);
+    }
+
     .rule {
-        @apply h-px w-full bg-rule dark:border-night-700;
+        @apply h-px w-full bg-rule dark:bg-night-700;
+    }
+
+    /*
+     * Vùng không được bôi chọn khi làm bài. Chặn copy chỉ áp dụng cho vùng này
+     * (xem script trong livewire/student/take.blade.php) để người học vẫn bôi
+     * chọn và dán vào ô trả lời được — chặn contextmenu toàn trang sẽ phá vỡ
+     * long-press trên Android, còn chặn copy sẽ phá vỡ paste.
+     */
+    .exam-protected {
+        user-select: none;
+        -webkit-user-select: none;
+    }
+
+    /*
+     * Nút theme có 3 trạng thái nên chọn icon theo data-theme trên <html>,
+     * không dựa vào .dark (vì "system" cũng có thể phân giải ra dark).
+     */
+    .theme-icon {
+        display: none;
+    }
+
+    [data-theme='light'] .theme-icon-light,
+    [data-theme='dark'] .theme-icon-dark,
+    [data-theme='system'] .theme-icon-system {
+        display: block;
     }
 
     /* ----- Tay nắm kéo bề rộng cột (Notebook) ----- */

@@ -3,6 +3,7 @@
 namespace App\Livewire\Teacher;
 
 use App\Enums\SubjectFeature;
+use App\Livewire\Teacher\Concerns\AssignsContent;
 use App\Models\Announcement;
 use App\Services\NotificationDispatcher;
 use App\Support\SubjectContext;
@@ -16,6 +17,8 @@ use Livewire\Component;
 #[Title('Thông báo')]
 class AnnouncementsIndex extends Component
 {
+    use AssignsContent;
+
     public bool $showForm = false;
 
     public ?int $editingId = null;
@@ -164,6 +167,7 @@ class AnnouncementsIndex extends Component
             'subject' => $subject,
             'announcements' => Announcement::query()->ordered()->with('creator')->get(),
             'featureEnabled' => $subject?->hasFeature(SubjectFeature::Announcements) ?? false,
+            'openAssignments' => $this->openAssignmentsByKey(),
         ]);
     }
 }

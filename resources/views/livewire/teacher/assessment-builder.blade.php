@@ -53,11 +53,23 @@
                         <label class="label" for="b-description">Mô tả</label>
                         <textarea id="b-description" rows="2" class="input" wire:model="description"></textarea>
                     </div>
-                    <div class="grid gap-4 sm:grid-cols-2">
+                    <div class="grid gap-4 sm:grid-cols-3">
                         <div>
                             <label class="label" for="b-duration">Thời gian làm bài (phút)</label>
                             <input id="b-duration" type="number" min="1" class="input" wire:model="durationMinutes">
                             @error('durationMinutes') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
+                        </div>
+                        <div>
+                            <label class="label" for="b-max-attempts">Số lần làm tối đa</label>
+                            <input id="b-max-attempts" type="number" min="1" max="20" class="input" wire:model="maxAttempts">
+                            @error('maxAttempts') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
+                            @if ($attemptsUsed > 0)
+                                <p class="tnum mt-1.5 text-xs text-ink-faint dark:text-slate-500">
+                                    Đã có {{ $attemptsUsed }} lượt trong lớp. Để 1 nếu học sinh chỉ làm một lần.
+                                </p>
+                            @else
+                                <p class="mt-1.5 text-xs text-ink-faint dark:text-slate-500">Để 1 nếu học sinh chỉ làm một lần.</p>
+                            @endif
                         </div>
                         <div>
                             <label class="label" for="b-due">Hạn nộp / kết thúc</label>
@@ -89,7 +101,7 @@
                     </details>
 
                     <div class="flex justify-end">
-                        <button type="submit" class="btn btn-primary" wire:loading.attr="disabled">
+                        <button type="submit" class="btn btn-primary" wire:loading.attr="disabled" wire:target="saveMeta">
                             <span wire:loading.remove wire:target="saveMeta">Lưu thông tin</span>
                             <span wire:loading wire:target="saveMeta">Đang lưu…</span>
                         </button>

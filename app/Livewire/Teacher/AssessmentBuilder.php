@@ -27,6 +27,8 @@ class AssessmentBuilder extends Component
 
     public ?int $durationMinutes = null;
 
+    public int $maxAttempts = 1;
+
     public bool $shuffleQuestions = false;
 
     public bool $shuffleOptions = false;
@@ -87,6 +89,7 @@ class AssessmentBuilder extends Component
         $this->title = $exam->title;
         $this->description = (string) $exam->description;
         $this->durationMinutes = $exam->duration_minutes;
+        $this->maxAttempts = $exam->maxAttempts();
         $this->shuffleQuestions = $exam->shuffle_questions;
         $this->shuffleOptions = $exam->shuffle_options;
         $this->startsAt = $exam->starts_at?->format('Y-m-d\TH:i') ?? '';
@@ -108,18 +111,24 @@ class AssessmentBuilder extends Component
             'title' => ['required', 'string', 'min:3', 'max:180'],
             'description' => ['nullable', 'string', 'max:2000'],
             'durationMinutes' => ['nullable', 'integer', 'min:1', 'max:600'],
+            'maxAttempts' => ['required', 'integer', 'min:1', 'max:20'],
             'startsAt' => ['nullable', 'date'],
             'endsAt' => ['nullable', 'date', 'after_or_equal:startsAt'],
             'dueAt' => ['nullable', 'date'],
         ], [
             'title.required' => 'Vui lòng nhập tiêu đề.',
             'endsAt.after_or_equal' => 'Thời điểm kết thúc phải sau thời điểm bắt đầu.',
+            'maxAttempts.min' => 'Học sinh phải được làm bài ít nhất một lần.',
+            'maxAttempts.max' => 'Số lần làm tối đa không vượt quá 20.',
         ]);
 
         $exam->update([
             'title' => $this->title,
             'description' => $this->description ?: null,
             'duration_minutes' => $this->durationMinutes,
+            'settings' => array_merge($exam->settings ?? [], [
+                'max_attempts' => $this->maxAttempts,
+            ]),
             'shuffle_questions' => $this->shuffleQuestions,
             'shuffle_options' => $this->shuffleOptions,
             'starts_at' => $this->startsAt ?: null,
@@ -328,6 +337,7 @@ class AssessmentBuilder extends Component
                 ->limit(30)
                 ->get(),
             'type' => $exam->type,
+            'attemptsUsed' => $exam->attempts()->withoutSubjectScope()->count(),
         ]);
     }
 }

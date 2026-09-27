@@ -1,0 +1,13 @@
+# File trong thư mục này do ứng dụng sinh ra (tài liệu AI dạng Markdown...).
+# Không có .htaccess thì Apache trả `text/markdown` **không kèm charset**, trình
+# duyệt đoán sai bảng mã và tiếng Việt hiện thành ký tự lỗi. Dòng dưới buộc
+# mọi response của thư mục này dùng UTF-8.
+<IfModule mod_mime.c>
+    AddDefaultCharset UTF-8
+    AddType "text/markdown; charset=UTF-8" .md
+</IfModule>
+
+# Không cho duyệt thư mục lộ nội dung tài liệu.
+<IfModule mod_autoindex.c>
+    Options -Indexes
+</IfModule>

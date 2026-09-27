@@ -15,7 +15,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <meta name="theme-color" content="{{ config('awawa.brand.primary') }}">
+    <meta id="theme-color-meta" name="theme-color" content="{{ config('awawa.brand.primary') }}">
     <meta name="vapid-public-key" content="{{ config('awawa.webpush.public_key') }}">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -28,19 +28,7 @@
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
     <link rel="manifest" href="/manifest.webmanifest">
 
-    <script>
-        (function () {
-            try {
-                var theme = localStorage.getItem('awawa-theme');
-                if (!theme) {
-                    theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-                }
-                if (theme === 'dark') {
-                    document.documentElement.classList.add('dark');
-                }
-            } catch (error) {}
-        })();
-    </script>
+    <x-theme-script />
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @livewireStyles
@@ -92,9 +80,10 @@
                 </div>
 
                 <div class="flex items-center gap-2">
-                    <button type="button" onclick="window.awawa.toggleTheme()" class="btn btn-outline flex-1 px-3 py-2" aria-label="Đổi chế độ sáng/tối">
-                        <x-icon name="sun" class="hidden h-4 w-4 dark:block" />
-                        <x-icon name="moon" class="h-4 w-4 dark:hidden" />
+                    <button type="button" data-theme-toggle onclick="window.awawa.cyclePreference()" class="btn btn-outline flex-1 px-3 py-2" aria-label="Đổi giao diện">
+                        <x-icon name="sun" class="theme-icon theme-icon-light h-4 w-4" />
+                        <x-icon name="moon" class="theme-icon theme-icon-dark h-4 w-4" />
+                        <x-icon name="monitor" class="theme-icon theme-icon-system h-4 w-4" />
                     </button>
                     <form method="POST" action="{{ route('logout') }}" class="flex-1">
                         @csrf
@@ -123,16 +112,17 @@
 
                 <div class="flex items-center gap-0.5">
                     <livewire:notifications.bell />
-                    <button type="button" onclick="window.awawa.toggleTheme()"
+                    <button type="button" data-theme-toggle onclick="window.awawa.cyclePreference()"
                         class="flex h-10 w-10 items-center justify-center rounded-[10px] text-ink-soft hover:bg-paper-2 dark:text-slate-300 dark:hover:bg-white/5"
-                        aria-label="Đổi chế độ sáng/tối">
-                        <x-icon name="sun" class="hidden h-5 w-5 dark:block" />
-                        <x-icon name="moon" class="h-5 w-5 dark:hidden" />
+                        aria-label="Đổi giao diện">
+                        <x-icon name="sun" class="theme-icon theme-icon-light h-5 w-5" />
+                        <x-icon name="moon" class="theme-icon theme-icon-dark h-5 w-5" />
+                        <x-icon name="monitor" class="theme-icon theme-icon-system h-5 w-5" />
                     </button>
                 </div>
             </header>
 
-            <main class="{{ $fullBleed ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : 'flex-1' }}">
+            <main id="app-content" class="{{ $fullBleed ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : 'flex-1' }}">
                 @if ($fullBleed)
                     <div class="flex h-full min-h-0 w-full flex-col">{{ $slot }}</div>
                 @else
@@ -144,7 +134,7 @@
         {{-- Drawer mobile --}}
         <div x-cloak x-show="drawer" class="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true">
             <div x-show="drawer" x-transition.opacity @click="drawer = false"
-                class="absolute inset-0 bg-night-900/50 backdrop-blur-sm"></div>
+                class="absolute inset-0 bg-night-900/60"></div>
 
             <div x-show="drawer" x-transition:enter="transition ease-out duration-200"
                 x-transition:enter-start="-translate-x-full" x-transition:enter-end="translate-x-0"

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="vi" class="h-full">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Xem thử tài liệu — awawa</title>
+    <link rel="stylesheet" href="/build/assets/app-CDMiI6OY.css">
+</head>
+<body class="h-full bg-paper text-ink antialiased dark:bg-night-900 dark:text-slate-100">
+<div class="mx-auto max-w-3xl px-4 py-8">
+    <div class="panel">
+        <div class="notebook-markdown px-6 py-6 text-[15px] leading-relaxed">
+<h1>Bài học: Phân phối Poisson</h1>
+<h2>1. Khái niệm</h2>
+<p>Bài toán kinh điển của <strong>Nhà toán học Pháp S. D. Poisson</strong> (1837), mô tả số sự kiện
+hiếm xảy ra trong một khoảng thời gian cố định.</p>
+<ul>
+<li>X ~ Poisson(λ) với λ là kỳ vọng</li>
+<li>P(X = k) = (λᵏ · e^(−λ)) / k!</li>
+<li>Giả định: các sự kiện xảy ra độc lập</li>
+</ul>
+<h2>2. Ví dụ tính</h2>
+<blockquote>
+<p>Một cửa hàng trung bình phục vụ 12 khách mỗi giờ. Hỏi xác suất
+đúng 15 khách trong một giờ?</p>
+</blockquote>
+<p>Dùng công thức:</p>
+<pre><code>P(X = 15) = (12¹⁵ · e⁻¹²) / 15! ≈ 0.0917
+</code></pre>
+<h2>3. Bảng tham chiếu</h2>
+<table>
+<thead>
+<tr>
+<th>λ</th>
+<th>Giá trị trung bình</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>0.368</td>
+</tr>
+<tr>
+<td>2</td>
+<td>0.541</td>
+</tr>
+<tr>
+<td>3</td>
+<td>0.647</td>
+</tr>
+</tbody>
+</table>
+<p>Kết luận: xác suất đạt đúng <strong>một giá trị cụ thể</strong> luôn nhỏ hơn 1, đừng nhầm với
+&quot;giá trị đạt được nhiều nhất&quot;.</p>
+
+        </div>
+    </div>
+</div>
+</body>
+</html>

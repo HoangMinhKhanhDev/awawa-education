@@ -90,6 +90,7 @@
                                     <select id="st-qt" class="input" wire:model="questionType">
                                         <option value="mixed">Trộn lẫn</option>
                                         <option value="multiple_choice">Trắc nghiệm</option>
+                                        <option value="true_false">Đúng / sai</option>
                                         <option value="fill_blank">Điền khuyết</option>
                                         <option value="essay">Tự luận</option>
                                     </select>
@@ -130,6 +131,7 @@
                                     <select id="st-exam-qt" class="input" wire:model="questionType">
                                         <option value="mixed">Trộn lẫn trắc nghiệm và tự luận</option>
                                         <option value="multiple_choice">Toàn bộ là trắc nghiệm</option>
+                                        <option value="true_false">Toàn bộ là đúng / sai</option>
                                         <option value="essay">Toàn bộ là tự luận</option>
                                         <option value="fill_blank">Toàn bộ là điền khuyết</option>
                                     </select>
@@ -181,7 +183,9 @@
                                         </svg>
                                         <div class="min-w-0">
                                             <p class="line-clamp-2 text-sm text-ink dark:text-slate-100">{{ $artifact->title }}</p>
-                                            <p class="mt-1 text-[11px] text-ink-faint dark:text-slate-500">AI đang soạn nền. Bạn có thể chuyển sang màn khác.</p>
+                                            <p class="tnum mt-1 text-[11px] text-ink-faint dark:text-slate-500">
+                                                AI đang soạn nền — đã {{ max(1, (int) round($artifact->updated_at->diffInMinutes(now()))) }} phút. Bạn có thể chuyển sang màn khác.
+                                            </p>
                                         </div>
                                     </div>
                                 @elseif ($artifact->isFailed())
@@ -338,7 +342,7 @@
     {{-- Modal xem trước --}}
     @if ($preview)
         @php $previewType = \App\Enums\ArtifactType::from($preview->type); @endphp
-        <div class="fixed inset-0 z-50 flex items-end justify-center bg-night-900/50 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+        <div class="fixed inset-0 z-50 flex items-end justify-center bg-night-900/60 p-0 sm:items-center sm:p-4">
             <div class="notebook-artifact-print flex max-h-[90vh] w-full {{ $previewType === \App\Enums\ArtifactType::Exam ? 'max-w-3xl' : 'max-w-2xl' }} flex-col rounded-t-[14px] bg-white p-6 sm:rounded-[14px] dark:bg-night-800">
                 <div class="mb-3 flex items-start justify-between gap-3">
                     <div>
@@ -366,7 +370,12 @@
                             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
                         </svg>
                         <p class="text-sm text-ink dark:text-slate-200">AI đang soạn nội dung…</p>
-                        <p class="text-xs text-ink-faint dark:text-slate-500">Bạn có thể đóng cửa sổ này hoặc chuyển sang màn khác, quá trình vẫn chạy nền.</p>
+                        <p class="tnum text-xs text-ink-faint dark:text-slate-500">
+                            Đã chờ {{ max(1, (int) round($preview->updated_at->diffInMinutes(now()))) }} phút.
+                        </p>
+                        <p class="max-w-sm text-xs text-ink-faint dark:text-slate-500">
+                            Bạn có thể đóng cửa sổ này hoặc chuyển sang màn khác, quá trình vẫn chạy nền. Nội dung dài có thể mất vài phút.
+                        </p>
                         <button type="button" wire:click="closePreview" class="btn btn-outline text-xs">Đóng</button>
                     </div>
                 @elseif ($preview->isFailed())

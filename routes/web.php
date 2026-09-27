@@ -15,6 +15,7 @@ use App\Livewire\Auth\Login;
 use App\Livewire\Auth\Register;
 use App\Livewire\Auth\ResetPassword;
 use App\Livewire\Dashboard;
+use App\Livewire\Documents\Show as DocumentShow;
 use App\Livewire\Info;
 use App\Livewire\Maps\Editor as MapEditor;
 use App\Livewire\Maps\Index as MapsIndex;
@@ -27,6 +28,7 @@ use App\Livewire\Student\Result as StudentResult;
 use App\Livewire\Student\Take as StudentTake;
 use App\Livewire\Teacher\AnnouncementsIndex;
 use App\Livewire\Teacher\AssessmentBuilder;
+use App\Livewire\Teacher\AssignmentsHub;
 use App\Livewire\Teacher\AssignmentsIndex;
 use App\Livewire\Teacher\DocumentsIndex;
 use App\Livewire\Teacher\ExamsIndex;
@@ -79,6 +81,10 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/ho-so', ProfileShow::class)->name('profile');
 
+    // Học sinh và giáo viên đều đọc tài liệu qua trang này để không bị lỗi
+    // hiển thị Markdown thô.
+    Route::get('/tai-lieu/{document}', DocumentShow::class)->name('documents.show');
+
     Route::post('/push/subscribe', [PushSubscriptionController::class, 'store'])->name('push.subscribe');
     Route::post('/push/unsubscribe', [PushSubscriptionController::class, 'destroy'])->name('push.unsubscribe');
 
@@ -99,6 +105,10 @@ Route::middleware('auth')->group(function () {
     */
     Route::middleware('role:teacher')->group(function () {
         Route::get('/studio', Studio::class)->name('studio');
+
+        // Không gắn `feature:` vì trang này giao được cả 4 loại nội dung; mỗi loại
+        // tự kiểm tra tính năng của môn trong AssignmentsHub::availableTypes().
+        Route::get('/studio/giao-bai', AssignmentsHub::class)->name('studio.assignments.hub');
 
         Route::get('/studio/ngan-hang-cau-hoi', QuestionsIndex::class)
             ->middleware('feature:question_bank')->name('studio.questions');

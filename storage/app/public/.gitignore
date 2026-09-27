@@ -1,2 +1,5 @@
 *
 !.gitignore
+# File tài liệu do người dùng/AI tải lên không commit, nhưng .htaccess thì có:
+# nó ép Apache trả UTF-8 cho file Markdown, nếu thiếu thì tiếng Việt bị lỗi.
+!.htaccess

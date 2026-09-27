@@ -7,8 +7,11 @@ use App\Enums\ExamStatus;
 use App\Models\AttemptAnswer;
 use App\Models\Exam;
 use App\Models\ExamAttempt;
+use App\Services\Assignments\AssignmentManager;
 use App\Services\GradingService;
+use Carbon\Exceptions\InvalidFormatException;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
@@ -18,6 +21,11 @@ use Livewire\Component;
 #[Title('Làm bài')]
 class Take extends Component
 {
+    /**
+     * Hai sự kiện cùng loại trong khoảng thời gian này sẽ bị gộp thành một.
+     */
+    protected const ANTI_CHEAT_DEDUPE_SECONDS = 60;
+
     public int $examId;
 
     public int $attemptId;
@@ -53,23 +61,31 @@ class Take extends Component
             abort(403, 'Bạn chưa thuộc đội tuyển của môn này.');
         }
 
-        $attempt = ExamAttempt::query()
+        $attempts = ExamAttempt::query()
             ->where('exam_id', $exam->id)
             ->where('student_id', $user->id)
-            ->first();
+            ->newestAttempt()
+            ->get();
 
-        if ($attempt !== null && $attempt->status !== AttemptStatus::InProgress) {
-            $this->redirect(route('student.result', $exam), navigate: true);
-
-            return;
-        }
+        $attempt = $attempts->firstWhere('status', AttemptStatus::InProgress);
 
         if ($attempt === null) {
+            if (! $exam->canAttemptAgain($user)) {
+                if ($exam->allowsRetake()) {
+                    session()->flash('status', 'Bạn đã dùng hết lượt làm bài này.');
+                }
+
+                $this->redirect(route('student.result', $exam), navigate: true);
+
+                return;
+            }
+
             $attempt = ExamAttempt::create([
                 'subject_id' => $exam->subject_id,
                 'exam_id' => $exam->id,
                 'student_id' => $user->id,
                 'status' => AttemptStatus::InProgress,
+                'attempt_no' => $attempts->count() + 1,
                 'started_at' => now(),
                 'expires_at' => $exam->duration_minutes
                     ? now()->addMinutes($exam->duration_minutes)
@@ -119,17 +135,64 @@ class Take extends Component
             return;
         }
 
+        $stored = AttemptAnswer::query()
+            ->where('attempt_id', $attempt->id)
+            ->get(['question_id', 'selected_option_ids', 'answer_text'])
+            ->keyBy('question_id');
+
+        $changed = [];
+
         foreach ($this->answers as $questionId => $answer) {
-            AttemptAnswer::query()
-                ->where('attempt_id', $attempt->id)
-                ->where('question_id', (int) $questionId)
-                ->update([
-                    'selected_option_ids' => ! empty($answer['selected']) ? [(int) $answer['selected']] : [],
-                    'answer_text' => $answer['text'] !== '' ? $answer['text'] : null,
-                ]);
+            $questionId = (int) $questionId;
+            $selected = ! empty($answer['selected']) ? [(int) $answer['selected']] : [];
+            $text = $answer['text'] !== '' ? $answer['text'] : null;
+
+            $existing = $stored->get($questionId);
+
+            // Chỉ ghi dòng thực sự khác, nếu không mỗi lần lưu đều tạo ra
+            // N câu UPDATE rác trên điện thoại.
+            if ($existing !== null
+                && $existing->selected_option_ids === $selected
+                && $existing->answer_text === $text) {
+                continue;
+            }
+
+            $changed[$questionId] = ['selected_option_ids' => $selected, 'answer_text' => $text];
         }
+
+        if ($changed === []) {
+            return;
+        }
+
+        $now = now();
+
+        $rows = [];
+
+        foreach ($changed as $questionId => $values) {
+            // upsert() đi thẳng xuống query builder nên không qua cast của model,
+            // phải tự encode cột json.
+            $rows[] = [
+                'attempt_id' => $attempt->id,
+                'question_id' => $questionId,
+                'selected_option_ids' => json_encode($values['selected_option_ids']),
+                'answer_text' => $values['answer_text'],
+                'updated_at' => $now,
+                'created_at' => $now,
+            ];
+        }
+
+        AttemptAnswer::query()->upsert($rows, ['attempt_id', 'question_id'], ['selected_option_ids', 'answer_text', 'updated_at']);
     }
 
+    /**
+     * Ghi sự kiện rời trang nhưng chặn false positive.
+     *
+     * Trên di động, blur/visibilitychange bắn liên tục khi bật bàn phím ảo, mở
+     * picker native, chạm thanh địa chỉ... Vì vậy chỉ tính sự kiện đã đi qua
+     * bộ lọc phía client (rời hẳn >= 2 giây) và bỏ qua event cùng loại lặp lại
+     * trong vòng một phút. Cố tình không skipRender: render() chỉ đọc attempt
+     * và câu hỏi, không truy vấn lại đề.
+     */
     public function logAntiCheat(string $type): void
     {
         $attempt = ExamAttempt::query()->findOrFail($this->attemptId);
@@ -139,11 +202,41 @@ class Take extends Component
         }
 
         $events = $attempt->anti_cheat ?? [];
+        $lastRecordedAt = $this->lastAntiCheatAt($events, $type);
+
+        if ($lastRecordedAt !== null && $lastRecordedAt->diffInSeconds(now()) < self::ANTI_CHEAT_DEDUPE_SECONDS) {
+            return;
+        }
+
         $events[] = ['type' => $type, 'at' => now()->toIso8601String()];
 
         $attempt->forceFill(['anti_cheat' => $events])->save();
 
         $this->violations = count($events);
+    }
+
+    /**
+     * Thời điểm gần nhất của một loại sự kiện cụ thể.
+     *
+     * @param  array<int, array{type: string, at: string}>  $events
+     */
+    protected function lastAntiCheatAt(array $events, string $type): ?Carbon
+    {
+        for ($index = count($events) - 1; $index >= 0; $index--) {
+            $event = $events[$index] ?? null;
+
+            if (($event['type'] ?? null) !== $type) {
+                continue;
+            }
+
+            try {
+                return Carbon::parse($event['at']);
+            } catch (InvalidFormatException) {
+                return null;
+            }
+        }
+
+        return null;
     }
 
     public function submit(): void
@@ -159,6 +252,11 @@ class Take extends Component
         $this->saveProgress();
 
         app(GradingService::class)->gradeAttempt($attempt);
+
+        // Nộp bài là đã xong phần học sinh được giao.
+        if ($attempt->exam !== null) {
+            app(AssignmentManager::class)->syncExamProgress($attempt->exam);
+        }
 
         session()->flash('status', 'Đã nộp bài thành công.');
 
