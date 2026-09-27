@@ -14,12 +14,12 @@ use Illuminate\Support\Facades\Log;
  *
  * Cách dùng: chỉ truyền lệnh Artisan với tham số không do người dùng nhập.
  */
-final class BackgroundProcess
+class BackgroundProcess
 {
     /**
      * Máy chủ có cho phép mở tiến trình con không.
      */
-    public static function available(): bool
+    public function available(): bool
     {
         if (! function_exists('proc_open')) {
             return false;
@@ -40,7 +40,7 @@ final class BackgroundProcess
      * @param  list<string>  $arguments
      * @return bool true nếu đã khởi chạy được tiến trình
      */
-    public static function start(string $command, array $arguments = []): bool
+    public function start(string $command, array $arguments = []): bool
     {
         // Test không được mở tiến trình thật: tiến trình con sẽ nối vào database
         // thật chứ không phải database của test. Giả lập thành công để các test
@@ -49,24 +49,24 @@ final class BackgroundProcess
             return true;
         }
 
-        if (! self::available()) {
+        if (! $this->available()) {
             return false;
         }
 
         $parts = array_merge([$command], $arguments);
 
-        $quoted = self::quoteAll($parts);
+        $quoted = $this->quoteAll($parts);
 
         // POSIX cần `nohup ... &` để tiến trình sống tiếp sau khi shell cha thoát.
         // Windows thì con không bị giết khi tiến trình cha kết thúc, nên gọi thẳng là đủ.
-        $line = self::isWindows()
+        $line = $this->isWindows()
             ? $quoted
             : 'nohup '.$quoted.' > /dev/null 2>&1 &';
 
         $descriptors = [
-            0 => ['file', self::nullDevice(), 'r'],
-            1 => ['file', self::nullDevice(), 'a'],
-            2 => ['file', self::nullDevice(), 'a'],
+            0 => ['file', $this->nullDevice(), 'r'],
+            1 => ['file', $this->nullDevice(), 'a'],
+            2 => ['file', $this->nullDevice(), 'a'],
         ];
 
         try {
@@ -87,7 +87,7 @@ final class BackgroundProcess
     /**
      * Đường dẫn PHP CLI đang chạy ứng dụng.
      */
-    public static function phpBinary(): string
+    public function phpBinary(): string
     {
         $binary = (string) (defined('PHP_BINARY') ? PHP_BINARY : '');
 
@@ -98,7 +98,7 @@ final class BackgroundProcess
         return PHP_OS_FAMILY === 'Windows' ? 'php.exe' : 'php';
     }
 
-    public static function isWindows(): bool
+    public function isWindows(): bool
     {
         return PHP_OS_FAMILY === 'Windows';
     }
@@ -108,22 +108,22 @@ final class BackgroundProcess
      *
      * @param  list<string>  $parts
      */
-    private static function quoteAll(array $parts): string
+    private function quoteAll(array $parts): string
     {
-        return implode(' ', array_map(self::quote(...), $parts));
+        return implode(' ', array_map(fn (string $part): string => $this->quote($part), $parts));
     }
 
-    private static function quote(string $value): string
+    private function quote(string $value): string
     {
-        if (self::isWindows()) {
+        if ($this->isWindows()) {
             return '"'.str_replace('"', '""', $value).'"';
         }
 
         return "'".str_replace("'", "'\\''", $value)."'";
     }
 
-    private static function nullDevice(): string
+    private function nullDevice(): string
     {
-        return self::isWindows() ? 'NUL' : '/dev/null';
+        return $this->isWindows() ? 'NUL' : '/dev/null';
     }
 }

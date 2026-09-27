@@ -62,7 +62,7 @@ class GenerateArtifact implements ShouldQueue
 
         $payload = is_array($data['payload']) ? $data['payload'] : [];
         $payload['_generation'] = $params;
-        unset($payload['_error']);
+        unset($payload['_error'], $payload['_generation_runner']);
 
         $artifact->update([
             'title' => $data['title'],
@@ -76,6 +76,7 @@ class GenerateArtifact implements ShouldQueue
     {
         $payload = $artifact->payload ?? [];
         $payload['_error'] = Str::limit($reason, 500, '');
+        unset($payload['_generation_runner']);
 
         $artifact->update([
             'status' => 'failed',

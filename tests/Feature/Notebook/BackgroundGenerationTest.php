@@ -12,6 +12,7 @@ use App\Models\Subject;
 use App\Models\User;
 use App\Services\Notebook\ArtifactGenerator;
 use App\Services\Notebook\SourceIngestor;
+use App\Support\BackgroundProcess;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Support\Facades\Http;
@@ -101,6 +102,52 @@ class BackgroundGenerationTest extends TestCase
 
         // Việc soạn chạy ở tiến trình CLI riêng, không đi qua queue.
         Queue::assertNothingPushed();
+    }
+
+    public function test_generation_uses_the_scheduler_when_the_host_blocks_child_processes(): void
+    {
+        Queue::fake();
+        Http::preventStrayRequests();
+        $this->fakeDocumentText();
+
+        $this->mock(BackgroundProcess::class, function ($mock): void {
+            $mock->shouldReceive('phpBinary')->once()->andReturn('/usr/bin/php');
+            $mock->shouldReceive('start')->once()->andReturnFalse();
+        });
+
+        $this->studio()
+            ->call('generate')
+            ->assertSet('generating', true)
+            ->assertSet('error', null)
+            ->assertSee('Đã xếp hàng trên máy chủ');
+
+        $artifact = NotebookArtifact::query()->firstOrFail();
+
+        $this->assertSame('generating', $artifact->status);
+        $this->assertSame('scheduler', $artifact->payload['_generation_runner']);
+        $this->assertStringContainsString('đang chờ soạn nền', $artifact->title);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_scheduler_generates_an_artifact_queued_by_the_web_request(): void
+    {
+        Http::preventStrayRequests();
+        $this->fakeDocumentText('Nội dung được soạn từ cron.');
+
+        $this->mock(BackgroundProcess::class, function ($mock): void {
+            $mock->shouldReceive('phpBinary')->once()->andReturn('/usr/bin/php');
+            $mock->shouldReceive('start')->once()->andReturnFalse();
+        });
+
+        $this->studio()->call('generate');
+
+        $this->artisan('awawa:generate-pending-artifact')->assertSuccessful();
+
+        $artifact = NotebookArtifact::query()->firstOrFail();
+
+        $this->assertSame('draft', $artifact->status);
+        $this->assertSame('Nội dung được soạn từ cron.', $artifact->text_content);
+        $this->assertArrayNotHasKey('_generation_runner', $artifact->payload);
     }
 
     public function test_the_job_writes_the_result_into_the_artifact(): void

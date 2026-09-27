@@ -175,23 +175,28 @@ class Studio extends Component
         $this->view = 'type';
         $this->previewId = null;
 
-        $this->startGeneration($artifact);
+        $this->startGeneration($artifact, app(BackgroundProcess::class));
 
         $this->dispatch('notebook-artifact-created');
     }
 
     /**
-     * Giao việc soạn cho một tiến trình CLI riêng.
+     * Giao việc soạn cho tiến trình CLI; nếu hosting cấm mở tiến trình con thì
+     * giữ nội dung ở hàng chờ để scheduler xử lý từ cron.
      *
      * Không gọi AI tại đây: shared hosting chặn web request khoảng 30 giây nên lệnh
      * `dispatch()->afterResponse()` vẫn chạy trong chính request đó và bị cắt giữa
-     * chừng, artefact kẹt ở trạng thái "đang soạn" mãi. Tiến trình CLI không có
-     * giới hạn đó, và cho phép giáo viên đóng tab vẫn có kết quả.
+     * chừng. Trên shared hosting tắt proc_open, cron `schedule:run` sẽ nhận việc
+     * từ database mà không cần web request mở tiến trình con.
      */
-    protected function startGeneration(NotebookArtifact $artifact): void
+    protected function startGeneration(NotebookArtifact $artifact, BackgroundProcess $backgroundProcess): void
     {
-        $started = BackgroundProcess::start(
-            BackgroundProcess::phpBinary(),
+        $payload = $artifact->payload ?? [];
+        $payload['_generation_runner'] = 'process';
+        $artifact->update(['payload' => $payload]);
+
+        $started = $backgroundProcess->start(
+            $backgroundProcess->phpBinary(),
             [base_path('artisan'), 'awawa:generate-artifact', (string) $artifact->id],
         );
 
@@ -199,17 +204,16 @@ class Studio extends Component
             return;
         }
 
-        // Máy chủ không cho mở tiến trình con: báo lỗi ngay thay vì để nó quay vô hạn.
-        $payload = $artifact->payload ?? [];
-        $payload['_error'] = 'Máy chủ không cho phép chạy tiến trình nền nên chưa soạn được nội dung.';
+        // Không đánh dấu thất bại: cron mỗi phút sẽ chạy lệnh soạn từ hàng chờ.
+        $payload['_generation_runner'] = 'scheduler';
 
         $artifact->update([
-            'status' => NotebookArtifact::STATUS_FAILED,
+            'title' => ArtifactType::from($artifact->type)->label().' đang chờ soạn nền…',
             'payload' => $payload,
         ]);
 
-        $this->generating = false;
-        $this->error = 'Máy chủ không cho phép chạy tiến trình nền nên chưa soạn được nội dung.';
+        $this->generating = true;
+        $this->error = null;
     }
 
     /**
@@ -224,6 +228,7 @@ class Studio extends Component
             ->get() as $stuck) {
             $payload = $stuck->payload ?? [];
             $payload['_error'] = 'Nội dung này bị treo quá lâu nên đã dừng. Nhấn "Tạo lại" để thử lần nữa.';
+            unset($payload['_generation_runner']);
 
             $stuck->update([
                 'status' => NotebookArtifact::STATUS_FAILED,
@@ -616,7 +621,7 @@ class Studio extends Component
         }
 
         $payload = $artifact->payload ?? [];
-        unset($payload['_error'], $payload['_notified_at']);
+        unset($payload['_error'], $payload['_notified_at'], $payload['_generation_runner']);
         $payload['_generation'] = $params;
         $artifact->update([
             'title' => ArtifactType::from($artifact->type)->label().' đang soạn lại…',
@@ -633,7 +638,7 @@ class Studio extends Component
         $this->closePreview();
         $this->editingPreview = false;
 
-        $this->startGeneration($artifact);
+        $this->startGeneration($artifact, app(BackgroundProcess::class));
     }
 
     public function publish(int $id, ArtifactPublisher $publisher): void

@@ -184,7 +184,11 @@
                                         <div class="min-w-0">
                                             <p class="line-clamp-2 text-sm text-ink dark:text-slate-100">{{ $artifact->title }}</p>
                                             <p class="tnum mt-1 text-[11px] text-ink-faint dark:text-slate-500">
-                                                AI đang soạn nền — đã {{ max(1, (int) round($artifact->updated_at->diffInMinutes(now()))) }} phút. Bạn có thể chuyển sang màn khác.
+                                                @if (($artifact->payload['_generation_runner'] ?? null) === 'scheduler')
+                                                    Đã xếp hàng trên máy chủ; hệ thống sẽ tự bắt đầu trong khoảng một phút.
+                                                @else
+                                                    AI đang soạn nền — đã {{ max(1, (int) round($artifact->updated_at->diffInMinutes(now()))) }} phút. Bạn có thể chuyển sang màn khác.
+                                                @endif
                                             </p>
                                         </div>
                                     </div>
