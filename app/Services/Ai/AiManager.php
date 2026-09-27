@@ -130,7 +130,7 @@ class AiManager
     /**
      * @return array<int, array{id: string, name: string, free: bool}>
      */
-    public function modelsForProvider(string $providerKey, bool $refresh = false): array
+    public function modelsForProvider(string $providerKey, bool $refresh = false, int $timeout = 30): array
     {
         $candidate = collect($this->candidates())->firstWhere('key', $providerKey);
 
@@ -147,6 +147,7 @@ class AiManager
         $models = Cache::remember($cacheKey, now()->addMinutes(15), fn (): array => $this->client->models(
             $candidate['base_url'],
             $candidate['api_key'],
+            $timeout,
         ));
 
         if ($models === []) {
@@ -158,6 +159,48 @@ class AiManager
         }
 
         return $models;
+    }
+
+    /**
+     * Kiểm tra nhanh trước khi nhận việc, để cấu hình sai báo ngay khi bấm "Tạo"
+     * thay vì xếp hàng một phút rồi mới đổ lỗi.
+     *
+     * Chỉ chặn khi chắc chắn là cấu hình sai (chưa có provider, provider bị tắt
+     * hoặc thiếu key, tên model không tồn tại). Lỗi tạm thời — rớt mạng, timeout,
+     * đang bị giới hạn — thì cho qua để tiến trình nền thử lại, vì lúc đó thử lại
+     * vẫn có thể thành công qua nhà cung cấp dự phòng.
+     */
+    public function preflight(?string $providerKey, ?string $model): void
+    {
+        if (! $this->isConfigured()) {
+            throw new AiException('Chưa cấu hình nhà cung cấp AI có API key.');
+        }
+
+        if (blank($providerKey)) {
+            return;
+        }
+
+        $candidate = collect($this->candidates())->firstWhere('key', $providerKey);
+
+        if ($candidate === null) {
+            throw new AiException('Nhà cung cấp AI đã chọn hiện không khả dụng.');
+        }
+
+        $wanted = filled($model) ? (string) $model : $candidate['model'];
+
+        try {
+            $models = $this->modelsForProvider($providerKey, timeout: 10);
+        } catch (AiException $exception) {
+            if ($exception->isRateLimited() || str_starts_with($exception->getMessage(), 'Không kết nối được')) {
+                return;
+            }
+
+            throw $exception;
+        }
+
+        if (! collect($models)->contains('id', $wanted)) {
+            throw new AiException('Model đã chọn không nằm trong danh sách model khả dụng của nhà cung cấp.');
+        }
     }
 
     /**

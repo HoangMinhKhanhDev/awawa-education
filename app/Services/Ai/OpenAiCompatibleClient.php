@@ -128,9 +128,9 @@ class OpenAiCompatibleClient
      *
      * @return array<int, array{id: string, name: string, free: bool}>
      */
-    public function models(string $baseUrl, ?string $apiKey): array
+    public function models(string $baseUrl, ?string $apiKey, int $timeout = 30): array
     {
-        $request = Http::acceptJson()->timeout(30);
+        $request = Http::acceptJson()->timeout(max(1, $timeout));
 
         if (filled($apiKey)) {
             $request = $request->withToken($apiKey);

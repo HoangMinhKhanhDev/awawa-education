@@ -24,9 +24,3 @@ Schedule::call(function (): void {
 })->daily()->name('awawa:prune')->withoutOverlapping();
 
 Schedule::command('awawa:due-reminders')->everyFifteenMinutes()->withoutOverlapping();
-
-// Shared hosting có thể tắt proc_open trong PHP-FPM. Khi đó tác vụ tạo nội dung
-// được giữ trong database và cron schedule:run xử lý lần lượt ngoài web request.
-Schedule::command('awawa:generate-pending-artifact')
-    ->everyMinute()
-    ->withoutOverlapping(180);

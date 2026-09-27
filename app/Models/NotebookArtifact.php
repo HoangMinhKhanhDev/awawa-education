@@ -87,16 +87,8 @@ class NotebookArtifact extends Model
     }
 
     /**
-     * Các runner đã nhận việc: tiến trình gọi AI thật sự, nên `updated_at` không
-     * phản ánh tiến độ. Nếu tiến trình chết thì nội dung mồ côi và cron nhặt lại.
-     *
-     * @var list<string>
-     */
-    public const RUNNERS_ACTIVE = ['process', 'respond', 'inline', 'scheduler_running'];
-
-    /**
-     * Đóng dấu một lần soạn bị treo. Chỗ duy nhất được phép ghi trạng thái treo,
-     * để `Studio::poll` và cron không tự viết payload theo hai kiểu khác nhau.
+     * Đóng dấu một lần soạn thất bại. Chỗ duy nhất được phép ghi trạng thái này,
+     * để `Studio::poll` không tự viết payload theo nhiều kiểu khác nhau.
      */
     public function markStalled(string $reason): void
     {

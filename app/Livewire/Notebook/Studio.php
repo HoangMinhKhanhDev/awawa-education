@@ -8,6 +8,8 @@ use App\Jobs\GenerateArtifact;
 use App\Models\Exam;
 use App\Models\Notebook;
 use App\Models\NotebookArtifact;
+use App\Services\Ai\AiException;
+use App\Services\Ai\AiManager;
 use App\Services\Notebook\ArtifactGenerator;
 use App\Services\Notebook\ArtifactPublisher;
 use App\Support\BackgroundProcess;
@@ -167,6 +169,21 @@ class Studio extends Component
             }
         }
 
+        // Cấu hình sai (thiếu key, tắt provider, sai tên model) phải báo ngay khi
+        // bấm "Tạo", chứ không được xếp hàng một phút rồi mới đổ lỗi.
+        $settings = $this->notebook()->settings ?? [];
+
+        try {
+            app(AiManager::class)->preflight(
+                is_string($settings['ai_provider'] ?? null) ? $settings['ai_provider'] : null,
+                is_string($settings['ai_model'] ?? null) ? $settings['ai_model'] : null,
+            );
+        } catch (AiException $exception) {
+            $this->error = $exception->getMessage();
+
+            return;
+        }
+
         $params = $this->generationParams($type);
 
         $artifact = NotebookArtifact::create([
@@ -192,16 +209,17 @@ class Studio extends Component
     }
 
     /**
-     * Giao việc soạn cho tiến trình CLI; nếu hosting cấm mở tiến trình con thì
-     * giữ nội dung ở hàng chờ để scheduler xử lý từ cron.
+     * Giao việc soạn ra ngoài web request để bấm "Tạo" là thấy màn "đang soạn"
+     * ngay, kể cả trên shared hosting chặn `proc_open`.
      *
-     * Ba tầng chạy ngoài web request, xem `BackgroundProcess`:
+     * Hai tầng, xem `BackgroundProcess`:
      *   1. tiến trình con nếu hosting cho phép `proc_open`;
-     *   2. gửi response trước rồi soạn nốt nếu chạy FastCGI;
-     *   3. hàng chờ cho cron, luôn khả dụng nhưng phải chờ tới phút tiếp theo.
+     *   2. gửi response trước rồi soạn nốt nếu chạy FastCGI.
      *
-     * `dispatch()->afterResponse()` không dùng được vì Laravel vẫn chạy job đồng bộ
-     * trong chính request đó. Xem `test_poll_never_calls_the_ai_from_the_web_request`.
+     * Không có tầng chờ cron nữa: cấu hình sai phải báo ngay, không được xếp hàng
+     * một phút rồi mới đổ lỗi. `dispatch()->afterResponse()` không dùng được vì
+     * Laravel vẫn chạy job đồng bộ trong chính request đó.
+     * Xem `test_poll_never_calls_the_ai_from_the_web_request`.
      */
     protected function startGeneration(NotebookArtifact $artifact, BackgroundProcess $backgroundProcess): void
     {
@@ -235,16 +253,11 @@ class Studio extends Component
             return;
         }
 
-        // Tầng 3: hàng chờ. Không đánh dấu thất bại: cron mỗi phút sẽ nhận việc.
-        $payload['_generation_runner'] = 'scheduler';
+        // Không còn đường nào chạy được: báo ngay, không xếp hàng chờ vô nghĩa.
+        $artifact->markStalled('Máy chủ hiện không chạy được tiến trình soạn nền. Hãy thử lại, nếu vẫn vậy liên hệ quản trị viên.');
 
-        $artifact->update([
-            'title' => ArtifactType::from($artifact->type)->label().' đang chờ soạn nền…',
-            'payload' => $payload,
-        ]);
-
-        $this->generating = true;
-        $this->error = null;
+        $this->generating = false;
+        $this->error = $artifact->failedReason();
     }
 
     /**

@@ -164,11 +164,6 @@ return [
         */
         'stale_minutes' => (int) env('NOTEBOOK_STALE_MINUTES', 30),
 
-        // Số nội dung một lượt cron được nhận, và trần thời gian cho cả lượt, để
-        // giáo viên bấm "Tạo" nhiều lần không phải xếp hàng từng phút một.
-        'pending_batch' => (int) env('NOTEBOOK_PENDING_BATCH', 5),
-        'pending_time_budget' => (int) env('NOTEBOOK_PENDING_TIME_BUDGET', 240),
-
         // Bộ nhớ cho tiến trình nền soạn nội dung, nên có cao hơn mặc định của PHP.
         'generation_memory' => env('NOTEBOOK_GENERATION_MEMORY', '1024M'),
 

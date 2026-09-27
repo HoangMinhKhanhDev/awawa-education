@@ -12,10 +12,9 @@ use Illuminate\Support\Facades\Log;
  * cũng không giải quyết được vì Laravel vẫn chạy job đồng bộ trong cùng tiến trình
  * PHP (xem `Illuminate\Bus\Dispatcher::dispatchAfterResponse` gọi `dispatchSync`).
  *
- * Ba tầng theo thứ tự ưu tiên, xem `Studio::startGeneration`:
+ * Hai tầng theo thứ tự ưu tiên, xem `Studio::startGeneration`:
  *   1. tiến trình con bằng `proc_open` — tách hẳn, không bị giới hạn thời gian;
- *   2. `defer()` — gửi response trước rồi soạn nốt, chỉ cần FastCGI;
- *   3. hàng chờ cho cron — luôn khả dụng nhưng phải chờ tới phút tiếp theo.
+ *   2. `defer()` — gửi response trước rồi soạn nốt, chỉ cần FastCGI.
  *
  * Cách dùng: chỉ truyền lệnh Artisan với tham số không do người dùng nhập.
  */

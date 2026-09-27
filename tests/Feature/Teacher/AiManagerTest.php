@@ -8,6 +8,7 @@ use App\Models\AiUsageLog;
 use App\Services\Ai\AiException;
 use App\Services\Ai\AiManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -337,5 +338,73 @@ class AiManagerTest extends TestCase
         $this->assertSame(['Xin', ' chào', ' bạn'], $chunks);
         $this->assertSame('Xin chào bạn', $result->text);
         $this->assertSame(9, $result->totalTokens());
+    }
+
+    public function test_preflight_passes_for_a_valid_pinned_provider_and_model(): void
+    {
+        $this->configureProvider();
+
+        Http::fake([
+            'openrouter.ai/*' => Http::response(['data' => [['id' => 'openrouter/free']]], 200),
+        ]);
+
+        app(AiManager::class)->preflight('openrouter', 'openrouter/free');
+
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_preflight_refuses_a_provider_without_an_api_key_right_away(): void
+    {
+        $this->configureProvider();
+
+        AiProvider::create([
+            'key' => 'agnes',
+            'label' => 'Agnes AI',
+            'base_url' => 'https://apihub.agnes-ai.com/v1',
+            'api_key' => null,
+            'default_model' => 'agnes-2.0-flash',
+            'is_enabled' => true,
+            'is_default' => false,
+        ]);
+
+        try {
+            app(AiManager::class)->preflight('agnes', 'agnes-2.0-flash');
+            $this->fail('Cần ném AiException vì provider thiếu key.');
+        } catch (AiException $exception) {
+            $this->assertStringContainsString('không khả dụng', $exception->getMessage());
+        }
+
+        Http::assertNothingSent();
+    }
+
+    public function test_preflight_refuses_an_unknown_model_name_right_away(): void
+    {
+        $this->configureProvider();
+
+        Http::fake([
+            'openrouter.ai/*' => Http::response(['data' => [['id' => 'openrouter/free']]], 200),
+        ]);
+
+        try {
+            app(AiManager::class)->preflight('openrouter', 'model-khong-ton-tai');
+            $this->fail('Cần ném AiException vì model không tồn tại.');
+        } catch (AiException $exception) {
+            $this->assertStringContainsString('không nằm trong danh sách', $exception->getMessage());
+        }
+    }
+
+    public function test_preflight_lets_a_temporary_connection_error_through_to_the_background(): void
+    {
+        $this->configureProvider();
+
+        Http::fake([
+            'openrouter.ai/*' => function (): never {
+                throw new ConnectionException('cURL error 28');
+            },
+        ]);
+
+        app(AiManager::class)->preflight('openrouter', 'openrouter/free');
+
+        $this->addToAssertionCount(1);
     }
 }
