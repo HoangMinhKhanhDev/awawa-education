@@ -39,6 +39,14 @@ class NotebookConfig
         return max(1, (int) config('awawa.notebook.max_context_chunks', 24));
     }
 
+    public static function maxArtifactContextChunks(): int
+    {
+        return min(
+            self::maxContextChunks(),
+            max(1, (int) config('awawa.notebook.max_artifact_context_chunks', 12)),
+        );
+    }
+
     public static function maxSources(): int
     {
         return max(1, NotebookSetting::getInt('notebook_max_sources') ?: (int) config('awawa.notebook.max_sources', 20));

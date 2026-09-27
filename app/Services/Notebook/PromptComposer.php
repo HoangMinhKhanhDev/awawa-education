@@ -40,9 +40,10 @@ class PromptComposer
      *
      * @return array{blocks: array<int, string>, citations: array<int, array<string, mixed>>, truncated: bool, chars: int}
      */
-    protected function context(Notebook $notebook, string $question, ?array $sourceIds = null): array
+    protected function context(Notebook $notebook, string $question, ?array $sourceIds = null, ?int $maxChunks = null): array
     {
         $budget = NotebookConfig::maxPromptChars();
+        $chunkLimit = max(1, min($maxChunks ?? NotebookConfig::maxContextChunks(), NotebookConfig::maxContextChunks()));
 
         $sources = $notebook->sources()
             ->where('is_enabled', true)
@@ -76,11 +77,11 @@ class PromptComposer
             });
         }
 
-        if (count($chunks) > NotebookConfig::maxContextChunks()) {
+        if (count($chunks) > $chunkLimit) {
             $truncated = true;
         }
 
-        foreach (array_slice($chunks, 0, NotebookConfig::maxContextChunks()) as $entry) {
+        foreach (array_slice($chunks, 0, $chunkLimit) as $entry) {
             $source = $entry['source'];
             $chunk = $entry['chunk'];
             $block = '['.($index + 1)."] (Nguồn: {$source->title})\n{$chunk->content}";
@@ -246,7 +247,11 @@ class PromptComposer
      */
     public function artifactMessages(Notebook $notebook, string $instruction, string $schemaHint): array
     {
-        $context = $this->context($notebook, $instruction);
+        $context = $this->context(
+            $notebook,
+            $instruction,
+            maxChunks: NotebookConfig::maxArtifactContextChunks(),
+        );
 
         $system = $this->buildSystem($notebook, $context['blocks'], $context['citations'], withCitations: false)
             ."\n\nNhiệm vụ: tạo nội dung theo yêu cầu của giáo viên. Chỉ trả về nội dung theo đúng định dạng yêu cầu, không thêm lời dẫn.";

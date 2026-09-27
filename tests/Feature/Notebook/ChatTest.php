@@ -202,6 +202,27 @@ class ChatTest extends TestCase
         $this->assertStringNotContainsString('Bạch Đằng', $context['messages'][0]['content']);
     }
 
+    public function test_artifact_prompt_uses_fewer_source_chunks_than_chat(): void
+    {
+        config()->set('awawa.notebook.chunk_size', 200);
+        config()->set('awawa.notebook.chunk_overlap', 0);
+        config()->set('awawa.notebook.max_context_chunks', 24);
+        config()->set('awawa.notebook.max_artifact_context_chunks', 12);
+
+        app(SourceIngestor::class)->fromText(
+            $this->notebook,
+            'Vật lí',
+            str_repeat('Photon truyền trong môi trường chân không với tốc độ ánh sáng. ', 80),
+        );
+
+        $composer = app(PromptComposer::class);
+        $artifactSystemPrompt = $composer->artifactMessages($this->notebook, 'Soạn đề về photon', 'JSON')[0]['content'];
+        $chatContext = $composer->compose($this->notebook, 'Photon truyền thế nào?');
+
+        $this->assertSame(12, substr_count($artifactSystemPrompt, '(Nguồn:'));
+        $this->assertCount(24, $chatContext['citations']);
+    }
+
     public function test_chat_can_retry_a_failed_provider_request(): void
     {
         Http::fake([

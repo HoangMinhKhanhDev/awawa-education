@@ -133,6 +133,7 @@ return [
         'max_source_chars' => (int) env('NOTEBOOK_MAX_SOURCE_CHARS', 200000),
         'max_prompt_chars' => (int) env('NOTEBOOK_MAX_PROMPT_CHARS', 400000),
         'max_context_chunks' => (int) env('NOTEBOOK_MAX_CONTEXT_CHUNKS', 24),
+        'max_artifact_context_chunks' => (int) env('NOTEBOOK_MAX_ARTIFACT_CONTEXT_CHUNKS', 12),
         'chunk_size' => (int) env('NOTEBOOK_CHUNK_SIZE', 1000),
         'chunk_overlap' => (int) env('NOTEBOOK_CHUNK_OVERLAP', 150),
         'stream' => (bool) env('AI_STREAM', true),
