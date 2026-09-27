@@ -45,7 +45,7 @@ class WorkspacePageTest extends TestCase
 
         $html = $this->actingAs($teacher)->get(route('studio.ai'))->assertOk()->getContent();
 
-        $this->assertStringContainsString('x-data="awawaNotebookPanels()"', $html);
+        $this->assertStringContainsString('x-data="{ ...awawaNotebookPanels(), mobileTab:', $html);
         $this->assertStringContainsString('class="notebook-panes', $html);
         $this->assertStringContainsString('--nb-sources: ${sourcesWidth}px; --nb-studio: ${studioWidth}px', $html);
         $this->assertSame(2, substr_count($html, 'lg:w-[var(--nb-sources)]') + substr_count($html, 'lg:w-[var(--nb-studio)]'));
@@ -63,6 +63,44 @@ class WorkspacePageTest extends TestCase
         $this->assertStringContainsString('window.awawaNotebookPanels', $script);
         $this->assertStringContainsString('awawa.notebook.panels.v1', $script);
         $this->assertStringContainsString('(min-width: 1024px)', $script);
+    }
+
+    /**
+     * Tab mobile phải chuyển tức thì phía client: hàng đợi Livewire có thể nghẽn
+     * sau request AI dài, bấm tab lúc đó vẫn phải chuyển màn hình ngay.
+     */
+    public function test_mobile_tabs_switch_instantly_without_waiting_for_the_server(): void
+    {
+        $subject = Subject::factory()->create();
+        $this->enableAiTools($subject);
+        $teacher = User::factory()->teacher($subject)->create();
+
+        $html = $this->actingAs($teacher)->get(route('studio.ai'))->assertOk()->getContent();
+
+        foreach (['sources', 'chat', 'studio'] as $tab) {
+            $this->assertStringContainsString("@click=\"mobileTab = '{$tab}'\"", $html);
+            $this->assertStringContainsString(":class=\"mobileTab === '{$tab}' ? 'flex' : 'hidden'\"", $html);
+        }
+
+        $this->assertSame(3, substr_count($html, 'x-cloak :class="mobileTab'));
+    }
+
+    /**
+     * Chuỗi chiều cao mobile: wrapper phải có chiều cao cố định để khung chat bên
+     * trong cuộn được, thay vì phình theo nội dung rồi bị cắt ở h-dvh.
+     */
+    public function test_fullbleed_layout_constrains_height_for_inner_scrolling(): void
+    {
+        $subject = Subject::factory()->create();
+        $this->enableAiTools($subject);
+        $teacher = User::factory()->teacher($subject)->create();
+
+        $html = $this->actingAs($teacher)->get(route('studio.ai'))->assertOk()->getContent();
+
+        $this->assertStringContainsString(
+            '<div class="flex min-w-0 flex-1 flex-col h-full min-h-0">',
+            $html,
+        );
     }
 
     public function test_reopening_workspace_reuses_same_notebook(): void

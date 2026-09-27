@@ -1,5 +1,5 @@
 ﻿<div class="flex h-full min-h-0 flex-col pb-14 lg:pb-0"
-    x-data="awawaNotebookPanels()"
+    x-data="{ ...awawaNotebookPanels(), mobileTab: 'chat' }"
     :class="dragging ? 'select-none' : null"
     x-on:pointermove.window="onPointerMove($event)"
     x-on:pointerup.window="onPointerUp()"
@@ -9,17 +9,19 @@
         <livewire:notebook.manager :notebook-id="$notebook->id" :key="'manager-'.$notebook->id" />
     </div>
 
-    {{-- Tab cho mobile --}}
+    {{-- Tab cho mobile: chuyển tức thì phía client để không phải chờ server
+        (hàng đợi Livewire có thể nghẽn sau request AI dài), wire:click giữ lại
+        để đồng bộ state server. --}}
     <div class="tabs shrink-0 border-b border-rule px-3 lg:hidden dark:border-night-700">
         @foreach (['sources' => 'Nguồn', 'chat' => 'Chat', 'studio' => 'Studio'] as $key => $label)
-            <button type="button" wire:click="$set('mobileTab', '{{ $key }}')"
-                class="tab {{ $mobileTab === $key ? 'tab-active' : '' }}">{{ $label }}</button>
+            <button type="button" @click="mobileTab = '{{ $key }}'" wire:click="$set('mobileTab', '{{ $key }}')"
+                class="tab" :class="mobileTab === '{{ $key }}' ? 'tab-active' : ''">{{ $label }}</button>
         @endforeach
     </div>
 
     <div class="notebook-panes relative flex min-h-0 flex-1" x-ref="panes"
         :style="isDesktop ? `--nb-sources: ${sourcesWidth}px; --nb-studio: ${studioWidth}px` : null">
-        <aside class="{{ $mobileTab === 'sources' ? 'flex' : 'hidden' }} min-h-0 w-full flex-col border-rule lg:flex lg:w-[var(--nb-sources)] lg:shrink-0 lg:border-r dark:border-night-700">
+        <aside x-cloak :class="mobileTab === 'sources' ? 'flex' : 'hidden'" class="min-h-0 w-full flex-col border-rule lg:flex lg:w-[var(--nb-sources)] lg:shrink-0 lg:border-r dark:border-night-700">
             <livewire:notebook.sources :notebook-id="$notebook->id" :key="'sources-'.$notebook->id" />
         </aside>
 
@@ -32,7 +34,7 @@
             @keydown.left.prevent="nudge('sources', -16)"
             @keydown.right.prevent="nudge('sources', 16)"></div>
 
-        <section class="{{ $mobileTab === 'chat' ? 'flex' : 'hidden' }} min-h-0 min-w-0 flex-1 flex-col lg:flex">
+        <section x-cloak :class="mobileTab === 'chat' ? 'flex' : 'hidden'" class="min-h-0 min-w-0 flex-1 flex-col lg:flex">
             <livewire:notebook.chat :notebook-id="$notebook->id" :key="'chat-'.$notebook->id" />
         </section>
 
@@ -45,7 +47,7 @@
             @keydown.left.prevent="nudge('studio', -16)"
             @keydown.right.prevent="nudge('studio', 16)"></div>
 
-        <aside class="{{ $mobileTab === 'studio' ? 'flex' : 'hidden' }} min-h-0 w-full flex-col border-rule lg:flex lg:w-[var(--nb-studio)] lg:shrink-0 lg:border-l dark:border-night-700">
+        <aside x-cloak :class="mobileTab === 'studio' ? 'flex' : 'hidden'" class="min-h-0 w-full flex-col border-rule lg:flex lg:w-[var(--nb-studio)] lg:shrink-0 lg:border-l dark:border-night-700">
             <livewire:notebook.studio :notebook-id="$notebook->id" :key="'studio-'.$notebook->id" />
         </aside>
     </div>

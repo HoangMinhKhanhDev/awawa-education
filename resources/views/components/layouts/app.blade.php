@@ -96,7 +96,7 @@
             </div>
         </aside>
 
-        <div class="flex min-w-0 flex-1 flex-col {{ $fullBleed ? 'min-h-0' : '' }}">
+        <div class="flex min-w-0 flex-1 flex-col {{ $fullBleed ? 'h-full min-h-0' : '' }}">
             {{-- Top bar mobile --}}
             <header class="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-rule bg-white/95 px-3 backdrop-blur lg:hidden dark:border-night-700 dark:bg-night-800/95">
                 <div class="flex items-center gap-2">
