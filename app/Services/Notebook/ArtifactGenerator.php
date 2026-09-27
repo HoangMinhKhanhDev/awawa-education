@@ -16,10 +16,61 @@ use RuntimeException;
  */
 class ArtifactGenerator
 {
+    /**
+     * Token dành cho phần hướng dẫn và mô tả định dạng, không thuộc nội dung.
+     */
+    private const TOKEN_OVERHEAD = 1200;
+
+    /**
+     * Token trung bình cho một câu hỏi kèm lựa chọn, đáp án và giải thích.
+     */
+    private const TOKENS_PER_QUESTION = 150;
+
+    /**
+     * Ngân sách cho văn bản tự do (tài liệu, đề cương, bản tin). Không bị ràng buộc
+     * bởi số câu nên để ngắn: đây là loại nội dung dài nhất nhưng cũng là loại mà
+     * nhà cung cấp miễn phí chậm nhất, và 3.000 token đã đủ một tài liệu tóm tắt.
+     */
+    private const TOKENS_PER_PROSE = 3000;
+
     public function __construct(
         protected AiManager $ai,
         protected PromptComposer $composer,
     ) {}
+
+    /**
+     * Trần token cho một lần soạn, lấy từ cấu hình để admin chỉnh được theo nhà
+     * cung cấp đang dùng.
+     */
+    public static function tokenCap(): int
+    {
+        return max(2000, (int) config('awawa.notebook.max_artifact_tokens', 6000));
+    }
+
+    /**
+     * Số giây được chờ một lần gọi AI.
+     *
+     * Soạn chạy ngoài web request nên có thể chờ lâu hơn hẳn chat. Giữ dưới trần
+     * `max_execution_time` của hosting (Hostinger Business cho tối đa 360 giây) để
+     * lỗi hết thời gian đến từ phía ta, chứ không phải từ host cắt tiến trình.
+     */
+    public static function timeout(): int
+    {
+        $configured = (int) config('awawa.notebook.artifact_timeout', 300);
+        $hostLimit = (int) ini_get('max_execution_time');
+
+        // max_execution_time = 0 nghĩa là không giới hạn.
+        return max(30, $hostLimit > 0 ? min($configured, $hostLimit - 30) : $configured);
+    }
+
+    /**
+     * Số câu tối đa một lần soạn đề thi chịu được trước khi bị cắt cụt giữa chừng.
+     * Dùng chung cho kiểm tra lúc bấm "Tạo" lẫn lúc sinh, để hai nơi không lệch nhau.
+     */
+    public static function maxQuestionsPerExam(): int
+    {
+        return max(1, (int) floor((self::tokenCap() - self::TOKEN_OVERHEAD) / self::TOKENS_PER_QUESTION));
+    }
 
     /**
      * @param  array<string, mixed>  $params
@@ -53,6 +104,7 @@ class ArtifactGenerator
                 'model' => $pinned['model'],
                 'temperature' => $round === 1 ? 0.2 : 0.5,
                 'max_tokens' => $this->maxTokensFor($type, $params),
+                'timeout' => $this->timeout(),
             ]);
 
             if (! $type->isJson()) {
@@ -96,20 +148,19 @@ class ArtifactGenerator
      */
     protected function maxTokensFor(ArtifactType $type, array $params): int
     {
-        $cap = max(2000, (int) config('awawa.notebook.max_artifact_tokens', 8000));
-        $base = 1200;
+        $cap = self::tokenCap();
 
         if ($type === ArtifactType::Exam) {
             $questions = max(1, (int) ($params['exam_sections'] ?? 2)) * max(1, (int) ($params['exam_questions_per_section'] ?? 5));
 
-            return min($cap, $base + $questions * 150);
+            return min($cap, self::TOKEN_OVERHEAD + $questions * self::TOKENS_PER_QUESTION);
         }
 
         if ($type === ArtifactType::Questions) {
-            return min($cap, $base + max(1, (int) ($params['count'] ?? 5)) * 150);
+            return min($cap, self::TOKEN_OVERHEAD + max(1, (int) ($params['count'] ?? 5)) * self::TOKENS_PER_QUESTION);
         }
 
-        return min($cap, $base + 40 * 150);
+        return min($cap, self::TOKENS_PER_PROSE);
     }
 
     /**
@@ -125,15 +176,24 @@ class ArtifactGenerator
 
         $sections = max(1, (int) ($params['exam_sections'] ?? 2));
         $perSection = max(1, (int) ($params['exam_questions_per_section'] ?? 5));
-        $cap = max(2000, (int) config('awawa.notebook.max_artifact_tokens', 8000));
-        $allowed = (int) floor(($cap - 1200) / 150);
+        $total = $sections * $perSection;
+        $allowed = self::maxQuestionsPerExam();
 
-        if ($sections * $perSection > $allowed) {
-            throw new RuntimeException(
-                "Đề này yêu cầu {$sections}×{$perSection} = ".($sections * $perSection).' câu, vượt giới hạn '.max(1, $allowed)
-                .' câu mỗi lần soạn. Hãy giảm số câu mỗi phần, hoặc soạn 2 đề rồi ghép lại.'
-            );
+        if ($total > $allowed) {
+            throw new RuntimeException(self::oversizedExamMessage($total, $allowed));
         }
+    }
+
+    /**
+     * Thông điệp cho giáo viên khi cấu trúc đề vượt trần, dùng chung cho cả lúc
+     * bấm "Tạo" lẫn lúc soạn nền.
+     */
+    public static function oversizedExamMessage(int $total, ?int $allowed = null): string
+    {
+        $allowed ??= self::maxQuestionsPerExam();
+
+        return "Đề này yêu cầu {$total} câu, vượt giới hạn {$allowed} câu mỗi lần soạn. "
+            .'Hãy giảm số câu mỗi phần, hoặc soạn 2 đề rồi ghép lại.';
     }
 
     /**

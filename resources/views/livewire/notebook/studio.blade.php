@@ -38,9 +38,14 @@
         @if ($error)
             <div class="alert alert-error mx-3 mt-3">
                 <p>{{ $error }}</p>
-                @if ($rateLimited)
-                    <p class="mt-1 text-xs">Yêu cầu của bạn đã được giữ nguyên. Hãy thử lại sau, hoặc nhờ quản trị viên thêm một nhà cung cấp AI dự phòng ở trang API key.</p>
-                @endif
+            </div>
+        @endif
+
+        {{-- Lỗi hạn mức xảy ra ở tiến trình nền nên không nằm trong $error; nhắc riêng ở đây. --}}
+        @if ($rateLimited)
+            <div class="alert alert-error mx-3 mt-3">
+                <p>Nhà cung cấp AI đang giới hạn lượt gọi, nên các nội dung vừa soạn đã dừng.</p>
+                <p class="mt-1 text-xs">Hãy thử lại sau, hoặc nhờ quản trị viên thêm một nhà cung cấp AI dự phòng ở trang API key.</p>
             </div>
         @endif
 
@@ -145,10 +150,21 @@
                                     </select>
                                 </div>
                                 <div class="flex items-end">
-                                    <p class="tnum pb-2 text-[11px] leading-relaxed text-ink-faint dark:text-slate-500">
-                                        {{ \App\Services\Notebook\ArtifactGenerator::examPointsPerQuestion((int) $examSections, (int) $examQuestionsPerSection, (float) $examTotalPoints) }} điểm/câu
-                                        · {{ (int) $examSections * (int) $examQuestionsPerSection }} câu
-                                    </p>
+                                    @php
+                                        $examQuestionTotal = (int) $examSections * (int) $examQuestionsPerSection;
+                                        $examQuestionLimit = \App\Services\Notebook\ArtifactGenerator::maxQuestionsPerExam();
+                                    @endphp
+                                    @if ($examQuestionTotal > $examQuestionLimit)
+                                        <p class="pb-2 text-[11px] leading-relaxed text-signal dark:text-red-400">
+                                            {{ $examQuestionTotal }} câu vượt giới hạn {{ $examQuestionLimit }} câu mỗi lần soạn.
+                                            Hãy giảm số câu mỗi phần.
+                                        </p>
+                                    @else
+                                        <p class="tnum pb-2 text-[11px] leading-relaxed text-ink-faint dark:text-slate-500">
+                                            {{ \App\Services\Notebook\ArtifactGenerator::examPointsPerQuestion((int) $examSections, (int) $examQuestionsPerSection, (float) $examTotalPoints) }} điểm/câu
+                                            · {{ $examQuestionTotal }} câu
+                                        </p>
+                                    @endif
                                 </div>
                             </div>
                         @endif
@@ -158,7 +174,7 @@
                                 <x-icon name="sparkles" class="h-4 w-4" />
                                 Tạo {{ \Illuminate\Support\Str::lower($activeTypeEnum->label()) }}
                             </span>
-                            <span wire:loading wire:target="generate">Đang bắt đầu…</span>
+                            <span wire:loading wire:target="generate">Đang tạo…</span>
                         </button>
                     </form>
                 </section>

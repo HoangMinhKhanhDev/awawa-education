@@ -10,11 +10,17 @@ class AiException extends RuntimeException
 
     private int $retryAfterSeconds = 0;
 
-    public static function rateLimited(string $message, int $retryAfterSeconds = 60): self
+    /**
+     * Nhà cung cấp có nói thẳng bao lâu thì mới được phép hy vọng thử lại được.
+     */
+    private bool $retryAfterKnown = false;
+
+    public static function rateLimited(string $message, int $retryAfterSeconds = 60, bool $retryAfterKnown = false): self
     {
         $exception = new self($message);
         $exception->rateLimited = true;
         $exception->retryAfterSeconds = max(5, $retryAfterSeconds);
+        $exception->retryAfterKnown = $retryAfterKnown;
 
         return $exception;
     }
@@ -27,6 +33,11 @@ class AiException extends RuntimeException
     public function retryAfterSeconds(): int
     {
         return $this->retryAfterSeconds;
+    }
+
+    public function retryAfterIsKnown(): bool
+    {
+        return $this->retryAfterKnown;
     }
 
     /**

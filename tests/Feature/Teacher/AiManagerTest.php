@@ -207,6 +207,32 @@ class AiManagerTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    /**
+     * Provider không nói bao lâu thì hạn mức gần như chắc chắn cả phút. Chờ "có thể"
+     * vài giây rồi gọi lại chỉ làm nặng thêm hạn mức và kéo dài thời gian chờ.
+     */
+    public function test_rate_limit_without_a_retry_after_hint_is_not_retried(): void
+    {
+        $this->configureProvider();
+        config()->set('awawa.ai.rate_limit.retry_delay', 10);
+
+        Http::fake([
+            'openrouter.ai/*' => Http::response(['error' => ['message' => 'free tier limit']], 429),
+        ]);
+
+        $startedAt = microtime(true);
+
+        try {
+            app(AiManager::class)->chat([['role' => 'user', 'content' => 'Hi']]);
+            $this->fail('Cần ném AiException.');
+        } catch (AiException $exception) {
+            $this->assertTrue($exception->isRateLimited());
+        }
+
+        $this->assertLessThan(5, microtime(true) - $startedAt, 'Không được ngủ chờ khi provider không nói bao lâu.');
+        Http::assertSentCount(1);
+    }
+
     public function test_streaming_retries_a_short_rate_limit_without_duplicating_output(): void
     {
         $this->configureProvider();

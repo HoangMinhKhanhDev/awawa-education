@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Services\Ai\AiManager;
 use App\Services\Notebook\PromptComposer;
 use App\Services\Notebook\SourceIngestor;
+use App\Support\NotebookConfig;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Support\Facades\Http;
@@ -221,6 +222,44 @@ class ChatTest extends TestCase
 
         $this->assertSame(8, substr_count($artifactSystemPrompt, '(Nguồn:'));
         $this->assertCount(24, $chatContext['citations']);
+    }
+
+    /**
+     * Prompt nặng là nguyên nhân chat chậm, nên trần mặc định phải đủ nhỏ mà vẫn
+     * trả lời được; admin muốn nhiều ngữ cảnh hơn thì nâng qua cấu hình.
+     */
+    public function test_chat_context_limit_is_small_enough_to_stay_responsive_by_default(): void
+    {
+        $this->assertLessThanOrEqual(12, NotebookConfig::maxContextChunks());
+    }
+
+    public function test_chat_asks_the_provider_for_a_short_answer(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'openrouter.ai/*' => Http::response([
+                'model' => 'openrouter/free',
+                'choices' => [['message' => ['content' => 'Trả lời ngắn.']]],
+                'usage' => ['total_tokens' => 12],
+            ]),
+        ]);
+
+        app(SourceIngestor::class)->fromText($this->notebook, 'Vật lí', 'Nội dung nguồn.');
+
+        Livewire::test(Chat::class, ['notebookId' => $this->notebook->id])
+            ->set('prompt', 'Tóm tắt nội dung')
+            ->call('send')
+            ->call('streamAnswer')
+            ->assertSet('streaming', false);
+
+        Http::assertSent(function (HttpRequest $request): bool {
+            $body = $request->data();
+
+            $this->assertIsArray($body);
+            $this->assertSame(1200, $body['max_tokens'] ?? null);
+
+            return true;
+        });
     }
 
     public function test_chat_can_retry_a_failed_provider_request(): void

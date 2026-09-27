@@ -10,9 +10,9 @@ use Illuminate\Console\Command;
 /**
  * Soạn một artefact trong tiến trình CLI riêng.
  *
- * Lệnh này do `App\Support\BackgroundProcess` mở ra từ web request, không bao giờ
- * gọi trực tiếp: shared hosting chặn request khoảng 30 giây trong khi một lần gọi
- * AI có thể mất vài phút. Tiến trình CLI không bị giới hạn đó.
+ * Lệnh này do `App\Support\BackgroundProcess` mở ra từ web request khi hosting cho
+ * phép `proc_open`, không bao giờ gọi trực tiếp. Nếu hosting chặn, `Studio` dùng
+ * tầng `defer` hoặc hàng chờ cron thay cho lệnh này.
  */
 class GenerateArtifactCommand extends Command
 {

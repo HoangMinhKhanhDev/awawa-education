@@ -162,8 +162,11 @@ class AiManager
 
     /**
      * Số giây nên chờ trước khi thử lại cùng một nhà cung cấp sau khi bị giới hạn lượt gọi.
-     * Chờ ít nhất bằng số giây provider yêu cầu, và không vượt quá tổng thời gian cho phép.
-     * Trả về 0 khi không nên thử lại (tắt thử lại, hết số lần, hoặc provider bảo nghỉ quá lâu).
+     *
+     * Chỉ thử lại khi nhà cung cấp nói thẳng cửa sổ hạn mức của nó còn ngắn. Nhiều
+     * nhà cung cấp miễn phí trả 429 mà không kèm `Retry-After` và cần cả phút mới
+     * hết hạn: chờ "có thể" vài giây rồi gọi lại chỉ làm nặng thêm hạn mức và kéo dài
+     * thời gian chờ của giáo viên thêm vô ích.
      */
     protected function rateLimitRetryDelay(AiException $exception, int $attempt, int $waitedSeconds): int
     {
@@ -171,7 +174,7 @@ class AiManager
         $maxAttempts = max(1, (int) config('awawa.ai.rate_limit.max_attempts', 2));
         $maxTotalWait = max(0, (int) config('awawa.ai.rate_limit.max_total_wait', 20));
 
-        if ($configuredDelay === 0 || $attempt >= $maxAttempts) {
+        if ($configuredDelay === 0 || $attempt >= $maxAttempts || ! $exception->retryAfterIsKnown()) {
             return 0;
         }
 

@@ -4,9 +4,11 @@ namespace App\Livewire\Notebook;
 
 use App\Enums\ArtifactType;
 use App\Enums\SubjectFeature;
+use App\Jobs\GenerateArtifact;
 use App\Models\Exam;
 use App\Models\Notebook;
 use App\Models\NotebookArtifact;
+use App\Services\Notebook\ArtifactGenerator;
 use App\Services\Notebook\ArtifactPublisher;
 use App\Support\BackgroundProcess;
 use Illuminate\Contracts\View\View;
@@ -45,8 +47,6 @@ class Studio extends Component
     public bool $examShuffleOptions = false;
 
     public bool $generating = false;
-
-    public bool $rateLimited = false;
 
     public ?string $error = null;
 
@@ -155,6 +155,27 @@ class Studio extends Component
             return;
         }
 
+        // Chặn ngay ở đây thay vì tạo artefact rồi mới báo lỗi vài chục giây sau:
+        // giáo viên thấy lỗi ngay khi bấm "Tạo" thay vì phải chờ nền xong rồi mới thấy.
+        if ($type === ArtifactType::Exam) {
+            $total = $this->examSections * $this->examQuestionsPerSection;
+
+            if ($total > ArtifactGenerator::maxQuestionsPerExam()) {
+                $this->error = ArtifactGenerator::oversizedExamMessage($total);
+
+                return;
+            }
+        }
+
+        $running = $this->runningGenerations();
+
+        if ($running >= $this->maxConcurrentGenerations()) {
+            $this->error = 'Bạn đang soạn '.$running.' nội dung cùng lúc, '
+                .'hãy đợi chúng xong rồi tạo tiếp để máy chủ không bị quá tải.';
+
+            return;
+        }
+
         $params = $this->generationParams($type);
 
         $artifact = NotebookArtifact::create([
@@ -169,7 +190,6 @@ class Studio extends Component
         ]);
 
         $this->generating = true;
-        $this->rateLimited = false;
         $this->instruction = '';
         $this->activeType = $type->value;
         $this->view = 'type';
@@ -184,10 +204,13 @@ class Studio extends Component
      * Giao việc soạn cho tiến trình CLI; nếu hosting cấm mở tiến trình con thì
      * giữ nội dung ở hàng chờ để scheduler xử lý từ cron.
      *
-     * Không gọi AI tại đây: shared hosting chặn web request khoảng 30 giây nên lệnh
-     * `dispatch()->afterResponse()` vẫn chạy trong chính request đó và bị cắt giữa
-     * chừng. Trên shared hosting tắt proc_open, cron `schedule:run` sẽ nhận việc
-     * từ database mà không cần web request mở tiến trình con.
+     * Ba tầng chạy ngoài web request, xem `BackgroundProcess`:
+     *   1. tiến trình con nếu hosting cho phép `proc_open`;
+     *   2. gửi response trước rồi soạn nốt nếu chạy FastCGI;
+     *   3. hàng chờ cho cron, luôn khả dụng nhưng phải chờ tới phút tiếp theo.
+     *
+     * `dispatch()->afterResponse()` không dùng được vì Laravel vẫn chạy job đồng bộ
+     * trong chính request đó. Xem `test_poll_never_calls_the_ai_from_the_web_request`.
      */
     protected function startGeneration(NotebookArtifact $artifact, BackgroundProcess $backgroundProcess): void
     {
@@ -195,16 +218,33 @@ class Studio extends Component
         $payload['_generation_runner'] = 'process';
         $artifact->update(['payload' => $payload]);
 
-        $started = $backgroundProcess->start(
+        // Tầng 1: tiến trình con. Tách hẳn khỏi request nên không bị giới hạn thời
+        // gian, và sống được cả khi giáo viên đóng tab ngay sau khi bấm "Tạo".
+        if ($backgroundProcess->start(
             $backgroundProcess->phpBinary(),
             [base_path('artisan'), 'awawa:generate-artifact', (string) $artifact->id],
-        );
-
-        if ($started) {
+        )) {
             return;
         }
 
-        // Không đánh dấu thất bại: cron mỗi phút sẽ chạy lệnh soạn từ hàng chờ.
+        // Tầng 2: gửi response trước rồi soạn nốt. Giáo viên thấy màn "đang soạn"
+        // gần như tức thì, đây là đường duy nhất còn lại khi hosting chặn proc_open.
+        if ($backgroundProcess->defer(function () use ($artifact): void {
+            @set_time_limit(0);
+            @ini_set('memory_limit', (string) config('awawa.notebook.generation_memory', '1024M'));
+
+            (new GenerateArtifact($artifact->id))->handle(app(ArtifactGenerator::class));
+        })) {
+            $payload['_generation_runner'] = 'respond';
+            $artifact->update(['payload' => $payload]);
+
+            $this->generating = true;
+            $this->error = null;
+
+            return;
+        }
+
+        // Tầng 3: hàng chờ. Không đánh dấu thất bại: cron mỗi phút sẽ nhận việc.
         $payload['_generation_runner'] = 'scheduler';
 
         $artifact->update([
@@ -221,22 +261,65 @@ class Studio extends Component
      */
     public function poll(): void
     {
-        foreach ($this->notebook()
-            ->artifacts()
-            ->where('status', 'generating')
-            ->where('updated_at', '<=', now()->subMinutes(10))
-            ->get() as $stuck) {
-            $payload = $stuck->payload ?? [];
-            $payload['_error'] = 'Nội dung này bị treo quá lâu nên đã dừng. Nhấn "Tạo lại" để thử lần nữa.';
-            unset($payload['_generation_runner']);
-
-            $stuck->update([
-                'status' => NotebookArtifact::STATUS_FAILED,
-                'payload' => $payload,
-            ]);
+        foreach ($this->stalledArtifacts() as $stuck) {
+            $stuck->markStalled(
+                $stuck->hasActiveRunner()
+                    ? 'Nội dung này bị treo quá lâu nên đã dừng. Nhấn "Tạo lại" để thử lần nữa.'
+                    : 'Hàng chờ soạn nội dung bị kẹt quá lâu nên đã dừng. Nhấn "Tạo lại" để thử lần nữa.'
+            );
         }
 
         $this->generating = $this->notebook()->artifacts()->where('status', 'generating')->exists();
+    }
+
+    /**
+     * Nội dung đã quá hạn mà không còn tiến trình nào lo.
+     *
+     * Ngưỡng phải tách cho hàng chờ và tiến trình đang chạy: một lần soạn đề thi hợp
+     * lệ có thể mất hàng chục phút nên không thể dùng chung một ngưỡng ngắn, còn xếp
+     * hàng quá mười phút tức là cron không chạy và sẽ không có gì xử lý nữa.
+     *
+     * @return Collection<int, NotebookArtifact>
+     */
+    protected function stalledArtifacts(): Collection
+    {
+        return $this->notebook()->artifacts()
+            ->where('status', 'generating')
+            ->where(function ($query): void {
+                $query->where(function ($queued): void {
+                    $queued->where('payload->_generation_runner', 'scheduler')
+                        ->where('updated_at', '<=', now()->subMinutes($this->staleMinutes('queued_stale_minutes')));
+                })->orWhere(function ($running): void {
+                    $running->whereIn('payload->_generation_runner', NotebookArtifact::activeRunners())
+                        ->where('updated_at', '<=', now()->subMinutes($this->staleMinutes('running_stale_minutes')));
+                });
+            })
+            ->get();
+    }
+
+    protected function staleMinutes(string $key): int
+    {
+        return max(1, (int) config('awawa.notebook.'.$key, 10));
+    }
+
+    /**
+     * Số nội dung của giáo viên này đang được soạn.
+     *
+     * Tầng `respond` giữ một tiến trình PHP-FPM trong lúc gọi AI, nên mỗi lần soạn
+     * song song lại tốn một worker. Shared hosting chỉ có vài worker nên phải chặn
+     * trước khi site bị nghẽn, thay vì để giáo viên tự tạo hàng chục cái một lúc.
+     */
+    protected function runningGenerations(): int
+    {
+        return NotebookArtifact::query()
+            ->where('user_id', $this->notebook()->owner_id)
+            ->where('status', 'generating')
+            ->count();
+    }
+
+    protected function maxConcurrentGenerations(): int
+    {
+        return max(1, (int) config('awawa.notebook.max_concurrent_generations', 3));
     }
 
     /**
@@ -360,6 +443,15 @@ class Studio extends Component
         if ($type->isJson()) {
             $payload = $this->validateDraftPayload($type);
             $payload['_generation'] = $artifact->payload['_generation'] ?? [];
+
+            // Giữ lại cờ đã báo và cờ lỗi: nếu không, lần render kế tiếp sẽ báo lại
+            // "Đã soạn xong" cho chính bản nháp vừa được lưu.
+            foreach (['_notified_at', '_error', '_error_is_rate_limited'] as $flag) {
+                if (isset($artifact->payload[$flag])) {
+                    $payload[$flag] = $artifact->payload[$flag];
+                }
+            }
+
             $artifact->update(['title' => $this->draftTitle, 'payload' => $payload]);
         } else {
             $validated = $this->validate([
@@ -621,7 +713,7 @@ class Studio extends Component
         }
 
         $payload = $artifact->payload ?? [];
-        unset($payload['_error'], $payload['_notified_at'], $payload['_generation_runner']);
+        unset($payload['_error'], $payload['_error_is_rate_limited'], $payload['_notified_at'], $payload['_generation_runner']);
         $payload['_generation'] = $params;
         $artifact->update([
             'title' => ArtifactType::from($artifact->type)->label().' đang soạn lại…',
@@ -880,8 +972,23 @@ class Studio extends Component
             'hasSources' => $this->notebook()->enabledSourceIds() !== [],
             'isGenerating' => $this->notebook()->artifacts()->where('status', 'generating')->exists(),
             'notice' => $this->collectNotices(),
+            'rateLimited' => $this->recentlyRateLimited(),
             'subjectName' => $this->notebook()->subject?->name,
         ]);
+    }
+
+    /**
+     * Có vừa gặp lỗi hạn mức không, để giao diện nhắc đúng việc cần làm thay vì báo
+     * lỗi kỹ thuật chung chung. Chỉ nhìn mười phút gần nhất để lời nhắc không
+     * dính lại vĩnh viễn sau một sự cố đã qua.
+     */
+    protected function recentlyRateLimited(): bool
+    {
+        return $this->notebook()->artifacts()
+            ->where('status', NotebookArtifact::STATUS_FAILED)
+            ->where('payload->_error_is_rate_limited', true)
+            ->where('updated_at', '>=', now()->subMinutes(10))
+            ->exists();
     }
 
     /**

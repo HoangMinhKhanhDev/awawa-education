@@ -132,13 +132,51 @@ return [
         'max_file_mb' => (int) env('NOTEBOOK_MAX_FILE_MB', 10),
         'max_source_chars' => (int) env('NOTEBOOK_MAX_SOURCE_CHARS', 200000),
         'max_prompt_chars' => (int) env('NOTEBOOK_MAX_PROMPT_CHARS', 400000),
-        'max_context_chunks' => (int) env('NOTEBOOK_MAX_CONTEXT_CHUNKS', 24),
+
+        // Mỗi chunk ~1.000 ký tự. Số chunk quyết định độ dài prompt nên quyết định
+        // luôn tốc độ: 12 chunk là khoảng 12k ký tự, đủ trả lời mà không phải gửi
+        // cả cuốn sách lên mỗi tin nhắn.
+        'max_context_chunks' => (int) env('NOTEBOOK_MAX_CONTEXT_CHUNKS', 12),
         'max_artifact_context_chunks' => (int) env('NOTEBOOK_MAX_ARTIFACT_CONTEXT_CHUNKS', 8),
         'chunk_size' => (int) env('NOTEBOOK_CHUNK_SIZE', 1000),
         'chunk_overlap' => (int) env('NOTEBOOK_CHUNK_OVERLAP', 150),
         'stream' => (bool) env('AI_STREAM', true),
-        'history_messages' => (int) env('NOTEBOOK_HISTORY_MESSAGES', 8),
+        'history_messages' => (int) env('NOTEBOOK_HISTORY_MESSAGES', 6),
         'max_notebooks' => (int) env('NOTEBOOK_MAX_NOTEBOOKS', 20),
+
+        // Trần token cho câu trả lời của một lần soạn. Nhà cung cấp miễn phí chậm
+        // theo tỉ lệ gần như tuyến tính với số token sinh ra, nên hạ trần này là
+        // cách rút ngắn thời gian chờ rõ rệt nhất.
+        'max_artifact_tokens' => (int) env('NOTEBOOK_MAX_ARTIFACT_TOKENS', 6000),
+
+        /*
+        | Bao lâu được chờ một lần gọi AI khi soạn nội dung. Soạn chạy ngoài web
+        | request nên chờ lâu hơn chat được nhiều; giữ dưới trần `max_execution_time`
+        | của hosting (Hostinger Business cho tối đa 360 giây) để lỗi hết thời gian
+        | đến từ phía ta chứ không phải từ host cắt tiến trình.
+        */
+        'artifact_timeout' => (int) env('NOTEBOOK_ARTIFACT_TIMEOUT', 300),
+
+        /*
+        | Ngưỡng treo cho một lần soạn. Hai ngưỡng tách biệt vì trạng thái "xếp hàng
+        | chờ cron" và "tiến trình đang gọi AI" hỏng theo hai kiểu khác nhau: hàng
+        | chờ treo thì chỉ cần cron chạy, còn tiến trình chết giữa chừng thì phải
+        | chờ lâu hơn nhiều vì một lần soạn bài dài vốn đã mất vài chục giây.
+        */
+        'queued_stale_minutes' => (int) env('NOTEBOOK_QUEUED_STALE_MINUTES', 10),
+        'running_stale_minutes' => (int) env('NOTEBOOK_RUNNING_STALE_MINUTES', 45),
+
+        /*
+        | Số nội dung một giáo viên được soạn cùng lúc. Mỗi lần soạn giữ chừng một
+        | tiến trình PHP-FPM trong lúc gọi AI, nên shared hosting chỉ có vài worker.
+        | Muốn tạo nhanh hơn thì tăng, nhưng nhiều quá sẽ làm nghẽn cả trang.
+        */
+        'max_concurrent_generations' => (int) env('NOTEBOOK_MAX_CONCURRENT_GENERATIONS', 3),
+
+        // Số nội dung một lượt cron được nhận, và trần thời gian cho cả lượt, để
+        // giáo viên bấm "Tạo" nhiều lần không phải xếp hàng từng phút một.
+        'pending_batch' => (int) env('NOTEBOOK_PENDING_BATCH', 5),
+        'pending_time_budget' => (int) env('NOTEBOOK_PENDING_TIME_BUDGET', 240),
 
         // Bộ nhớ cho tiến trình nền soạn nội dung, nên có cao hơn mặc định của PHP.
         'generation_memory' => env('NOTEBOOK_GENERATION_MEMORY', '1024M'),

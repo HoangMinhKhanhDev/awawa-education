@@ -34,7 +34,7 @@ class OpenAiCompatibleClient
             $payload = array_merge($payload, $options['extra']);
         }
 
-        $request = Http::acceptJson()->timeout(90);
+        $request = Http::acceptJson()->timeout($this->timeoutFor($options));
 
         if (filled($apiKey)) {
             $request = $request->withToken($apiKey);
@@ -65,6 +65,20 @@ class OpenAiCompatibleClient
         );
     }
 
+    /**
+     * Bao lâu được chờ một lần gọi.
+     *
+     * Mặc định 90 giây vì chat chạy ngay trong web request và giáo viên đang nhìn
+     * màn hình chờ. Việc soạn chạy ngoài request nên được phép chờ lâu hơn, và
+     * `ArtifactGenerator` truyền timeout riêng.
+     *
+     * @param  array<string, mixed>  $options
+     */
+    protected function timeoutFor(array $options): int
+    {
+        return max(1, (int) ($options['timeout'] ?? 90));
+    }
+
     protected function errorMessage(Response $response): string
     {
         $message = $response->json('error.message')
@@ -84,7 +98,11 @@ class OpenAiCompatibleClient
     public function providerError(Response $response): AiException
     {
         if ($response->status() === 429) {
-            return AiException::rateLimited($this->errorMessage($response), $this->retryAfterSeconds($response));
+            return AiException::rateLimited(
+                $this->errorMessage($response),
+                $this->retryAfterSeconds($response),
+                $response->hasHeader('Retry-After'),
+            );
         }
 
         return new AiException($this->errorMessage($response));

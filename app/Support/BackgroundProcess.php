@@ -7,10 +7,15 @@ use Illuminate\Support\Facades\Log;
 /**
  * Chạy một lệnh Artisan ở tiến trình CLI tách rời khỏi web request.
  *
- * Lý do tồn tại: shared hosting (Hostinger) chặn web request ở khoảng 30 giây,
- * nên mọi lệnh gọi AI đều phải chạy ngoài request. `dispatch()->afterResponse()`
- * không giải quyết được vì Laravel vẫn chạy job đồng bộ trong cùng tiến trình PHP
- * (xem `Illuminate\Bus\Dispatcher::dispatchAfterResponse` gọi `dispatchSync`).
+ * Lý do tồn tại: shared hosting (Hostinger) chặn `proc_open` trong PHP-FPM, nên
+ * không mở được tiến trình con để chạy lệnh gọi AI. `dispatch()->afterResponse()`
+ * cũng không giải quyết được vì Laravel vẫn chạy job đồng bộ trong cùng tiến trình
+ * PHP (xem `Illuminate\Bus\Dispatcher::dispatchAfterResponse` gọi `dispatchSync`).
+ *
+ * Ba tầng theo thứ tự ưu tiên, xem `Studio::startGeneration`:
+ *   1. tiến trình con bằng `proc_open` — tách hẳn, không bị giới hạn thời gian;
+ *   2. `defer()` — gửi response trước rồi soạn nốt, chỉ cần FastCGI;
+ *   3. hàng chờ cho cron — luôn khả dụng nhưng phải chờ tới phút tiếp theo.
  *
  * Cách dùng: chỉ truyền lệnh Artisan với tham số không do người dùng nhập.
  */
@@ -80,6 +85,32 @@ class BackgroundProcess
         if (! is_resource($process)) {
             return false;
         }
+
+        return true;
+    }
+
+    /**
+     * Chạy $work sau khi phản hồi đã gửi xong cho trình duyệt.
+     *
+     * Đây là cách duy nhất để "tạo tức thì" khi hosting chặn `proc_open`: gọi
+     * `fastcgi_finish_request()` để trình duyệt nhận trọn response ngay, rồi PHP
+     * chạy nốt phần soạn còn lại. Giáo viên thấy màn "đang soạn" sau vài trăm
+     * mili giây thay vì vài chục giây.
+     *
+     * Khác `dispatch()->afterResponse()`: cái đó Laravel vẫn chạy job đồng bộ
+     * trong chính web request nên trình duyệt vẫn phải chờ.
+     */
+    public function defer(callable $work): bool
+    {
+        if (! function_exists('fastcgi_finish_request')) {
+            return false;
+        }
+
+        app()->terminating(function () use ($work): void {
+            fastcgi_finish_request();
+
+            $work();
+        });
 
         return true;
     }

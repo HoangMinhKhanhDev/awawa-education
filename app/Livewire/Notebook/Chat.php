@@ -142,7 +142,10 @@ class Chat extends Component
             'provider_key' => $pinned['provider_key'],
             'model' => $pinned['model'],
             'temperature' => 0.4,
-            'max_tokens' => 1800,
+
+            // Câu hỏi bám nguồn hiếm khi cần hơn 1.200 token; để cao hơn chỉ khiến
+            // thời gian chờ dài thêm mà không thêm thông tin.
+            'max_tokens' => 1200,
         ];
 
         $emittedDelta = false;

@@ -190,6 +190,29 @@ class StudioTest extends TestCase
         $this->assertCount(1, $artifact->payload['items']);
     }
 
+    /**
+     * Soạn chạy ngoài web request nên được chờ lâu hơn chat, nhưng phải nằm dưới
+     * trần `max_execution_time` của hosting để lỗi hết thời gian đến từ phía ta.
+     */
+    public function test_artifact_generation_waits_longer_than_a_chat_reply(): void
+    {
+        $this->assertGreaterThan(90, ArtifactGenerator::timeout());
+    }
+
+    public function test_artifact_timeout_stays_under_the_host_execution_limit(): void
+    {
+        config()->set('awawa.notebook.artifact_timeout', 300);
+
+        $original = ini_get('max_execution_time');
+        ini_set('max_execution_time', '120');
+
+        try {
+            $this->assertSame(90, ArtifactGenerator::timeout());
+        } finally {
+            ini_set('max_execution_time', $original === false ? '0' : $original);
+        }
+    }
+
     public function test_publish_questions_inserts_into_bank(): void
     {
         $artifact = NotebookArtifact::create([
