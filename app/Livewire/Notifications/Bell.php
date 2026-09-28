@@ -3,6 +3,7 @@
 namespace App\Livewire\Notifications;
 
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Facades\Cache;
 use Livewire\Component;
 
 class Bell extends Component
@@ -29,9 +30,19 @@ class Bell extends Component
     {
         $user = auth()->user();
 
+        // Layout render Bell 2 lần (desktop + mobile) mỗi trang. Cache count
+        // 30 giây để lần 2 không phải COUNT lại; recent giữ tươi theo request.
+        $unreadCount = $user
+            ? Cache::remember(
+                'bell-unread:'.$user->id,
+                30,
+                fn (): int => $user->unreadNotifications()->count(),
+            )
+            : 0;
+
         return view('livewire.notifications.bell', [
-            'unreadCount' => $user->unreadNotifications()->count(),
-            'recent' => $user->notifications()->limit(8)->get(),
+            'unreadCount' => $unreadCount,
+            'recent' => $user->notifications()->limit(5)->get(),
         ]);
     }
 }

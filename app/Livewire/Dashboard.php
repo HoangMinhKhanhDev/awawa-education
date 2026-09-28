@@ -16,6 +16,7 @@ use App\Services\Assignments\AssignmentManager;
 use App\Support\SubjectContext;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -71,11 +72,15 @@ class Dashboard extends Component
         return view('livewire.dashboard', [
             'user' => $user,
             'currentSubject' => $context->subject(),
-            'roleCounts' => $user->isSuperAdmin() ? [
-                'teacher' => User::query()->where('role', Role::Teacher->value)->count(),
-                'student' => User::query()->where('role', Role::Student->value)->count(),
-                'subject' => Subject::query()->count(),
-            ] : null,
+            'roleCounts' => $user->isSuperAdmin() ? Cache::remember(
+                'dashboard-roles',
+                60,
+                fn (): array => [
+                    'teacher' => User::query()->where('role', Role::Teacher->value)->count(),
+                    'student' => User::query()->where('role', Role::Student->value)->count(),
+                    'subject' => Subject::query()->count(),
+                ],
+            ) : null,
             'studentData' => $user->isStudent() ? $this->studentData($user) : null,
             'teacherData' => $user->isTeacher() ? $this->teacherData() : null,
         ]);
@@ -154,6 +159,8 @@ class Dashboard extends Component
             // đấu một câu query cho từng bài được giao (N+1) mỗi lần mở trang.
             ->with(['assignable', 'receipts' => fn ($query) => $query->where('user_id', $user->id)])
             ->whereHas('receipts', fn ($query) => $query->where('user_id', $user->id))
+            ->orderByDesc('assigned_at')
+            ->limit(20)
             ->get()
             ->reject(fn (Assignment $assignment): bool => $assignment->receiptFor($user)?->isCompleted() ?? true)
             ->sortBy([
@@ -210,10 +217,18 @@ class Dashboard extends Component
      */
     protected function teacherData(): array
     {
-        return [
-            'members' => TeamMembership::query()->active()->count(),
-            'pendingGrading' => ExamAttempt::query()->where('status', AttemptStatus::Submitted->value)->count(),
-            'published' => Exam::query()->where('status', ExamStatus::Published->value)->count(),
-        ];
+        // 3 COUNT mỗi lần mở dashboard. Cache 60s theo môn để nhiều giáo viên
+        // cùng môn dùng chung, hết 1 phút mới đếm lại.
+        $subjectId = app(SubjectContext::class)->id();
+
+        return Cache::remember(
+            'dashboard-teacher:'.$subjectId,
+            60,
+            fn (): array => [
+                'members' => TeamMembership::query()->active()->count(),
+                'pendingGrading' => ExamAttempt::query()->where('status', AttemptStatus::Submitted->value)->count(),
+                'published' => Exam::query()->where('status', ExamStatus::Published->value)->count(),
+            ],
+        );
     }
 }

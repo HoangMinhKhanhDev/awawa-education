@@ -5,6 +5,8 @@
     </div>
 
     <div class="shrink-0 space-y-2 px-4 pb-3">
+        <p class="text-[11px] leading-relaxed text-ink-faint dark:text-slate-500">AI chỉ dùng nội dung từ nguồn đang bật khi trò chuyện và soạn bài.</p>
+
         @if (session('notebook_status'))
             <div class="alert alert-success">{{ session('notebook_status') }}</div>
         @endif
@@ -38,7 +40,7 @@
 
         @if ($sources->isNotEmpty())
             <div class="flex items-center justify-between text-[11px] text-ink-faint dark:text-slate-500">
-                <span class="tnum">{{ $sources->where('is_enabled', true)->count() }} / {{ $sources->count() }} đang dùng</span>
+                <span class="tnum">AI đang dùng {{ $sources->where('is_enabled', true)->count() }}/{{ $sources->count() }} nguồn</span>
                 <span class="flex gap-2">
                     <button type="button" wire:click="selectAllVisible(true)" title="Bật tất cả nguồn đang hiển thị"
                         class="hover:text-brand-700 dark:hover:text-brand-300">Bật tất cả</button>
@@ -46,6 +48,9 @@
                         class="hover:text-brand-700 dark:hover:text-brand-300">Tắt tất cả</button>
                 </span>
             </div>
+            @if ($sources->where('is_enabled', true)->isEmpty())
+                <div class="alert alert-warning text-xs">Đang tắt hết nguồn — AI sẽ không bám theo tài liệu nào. Bật ít nhất một nguồn ở trên.</div>
+            @endif
         @endif
     </div>
 

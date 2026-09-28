@@ -68,7 +68,7 @@
                 <div class="mb-3 flex items-center gap-3">
                     <span class="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-brand-600 text-sm font-semibold text-white">
                         @if ($user?->avatar)
-                            <img src="{{ $user->avatarUrl() }}" alt="" class="h-full w-full object-cover">
+                            <img src="{{ $user->avatarUrl() }}" alt="" loading="lazy" width="36" height="36" class="h-full w-full object-cover">
                         @else
                             {{ $initial }}
                         @endif

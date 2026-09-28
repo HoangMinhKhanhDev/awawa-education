@@ -21,6 +21,7 @@ export default defineConfig({
             injectManifest: {
                 globPatterns: [
                     'build/assets/app-*.{js,css}',
+                    'build/assets/whiteboard-*.{js,css}',
                     'fonts/*.woff2',
                     'icons/*.png',
                     'favicon.svg',

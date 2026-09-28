@@ -201,20 +201,23 @@ class BackgroundGenerationTest extends TestCase
         $this->assertNull($artifact->fresh()->failedReason());
     }
 
-    public function test_generation_is_refused_right_away_when_the_exam_is_too_large(): void
+    public function test_large_exam_is_accepted_and_split_in_background(): void
     {
         Queue::fake();
         $this->fakeDocumentText();
 
+        // 4 phần × 20 câu = 80, vượt ngân sách một lần gọi (72 với
+        // NOTEBOOK_MAX_ARTIFACT_TOKENS=12000): vẫn nhận soạn, báo rõ sẽ chia
+        // nhiều đợt, AI chỉ chạy ở tiến trình nền.
         Livewire::test(Studio::class, ['notebookId' => $this->notebook->id])
             ->call('selectType', ArtifactType::Exam->value)
-            ->set('examSections', 6)
-            ->set('examQuestionsPerSection', 30)
+            ->set('examSections', 4)
+            ->set('examQuestionsPerSection', 20)
             ->call('generate')
-            ->assertSet('generating', false)
-            ->assertSee('vượt giới hạn');
+            ->assertSet('generating', true)
+            ->assertSee('nhiều đợt');
 
-        $this->assertSame(0, NotebookArtifact::query()->count());
+        $this->assertSame(1, NotebookArtifact::query()->count());
         Http::assertNothingSent();
     }
 

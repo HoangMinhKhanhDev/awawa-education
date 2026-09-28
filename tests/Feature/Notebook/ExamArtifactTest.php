@@ -185,7 +185,7 @@ class ExamArtifactTest extends TestCase
         }
     }
 
-    public function test_points_follow_the_requested_structure_even_when_ai_returns_fewer_questions(): void
+    public function test_incomplete_exam_fails_loudly_instead_of_saving_a_truncated_draft(): void
     {
         $this->fakeExamJson([
             ['title' => 'PHẦN I', 'questions' => [
@@ -193,16 +193,66 @@ class ExamArtifactTest extends TestCase
             ]],
         ]);
 
-        $payload = $this->artifactOf($this->generateExam([
+        $component = $this->generateExam([
             'examSections' => 2,
             'examQuestionsPerSection' => 5,
             'examTotalPoints' => 10,
+        ]);
+
+        $artifact = $this->artifactOf($component)->fresh();
+
+        // Xin 10 câu mà chỉ được 1: thử lại 1 lần rồi vẫn thiếu thì báo hỏng
+        // rõ ràng, thay vì im lặng lưu bản nháp cụt như trước.
+        $this->assertSame('failed', $artifact->status);
+        $this->assertStringContainsString('1/10 câu', (string) $artifact->failedReason());
+    }
+
+    public function test_incomplete_first_attempt_is_retried_before_failing(): void
+    {
+        $full = [
+            ['title' => 'PHẦN I', 'questions' => [
+                $this->question('Câu 1', 'essay'),
+                $this->question('Câu 2', 'essay'),
+            ]],
+            ['title' => 'PHẦN II', 'questions' => [
+                $this->question('Câu 3', 'essay'),
+                $this->question('Câu 4', 'essay'),
+            ]],
+        ];
+
+        $sequence = Http::sequence();
+
+        $sequence->push([
+            'model' => 'openrouter/free',
+            'choices' => [['message' => ['content' => json_encode([
+                'title' => 'Đề kiểm tra',
+                'description' => 'Đề do AI soạn',
+                'sections' => [$full[0]],
+            ], JSON_UNESCAPED_UNICODE)]]],
+            'usage' => ['total_tokens' => 50],
+        ], 200);
+
+        $sequence->push([
+            'model' => 'openrouter/free',
+            'choices' => [['message' => ['content' => json_encode([
+                'title' => 'Đề kiểm tra',
+                'description' => 'Đề do AI soạn',
+                'sections' => $full,
+            ], JSON_UNESCAPED_UNICODE)]]],
+            'usage' => ['total_tokens' => 60],
+        ], 200);
+
+        Http::fake(['openrouter.ai/*' => $sequence]);
+
+        $payload = $this->artifactOf($this->generateExam([
+            'examSections' => 2,
+            'examQuestionsPerSection' => 2,
+            'examTotalPoints' => 8,
         ]))->payload;
 
-        $question = $payload['sections'][0]['questions'][0];
-
-        $this->assertSame(1.0, (float) $question['points'], 'Điểm câu vẫn theo cấu trúc đã yêu cầu: 10 điểm / 10 câu.');
-        $this->assertSame(10.0, (float) $payload['settings']['total_points']);
+        $this->assertCount(2, $payload['sections']);
+        $this->assertCount(2, $payload['sections'][0]['questions']);
+        $this->assertCount(2, $payload['sections'][1]['questions']);
     }
 
     public function test_exam_prompt_states_the_structure_and_the_answer_key_rule(): void
@@ -250,11 +300,21 @@ class ExamArtifactTest extends TestCase
             ]],
         ]);
 
-        $options = $this->artifactOf($this->generateExam())->payload['sections'][0]['questions'][0]['options'];
+        $options = $this->artifactOf($this->generateExam([
+            'examSections' => 1,
+            'examQuestionsPerSection' => 1,
+        ]))->payload['sections'][0]['questions'][0]['options'];
 
         $this->assertSame(1, collect($options)->where('is_correct', true)->count());
-        $this->assertTrue($options[0]['is_correct']);
-        $this->assertFalse($options[1]['is_correct']);
+
+        // Lựa chọn được trộn lại để đáp án đúng không dồn lên đầu, nên phải kiểm tra
+        // theo nội dung chứ không theo vị trí.
+        $this->assertEqualsCanonicalizing(
+            ['A', 'B', 'C'],
+            array_column($options, 'content')
+        );
+        $this->assertContains(collect($options)->firstWhere('is_correct', true)['content'], ['A', 'B']);
+        $this->assertFalse(collect($options)->firstWhere('content', 'C')['is_correct']);
     }
 
     public function test_question_without_correct_option_becomes_fill_blank(): void
@@ -268,7 +328,10 @@ class ExamArtifactTest extends TestCase
             ]],
         ]);
 
-        $question = $this->artifactOf($this->generateExam())->payload['sections'][0]['questions'][0];
+        $question = $this->artifactOf($this->generateExam([
+            'examSections' => 1,
+            'examQuestionsPerSection' => 1,
+        ]))->payload['sections'][0]['questions'][0];
 
         $this->assertSame('fill_blank', $question['type']);
         $this->assertSame([], $question['options']);
@@ -318,7 +381,10 @@ class ExamArtifactTest extends TestCase
             ['title' => 'PHẦN I', 'questions' => [$this->question('Câu 1', 'essay')]],
         ]);
 
-        $component = $this->generateExam();
+        $component = $this->generateExam([
+            'examSections' => 1,
+            'examQuestionsPerSection' => 1,
+        ]);
         $artifact = $this->artifactOf($component);
 
         $component->call('publishAndOpen', $artifact->id)->assertSet('error', null);
@@ -338,7 +404,10 @@ class ExamArtifactTest extends TestCase
             ['title' => 'PHẦN I', 'questions' => [$this->question('Câu 1', 'essay')]],
         ]);
 
-        $component = $this->generateExam();
+        $component = $this->generateExam([
+            'examSections' => 1,
+            'examQuestionsPerSection' => 1,
+        ]);
         $artifact = $this->artifactOf($component);
 
         $component->call('publish', $artifact->id);
@@ -377,7 +446,10 @@ class ExamArtifactTest extends TestCase
             ]],
         ]);
 
-        $component = $this->generateExam();
+        $component = $this->generateExam([
+            'examSections' => 1,
+            'examQuestionsPerSection' => 1,
+        ]);
         $artifact = $this->artifactOf($component);
 
         $component->call('openPreview', $artifact->id)
@@ -385,6 +457,11 @@ class ExamArtifactTest extends TestCase
             ->set('draftPayload.settings.duration_minutes', 75)
             ->set('draftPayload.settings.shuffle_options', true)
             ->set('draftPayload.sections.0.questions.0.points', 2.5)
+            // Đặt lại thứ tự cố định vì normalize đảo ngẫu nhiên lựa chọn.
+            ->set('draftPayload.sections.0.questions.0.options', [
+                ['content' => 'A', 'is_correct' => true],
+                ['content' => 'B', 'is_correct' => false],
+            ])
             ->call('addExamOption', 0, 0)
             ->set('draftPayload.sections.0.questions.0.options.2.content', 'C')
             ->call('removeExamOption', 0, 0, 1)
@@ -398,6 +475,7 @@ class ExamArtifactTest extends TestCase
         $this->assertTrue($payload['settings']['shuffle_options']);
         $this->assertSame(2.5, $question['points']);
         $this->assertSame(['A', 'C'], array_column($question['options'], 'content'));
+        $this->assertTrue($question['options'][0]['is_correct']);
     }
 
     public function test_exam_preview_lists_questions_options_and_handoff_button(): void
@@ -443,9 +521,11 @@ class ExamArtifactTest extends TestCase
             'examTotalPoints' => 10,
         ]);
 
+        // Xin 5 câu mà chỉ được 1: không còn bản nháp cụt lặng lẽ, thay vào đó
+        // là trạng thái soạn lỗi kèm số câu thiếu và nút thử lại.
         $component->call('openPreview', $this->artifactOf($component)->id)
-            ->assertSee('đề đặt 10 điểm', escape: false)
-            ->assertSee('1 câu được dùng');
+            ->assertSee('AI chỉ soạn được 1/5 câu', escape: false)
+            ->assertSee('Thử lại');
     }
 
     public function test_points_per_question_is_shared_between_ui_and_generator(): void
@@ -470,7 +550,16 @@ class ExamArtifactTest extends TestCase
     public function test_exam_artifact_stores_generation_params_for_regenerate(): void
     {
         $this->fakeExamJson([
-            ['title' => 'PHẦN I', 'questions' => [$this->question('Câu 1', 'essay')]],
+            ['title' => 'PHẦN I', 'questions' => [
+                $this->question('Câu 1', 'essay'),
+                $this->question('Câu 2', 'essay'),
+                $this->question('Câu 3', 'essay'),
+            ]],
+            ['title' => 'PHẦN II', 'questions' => [
+                $this->question('Câu 4', 'essay'),
+                $this->question('Câu 5', 'essay'),
+                $this->question('Câu 6', 'essay'),
+            ]],
         ]);
 
         $component = $this->generateExam([
@@ -499,7 +588,10 @@ class ExamArtifactTest extends TestCase
             ['title' => 'PHẦN I', 'questions' => [$this->question('Câu 1', 'essay')]],
         ], 'Đề thi giữa kỳ 1');
 
-        $component = $this->generateExam();
+        $component = $this->generateExam([
+            'examSections' => 1,
+            'examQuestionsPerSection' => 1,
+        ]);
         $artifact = $this->artifactOf($component);
 
         $this->assertSame('Đề do AI soạn', $artifact->payload['description']);

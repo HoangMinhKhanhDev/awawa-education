@@ -59,6 +59,10 @@
         </div>
     </div>
 
+    <div class="mt-4">
+        {{ $documents->links() }}
+    </div>
+
     @if ($showForm)
         <div class="fixed inset-0 z-50 flex items-end justify-center bg-night-900/60 p-0 sm:items-center sm:p-4"
             x-data x-on:keydown.escape.window="$wire.closeForm()">

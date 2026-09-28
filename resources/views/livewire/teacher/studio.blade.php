@@ -43,7 +43,7 @@
                             <x-icon :name="$section['icon']" class="h-5 w-5 shrink-0 text-ink-faint dark:text-slate-600" />
                             <div class="min-w-0 flex-1">
                                 <p class="font-medium text-ink-soft dark:text-slate-400">{{ $section['feature']->label() }}</p>
-                                <p class="mt-0.5 text-sm text-ink-faint dark:text-slate-500">Tính năng chưa được bật cho môn này.</p>
+                                <p class="mt-0.5 text-sm text-ink-faint dark:text-slate-500">Tính năng chưa được bật cho môn này. Liên hệ quản trị viên để mở.</p>
                             </div>
                             <span class="chip chip-neutral shrink-0">Đang tắt</span>
                         </div>

@@ -88,6 +88,7 @@ class StudioTest extends TestCase
         Livewire::test(Studio::class, ['notebookId' => $this->notebook->id])
             ->call('selectType', ArtifactType::Questions->value)
             ->set('instruction', 'Soạn câu hỏi số học')
+            ->set('count', 1)
             ->call('generate');
 
         $this->runBackgroundWork();
@@ -144,7 +145,12 @@ class StudioTest extends TestCase
         $this->assertSame('Theo Nghị định, mục tiêu năm 2030 là gì?', $item['content']);
         $this->assertSame('Nguồn và chỉ ra định hướng này.', $item['explanation']);
         $this->assertSame('Kinh tế', $item['topic']);
-        $this->assertSame('20 tỷ USD', $item['options'][0]['content']);
+
+        // Thứ tự lựa chọn bị đảo ngẫu nhiên lúc normalize nên tìm theo nội dung.
+        $stripped = collect($item['options'])->firstWhere('content', '20 tỷ USD');
+
+        $this->assertNotNull($stripped);
+        $this->assertFalse($stripped['is_correct']);
     }
 
     public function test_citation_markers_are_stripped_from_generated_documents(): void
@@ -178,6 +184,7 @@ class StudioTest extends TestCase
         Livewire::test(Studio::class, ['notebookId' => $this->notebook->id])
             ->call('selectType', ArtifactType::Questions->value)
             ->set('instruction', 'Soạn câu hỏi số học')
+            ->set('count', 1)
             ->call('generate')
             ->assertHasNoErrors();
 

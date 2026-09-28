@@ -155,13 +155,27 @@ class AiJsonResilienceTest extends TestCase
         $truncated = '{"sections":[{"title":"PHẦN I","questions":['
             .'{"type":"essay","content":"Câu 1","difficulty":"easy","points":1,"options":[]},'
             .'{"type":"essay","content":"Câu 2","difficulty":"easy","points":1,"options":[]},'
-            .'{"type":"essay","content":"Câu 3 bị cắ';
+            .'{"type":"essay","content":"Câu 3 bị cụt';
 
-        $this->fakeResponses([[
-            'model' => 'openrouter/free',
-            'choices' => [['message' => ['content' => $truncated]]],
-            'usage' => ['total_tokens' => 20],
-        ]]);
+        $full = '{"title":"Đề kiểm tra","description":"Đề do AI soạn","sections":[{"title":"PHẦN I","questions":['
+            .'{"type":"essay","content":"Câu 1","difficulty":"easy","points":1,"options":[]},'
+            .'{"type":"essay","content":"Câu 2","difficulty":"easy","points":1,"options":[]},'
+            .'{"type":"essay","content":"Câu 3 đầy đủ","difficulty":"easy","points":1,"options":[]}]}]}';
+
+        // Lần 1 cụt giữa câu 3: salvage cứu được 2 câu nguyên nhưng vẫn thiếu
+        // 1 câu so với yêu cầu nên thử lại; lần 2 đủ thì nhận.
+        $this->fakeResponses([
+            [
+                'model' => 'openrouter/free',
+                'choices' => [['message' => ['content' => $truncated]]],
+                'usage' => ['total_tokens' => 20],
+            ],
+            [
+                'model' => 'openrouter/free',
+                'choices' => [['message' => ['content' => $full]]],
+                'usage' => ['total_tokens' => 25],
+            ],
+        ]);
 
         $data = app(ArtifactGenerator::class)->generate(
             $this->notebook,
@@ -173,10 +187,9 @@ class AiJsonResilienceTest extends TestCase
 
         $questions = $data['payload']['sections'][0]['questions'];
 
-        $this->assertCount(2, $questions, 'Chỉ giữ lại những câu không bị cắt.');
-        $this->assertSame('Câu 1', $questions[0]['content']);
-        $this->assertSame('Câu 2', $questions[1]['content']);
-        Http::assertSentCount(1);
+        $this->assertCount(3, $questions);
+        $this->assertSame('Câu 3 đầy đủ', $questions[2]['content']);
+        Http::assertSentCount(2);
     }
 
     public function test_it_retries_once_when_json_is_invalid(): void
@@ -223,6 +236,102 @@ class AiJsonResilienceTest extends TestCase
         }
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>  $questions
+     * @return array<string, mixed>
+     */
+    private function generateOneSectionExam(array $questions): array
+    {
+        $this->fakeResponses([[
+            'model' => 'openrouter/free',
+            'choices' => [['message' => ['content' => json_encode([
+                'title' => 'Đề kiểm tra',
+                'description' => 'Đề do AI soạn',
+                'sections' => [['title' => 'PHẦN I', 'questions' => $questions]],
+            ], JSON_UNESCAPED_UNICODE)]]],
+            'usage' => ['total_tokens' => 40],
+        ]]);
+
+        return app(ArtifactGenerator::class)->generate(
+            $this->notebook,
+            ArtifactType::Exam,
+            ['instruction' => 'Soạn đề', 'exam_sections' => 1, 'exam_questions_per_section' => count($questions), 'exam_total_points' => 10],
+            $this->subject->id,
+            $this->teacher->id,
+        )['payload'];
+    }
+
+    public function test_correct_option_survives_shuffling_and_letter_answer_is_dropped(): void
+    {
+        $payload = $this->generateOneSectionExam([[
+            'type' => 'multiple_choice',
+            'content' => '2 + 2 bằng mấy?',
+            'options' => [
+                ['content' => '4', 'is_correct' => true],
+                ['content' => '5', 'is_correct' => false],
+                ['content' => '6', 'is_correct' => false],
+                ['content' => '7', 'is_correct' => false],
+            ],
+            'answer' => 'A',
+            'difficulty' => 'easy',
+            'points' => 1,
+        ]]);
+
+        $question = $payload['sections'][0]['questions'][0];
+
+        // Đáp án đúng vẫn đúng 1, nội dung các lựa chọn giữ nguyên (chỉ đổi chỗ),
+        // chữ cái "A" do AI ghi thêm bị xóa để bảng đáp án không toàn chữ cái.
+        $this->assertSame('', $question['answer']);
+        $this->assertSame(1, collect($question['options'])->where('is_correct', true)->count());
+        $this->assertEqualsCanonicalizing(
+            ['4', '5', '6', '7'],
+            array_column($question['options'], 'content'),
+        );
+        $this->assertSame('4', collect($question['options'])->firstWhere('is_correct')['content']);
+    }
+
+    public function test_true_false_disguised_as_multiple_choice_is_converted(): void
+    {
+        $payload = $this->generateOneSectionExam([[
+            'type' => 'multiple_choice',
+            'content' => 'Tăng góp đổi thu nhập giúp cải thiện đời sống?',
+            'options' => [
+                ['content' => 'Đúng', 'is_correct' => true],
+                ['content' => 'Sai', 'is_correct' => false],
+            ],
+            'answer' => 'A',
+            'difficulty' => 'medium',
+            'points' => 1,
+        ]]);
+
+        $question = $payload['sections'][0]['questions'][0];
+
+        $this->assertSame('true_false', $question['type']);
+        $this->assertSame('true', $question['answer']);
+        $this->assertSame([], $question['options']);
+    }
+
+    public function test_true_false_with_options_and_letter_answer_is_repaired(): void
+    {
+        $payload = $this->generateOneSectionExam([[
+            'type' => 'true_false',
+            'content' => 'Việc tặng tỉ lệ cây rừng giúp tăng độ che phủ?',
+            'options' => [
+                ['content' => 'Đúng', 'is_correct' => false],
+                ['content' => 'Sai', 'is_correct' => true],
+            ],
+            'answer' => 'B',
+            'difficulty' => 'medium',
+            'points' => 1,
+        ]]);
+
+        $question = $payload['sections'][0]['questions'][0];
+
+        $this->assertSame('true_false', $question['type']);
+        $this->assertSame('false', $question['answer']);
+        $this->assertSame([], $question['options']);
+    }
+
     public function test_an_exam_returned_as_a_flat_question_list_is_accepted(): void
     {
         $content = json_encode(['questions' => [
@@ -247,23 +356,64 @@ class AiJsonResilienceTest extends TestCase
         $this->assertSame('Câu 1', $data['payload']['sections'][0]['questions'][0]['content']);
     }
 
-    public function test_an_oversized_exam_is_refused_before_calling_the_ai(): void
+    public function test_large_exam_is_split_into_multiple_ai_calls(): void
     {
-        Http::fake();
+        // Ép ngân sách một lần gọi về 32 câu để đề 40 câu phải chia đợt,
+        // bất kể NOTEBOOK_MAX_ARTIFACT_TOKENS ngoài .env là bao nhiêu.
+        config()->set('awawa.notebook.max_artifact_tokens', 6000);
 
-        $this->expectException(\RuntimeException::class);
+        $makeQuestions = fn (int $from, int $count): array => array_map(
+            fn (int $i): array => [
+                'type' => 'essay',
+                'content' => 'Câu '.($from + $i),
+                'difficulty' => 'medium',
+                'points' => 1,
+                'options' => [],
+            ],
+            range(0, $count - 1),
+        );
 
-        try {
-            app(ArtifactGenerator::class)->generate(
-                $this->notebook,
-                ArtifactType::Exam,
-                ['instruction' => 'Soạn đề lớn', 'exam_sections' => 6, 'exam_questions_per_section' => 30, 'exam_total_points' => 10],
-                $this->subject->id,
-                $this->teacher->id,
-            );
-        } finally {
-            Http::assertNothingSent();
-        }
+        $makeResponse = fn (array $sections): array => [
+            'model' => 'openrouter/free',
+            'choices' => [['message' => ['content' => json_encode([
+                'title' => 'Đề kiểm tra',
+                'description' => 'Đề do AI soạn',
+                'sections' => $sections,
+            ], JSON_UNESCAPED_UNICODE)]]],
+            'usage' => ['total_tokens' => 60],
+        ];
+
+        // 2 phần × 20 câu = 40, vượt ngân sách một lần gọi (32) nên phải chia
+        // 2 đợt: đợt 1 soạn phần I (20 câu) + 12 câu đầu phần II, đợt 2 soạn
+        // nốt 8 câu còn lại của phần II.
+        $this->fakeResponses([
+            $makeResponse([
+                ['title' => 'PHẦN I', 'questions' => $makeQuestions(1, 20)],
+                ['title' => 'PHẦN II', 'questions' => $makeQuestions(21, 12)],
+            ]),
+            $makeResponse([
+                ['title' => 'PHẦN II', 'questions' => $makeQuestions(33, 8)],
+            ]),
+        ]);
+
+        $data = app(ArtifactGenerator::class)->generate(
+            $this->notebook,
+            ArtifactType::Exam,
+            ['instruction' => 'Soạn đề lớn', 'exam_sections' => 2, 'exam_questions_per_section' => 20, 'exam_total_points' => 10],
+            $this->subject->id,
+            $this->teacher->id,
+        );
+
+        $this->assertCount(2, $data['payload']['sections']);
+        $this->assertCount(20, $data['payload']['sections'][0]['questions']);
+        $this->assertCount(20, $data['payload']['sections'][1]['questions']);
+        $this->assertSame('Câu 1', $data['payload']['sections'][0]['questions'][0]['content']);
+        $this->assertSame('Câu 21', $data['payload']['sections'][1]['questions'][0]['content']);
+
+        // Điểm chia đều theo toàn đề: 10 điểm / 40 câu.
+        $this->assertSame(0.25, (float) $data['payload']['sections'][0]['questions'][0]['points']);
+
+        Http::assertSentCount(2);
     }
 
     public function test_max_tokens_grows_with_the_exam_size(): void

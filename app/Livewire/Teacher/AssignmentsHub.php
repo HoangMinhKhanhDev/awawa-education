@@ -133,20 +133,37 @@ class AssignmentsHub extends Component
         $subject = app(SubjectContext::class)->subject();
         $types = $this->availableTypes($subject);
 
+        // withProgressCounts: 1 query duy nhất thay vì 4 COUNT cho mỗi dòng.
+        // Sắp xếp bằng completed_receipts ở DB, trần 50 dòng để không phình RAM.
+        $openAssignments = $this->assignmentQuery()
+            ->open()
+            ->with('assignable')
+            ->withProgressCounts()
+            ->when(
+                $this->typeFilter !== null && in_array($this->typeFilter, $types, true),
+                fn (Builder $query) => $query->where('assignable_type', $this->modelClassFor($this->typeFilter)),
+            )
+            ->orderByDesc('completed_receipts')
+            ->orderByDesc('assigned_at')
+            ->limit(50)
+            ->get();
+
+        $progressAssignment = $this->progressId !== null
+            ? $this->assignmentQuery()->with('receipts.user')->find($this->progressId)
+            : null;
+
+        // Sắp xếp receipts một lần ở component, blade chỉ hiển thị.
+        $progressReceipts = $progressAssignment !== null
+            ? $progressAssignment->receipts
+                ->sortBy(fn ($r) => [$r->isCompleted(), $r->isOpened()], SORT_REGULAR)
+                ->values()
+            : collect();
+
         return view('livewire.teacher.assignments-hub', [
             'subject' => $subject,
             'types' => $types,
 
-            'openAssignments' => $this->assignmentQuery()
-                ->open()
-                ->with('receipts.user')
-                ->when(
-                    $this->typeFilter !== null && in_array($this->typeFilter, $types, true),
-                    fn (Builder $query) => $query->where('assignable_type', $this->modelClassFor($this->typeFilter)),
-                )
-                ->get()
-                ->sortByDesc(fn (Assignment $assignment): int => $assignment->progress()['completed'])
-                ->values(),
+            'openAssignments' => $openAssignments,
 
             'recalledAssignments' => $this->assignmentQuery()
                 ->whereNotNull('recalled_at')
@@ -156,9 +173,8 @@ class AssignmentsHub extends Component
 
             'assignable' => $this->assignableOptions($types),
 
-            'progress' => $this->progressId !== null
-                ? $this->assignmentQuery()->with('receipts.user')->find($this->progressId)
-                : null,
+            'progress' => $progressAssignment,
+            'progressReceipts' => $progressReceipts,
         ]);
     }
 

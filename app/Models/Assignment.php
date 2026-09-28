@@ -102,10 +102,23 @@ class Assignment extends Model
     /**
      * Số học sinh đã nhận / đã mở / đã xong.
      *
+     * Ưu tiên dùng withCount đã nạp sẵn (scopeWithProgressCounts) để tránh
+     * 4 câu COUNT cho mỗi dòng khi duyệt danh sách. Không có thì mới đếm lẻ.
+     *
      * @return array{delivered: int, opened: int, completed: int, total: int}
      */
     public function progress(): array
     {
+        if (isset($this->attributes['total_receipts'])
+            || isset($this->attributes['total_receipts_count'])) {
+            return [
+                'delivered' => (int) ($this->attributes['delivered_receipts'] ?? $this->attributes['delivered_receipts_count'] ?? 0),
+                'opened' => (int) ($this->attributes['opened_receipts'] ?? $this->attributes['opened_receipts_count'] ?? 0),
+                'completed' => (int) ($this->attributes['completed_receipts'] ?? $this->attributes['completed_receipts_count'] ?? 0),
+                'total' => (int) ($this->attributes['total_receipts'] ?? $this->attributes['total_receipts_count'] ?? 0),
+            ];
+        }
+
         return [
             'delivered' => $this->receipts()->whereNotNull('delivered_at')->count(),
             'opened' => $this->receipts()->whereNotNull('opened_at')->count(),
@@ -146,6 +159,19 @@ class Assignment extends Model
     public function scopeOpen(Builder $query): Builder
     {
         return $query->whereNull('recalled_at');
+    }
+
+    /**
+     * Nạp sẵn 4 con số tiến trình bằng một câu query duy nhất.
+     * Dùng cho danh sách để mỗi dòng không phải bắn 4 câu COUNT (N+1).
+     */
+    public function scopeWithProgressCounts(Builder $query): Builder
+    {
+        return $query
+            ->withCount('receipts as total_receipts')
+            ->withCount(['receipts as delivered_receipts' => fn (Builder $q) => $q->whereNotNull('delivered_at')])
+            ->withCount(['receipts as opened_receipts' => fn (Builder $q) => $q->whereNotNull('opened_at')])
+            ->withCount(['receipts as completed_receipts' => fn (Builder $q) => $q->whereNotNull('completed_at')]);
     }
 
     public function scopeRecent(Builder $query): Builder

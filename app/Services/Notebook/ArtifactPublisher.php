@@ -16,6 +16,7 @@ use App\Models\KnowledgeMapVersion;
 use App\Models\NotebookArtifact;
 use App\Models\Question;
 use App\Services\NotificationDispatcher;
+use App\Support\MindMapTree;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -231,106 +232,123 @@ class ArtifactPublisher
     }
 
     /**
-     * Dựng scene Excalidraw từ danh sách node (id, label, parent).
+     * Xếp cây gọn theo chiều dọc: lá xếp liền nhau, nút cha nằm giữa các con,
+     * màu và cỡ chữ theo tầng. Cây lấy từ MindMapTree nên parent lạ hay chu
+     * trình đều không làm lệch bố cục.
      *
      * @param  array<int, array<string, mixed>>  $nodes
      * @return array<string, mixed>
      */
     protected function buildScene(array $nodes): array
     {
-        $labels = [];
+        $tree = MindMapTree::build($nodes);
 
-        foreach ($nodes as $node) {
-            if (isset($node['id'])) {
-                $labels[(string) $node['id']] = $node;
-            }
-        }
-
-        $depth = [];
-        $resolveDepth = function (string $id, int $guard = 0) use (&$resolveDepth, $labels, &$depth): int {
-            if (isset($depth[$id])) {
-                return $depth[$id];
-            }
-
-            if ($guard > 30) {
-                return 0;
-            }
-
-            $parent = $labels[$id]['parent'] ?? null;
-
-            $depth[$id] = ($parent !== null && isset($labels[(string) $parent])) ? $resolveDepth((string) $parent, $guard + 1) + 1 : 0;
-
-            return $depth[$id];
-        };
-
-        foreach (array_keys($labels) as $id) {
-            $resolveDepth((string) $id);
-        }
-
-        $width = 220;
-        $height = 70;
+        $nodeWidth = 220;
         $hGap = 90;
         $vGap = 40;
 
-        $columns = [];
-        $elements = [];
+        $backgrounds = ['#fff3bf', '#e7f5ff', '#e5dbff', '#d3f9d8', '#ffe8cc'];
+
+        $sizes = [];
+        $measure = function (array $item) use (&$measure, &$sizes): void {
+            $id = (string) ($item['node']['id'] ?? '');
+            $lines = $this->wrapLabel((string) ($item['node']['label'] ?? ''));
+            $sizes[$id] = ['lines' => $lines, 'height' => 30 + count($lines) * 22];
+
+            foreach ($item['children'] as $child) {
+                $measure($child);
+            }
+        };
+
+        foreach ($tree as $root) {
+            $measure($root);
+        }
+
         $positions = [];
-        $rows = [];
+        $cursor = 40;
 
-        foreach ($labels as $id => $node) {
-            $d = $depth[$id] ?? 0;
-            $rows[$d] = ($rows[$d] ?? 0);
-            $x = $d * ($width + $hGap) + 40;
-            $y = $rows[$d] * ($height + $vGap) + 40;
-            $rows[$d]++;
+        $layout = function (array $item, int $depth) use (&$layout, &$positions, &$cursor, $nodeWidth, $hGap, $vGap, $sizes): float {
+            $id = (string) ($item['node']['id'] ?? '');
+            $height = $sizes[$id]['height'] ?? 70;
+            $x = $depth * ($nodeWidth + $hGap) + 40;
 
-            $positions[$id] = ['x' => $x, 'y' => $y];
+            if ($item['children'] === []) {
+                $y = $cursor;
+                $cursor += $height + $vGap;
+            } else {
+                $centers = [];
 
-            $seed = random_int(1, 100000);
+                foreach ($item['children'] as $child) {
+                    $centers[] = $layout($child, $depth + 1);
+                }
+
+                $y = (min($centers) + max($centers)) / 2 - $height / 2;
+            }
+
+            $positions[$id] = ['x' => $x, 'y' => $y, 'depth' => $depth];
+
+            return $y + $height / 2;
+        };
+
+        foreach ($tree as $root) {
+            $layout($root, 0);
+        }
+
+        $elements = [];
+
+        foreach ($sizes as $id => $size) {
+            $position = $positions[$id] ?? ['x' => 40, 'y' => 40, 'depth' => 0];
+            $depth = $position['depth'];
+            $height = $size['height'];
+            $lines = $size['lines'];
 
             $elements[] = [
-                'type' => 'rectangle', 'id' => 'rect-'.$id, 'x' => $x, 'y' => $y,
-                'width' => $width, 'height' => $height, 'angle' => 0,
-                'strokeColor' => '#1e1e1e', 'backgroundColor' => '#e7f5ff', 'fillStyle' => 'solid',
-                'strokeWidth' => 2, 'strokeStyle' => 'solid', 'roughness' => 1, 'opacity' => 100,
-                'groupIds' => [], 'roundness' => ['type' => 3], 'seed' => $seed, 'version' => 1,
+                'type' => 'rectangle', 'id' => 'rect-'.$id, 'x' => $position['x'], 'y' => $position['y'],
+                'width' => $nodeWidth, 'height' => $height, 'angle' => 0,
+                'strokeColor' => '#1e1e1e', 'backgroundColor' => $backgrounds[$depth % count($backgrounds)], 'fillStyle' => 'solid',
+                'strokeWidth' => $depth === 0 ? 3 : 2, 'strokeStyle' => 'solid', 'roughness' => 1, 'opacity' => 100,
+                'groupIds' => [], 'roundness' => ['type' => 3], 'seed' => random_int(1, 100000), 'version' => 1,
                 'versionNonce' => random_int(1, 100000), 'isDeleted' => false, 'boundElements' => null,
                 'updated' => 1, 'link' => null, 'locked' => false,
             ];
 
+            $fontSize = $depth === 0 ? 20 : ($depth === 1 ? 18 : 16);
+            $textHeight = count($lines) * $fontSize * 1.25;
+
             $elements[] = [
-                'type' => 'text', 'id' => 'text-'.$id, 'x' => $x + 10, 'y' => $y + $height / 2 - 10,
-                'width' => $width - 20, 'height' => 20, 'angle' => 0,
+                'type' => 'text', 'id' => 'text-'.$id, 'x' => $position['x'] + 10, 'y' => $position['y'] + ($height - $textHeight) / 2,
+                'width' => $nodeWidth - 20, 'height' => $textHeight, 'angle' => 0,
                 'strokeColor' => '#1e1e1e', 'backgroundColor' => 'transparent', 'fillStyle' => 'solid',
                 'strokeWidth' => 2, 'strokeStyle' => 'solid', 'roughness' => 1, 'opacity' => 100,
                 'groupIds' => [], 'roundness' => null, 'seed' => random_int(1, 100000), 'version' => 1,
                 'versionNonce' => random_int(1, 100000), 'isDeleted' => false, 'boundElements' => null,
                 'updated' => 1, 'link' => null, 'locked' => false,
-                'fontSize' => 16, 'fontFamily' => 5, 'text' => (string) ($node['label'] ?? ''),
+                'fontSize' => $fontSize, 'fontFamily' => 5, 'text' => implode("\n", $lines),
                 'textAlign' => 'center', 'verticalAlign' => 'middle', 'containerId' => null,
-                'originalText' => (string) ($node['label'] ?? ''), 'lineHeight' => 1.25,
+                'originalText' => implode("\n", $lines), 'lineHeight' => 1.25,
             ];
         }
 
-        foreach ($labels as $id => $node) {
-            $parent = $node['parent'] ?? null;
+        foreach ($positions as $id => $position) {
+            $parent = $this->mindMapParent($nodes, (string) $id);
 
-            if ($parent === null || ! isset($positions[(string) $parent])) {
+            if ($parent === null || ! isset($positions[$parent])) {
                 continue;
             }
 
-            $from = $positions[(string) $parent];
-            $to = $positions[$id];
+            $from = $positions[$parent];
+            $fromHeight = $sizes[$parent]['height'] ?? 70;
+            $toHeight = $sizes[$id]['height'] ?? 70;
 
-            $sx = $from['x'] + $width;
-            $sy = $from['y'] + $height / 2;
-            $ex = $to['x'];
-            $ey = $to['y'] + $height / 2;
+            $sx = $from['x'] + $nodeWidth;
+            $sy = $from['y'] + $fromHeight / 2;
+            $ex = $position['x'];
+            $ey = $position['y'] + $toHeight / 2;
 
             $elements[] = [
                 'type' => 'arrow', 'id' => 'arrow-'.$parent.'-'.$id, 'x' => $sx, 'y' => $sy,
                 'width' => $ex - $sx, 'height' => $ey - $sy, 'angle' => 0,
-                'strokeColor' => '#1e1e1e', 'backgroundColor' => 'transparent', 'fillStyle' => 'solid',
+                'strokeColor' => '#868e96', 'backgroundColor' => 'transparent', 'fillStyle' => 'solid',
                 'strokeWidth' => 2, 'strokeStyle' => 'solid', 'roughness' => 1, 'opacity' => 100,
                 'groupIds' => [], 'roundness' => ['type' => 2], 'seed' => random_int(1, 100000), 'version' => 1,
                 'versionNonce' => random_int(1, 100000), 'isDeleted' => false, 'boundElements' => null,
@@ -347,5 +365,70 @@ class ArtifactPublisher
             'appState' => ['viewBackgroundColor' => '#ffffff', 'gridSize' => null],
             'files' => [],
         ];
+    }
+
+    /**
+     * Ngắt nhãn dài thành nhiều dòng để chữ không tràn khỏi khung.
+     *
+     * @return list<string>
+     */
+    protected function wrapLabel(string $label, int $perLine = 26, int $maxLines = 3): array
+    {
+        $label = trim(preg_replace('/\s+/u', ' ', $label) ?? '');
+
+        if ($label === '') {
+            return [''];
+        }
+
+        $lines = [];
+        $current = '';
+
+        foreach (preg_split('/ /u', $label) ?: [] as $word) {
+            $candidate = $current === '' ? $word : $current.' '.$word;
+
+            if (mb_strlen($candidate) <= $perLine) {
+                $current = $candidate;
+
+                continue;
+            }
+
+            if ($current !== '') {
+                $lines[] = $current;
+            }
+
+            $current = $word;
+
+            if (count($lines) >= $maxLines - 1) {
+                break;
+            }
+        }
+
+        if ($current !== '' && count($lines) < $maxLines) {
+            $lines[] = $current;
+        }
+
+        $lines = array_slice(array_values($lines), 0, $maxLines);
+
+        if (count($lines) === $maxLines && mb_strlen($label) > mb_strlen(implode(' ', $lines))) {
+            $lines[$maxLines - 1] = rtrim($lines[$maxLines - 1]).'…';
+        }
+
+        return $lines === [] ? [''] : array_values($lines);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $nodes
+     */
+    protected function mindMapParent(array $nodes, string $id): ?string
+    {
+        foreach ($nodes as $node) {
+            if (is_array($node) && (string) ($node['id'] ?? '') === $id) {
+                $parent = $node['parent'] ?? null;
+
+                return is_scalar($parent) && trim((string) $parent) !== '' ? (string) $parent : null;
+            }
+        }
+
+        return null;
     }
 }

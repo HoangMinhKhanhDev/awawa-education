@@ -116,9 +116,9 @@
                                 @endforeach
                             </div>
                         @elseif ($question->type === \App\Enums\QuestionType::FillBlank)
-                            <input type="text" class="input mt-3" wire:model="answers.{{ $question->id }}.text" placeholder="Nhập đáp án ngắn">
+                            <input type="text" class="input mt-3" wire:model.blur="answers.{{ $question->id }}.text" placeholder="Nhập đáp án ngắn">
                         @else
-                            <textarea rows="5" class="input mt-3" wire:model="answers.{{ $question->id }}.text" placeholder="Trình bày lời giải"></textarea>
+                            <textarea rows="5" class="input mt-3" wire:model.blur="answers.{{ $question->id }}.text" placeholder="Trình bày lời giải"></textarea>
                         @endif
                     </div>
                 </div>

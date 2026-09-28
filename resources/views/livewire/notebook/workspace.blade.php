@@ -13,7 +13,7 @@
         (hàng đợi Livewire có thể nghẽn sau request AI dài), wire:click giữ lại
         để đồng bộ state server. --}}
     <div class="tabs shrink-0 border-b border-rule px-3 lg:hidden dark:border-night-700">
-        @foreach (['sources' => 'Nguồn', 'chat' => 'Chat', 'studio' => 'Studio'] as $key => $label)
+        @foreach (['sources' => 'Nguồn', 'chat' => 'Chat', 'studio' => 'Soạn bài'] as $key => $label)
             <button type="button" @click="mobileTab = '{{ $key }}'" wire:click="$set('mobileTab', '{{ $key }}')"
                 class="tab" :class="mobileTab === '{{ $key }}' ? 'tab-active' : ''">{{ $label }}</button>
         @endforeach

@@ -206,7 +206,7 @@
                     </button>
                 </div>
 
-                @php $receipts = $progress->receipts->sortBy(fn ($r) => [$r->isCompleted(), $r->isOpened()], SORT_REGULAR) @endphp
+                @php $receipts = $progressReceipts @endphp
 
                 <div class="divide-y divide-rule dark:divide-night-700">
                     @forelse ($receipts as $receipt)

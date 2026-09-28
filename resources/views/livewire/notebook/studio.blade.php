@@ -1,6 +1,6 @@
 <div class="@container flex h-full min-h-0 flex-col"
     @if ($isGenerating)
-        wire:poll.4s="poll"
+        wire:poll.10s="poll"
     @endif
     >
     {{-- Đầu màn: quay lại danh sách định dạng khi đang mở một định dạng --}}
@@ -9,12 +9,12 @@
             <button type="button" wire:click="backToBrowse"
                 class="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-ink transition-colors hover:text-brand-700 dark:text-white dark:hover:text-brand-300">
                 <x-icon name="arrow-left" class="h-4 w-4 shrink-0" />
-                <span class="truncate">Studio</span>
+                <span class="truncate">Soạn bài</span>
                 <x-icon name="chevron-right" class="h-3.5 w-3.5 shrink-0 text-ink-faint" />
                 <span class="truncate">{{ $activeTypeEnum->label() }}</span>
             </button>
         @else
-            <h2 class="text-sm font-semibold text-ink dark:text-white">Studio</h2>
+            <h2 class="text-sm font-semibold text-ink dark:text-white">Soạn bài</h2>
         @endif
 
         <div class="flex shrink-0 items-center gap-2">
@@ -109,11 +109,11 @@
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
                                     <label class="label" for="st-exam-sections">Số phần</label>
-                                    <input id="st-exam-sections" type="number" min="1" max="6" class="input tnum" wire:model="examSections">
+                                    <input id="st-exam-sections" type="number" min="1" max="10" class="input tnum" wire:model="examSections">
                                 </div>
                                 <div>
                                     <label class="label" for="st-exam-count">Câu mỗi phần</label>
-                                    <input id="st-exam-count" type="number" min="1" max="30" class="input tnum" wire:model="examQuestionsPerSection">
+                                    <input id="st-exam-count" type="number" min="1" max="50" class="input tnum" wire:model="examQuestionsPerSection">
                                 </div>
                                 <div>
                                     <label class="label" for="st-exam-total">Tổng điểm đề</label>
@@ -144,12 +144,12 @@
                                 <div class="flex items-end">
                                     @php
                                         $examQuestionTotal = (int) $examSections * (int) $examQuestionsPerSection;
-                                        $examQuestionLimit = \App\Services\Notebook\ArtifactGenerator::maxQuestionsPerExam();
+                                        $examPerCall = \App\Services\Notebook\ArtifactGenerator::questionsPerAiCall();
                                     @endphp
-                                    @if ($examQuestionTotal > $examQuestionLimit)
-                                        <p class="pb-2 text-[11px] leading-relaxed text-signal dark:text-red-400">
-                                            {{ $examQuestionTotal }} câu vượt giới hạn {{ $examQuestionLimit }} câu mỗi lần soạn.
-                                            Hãy giảm số câu mỗi phần.
+                                    @if ($examQuestionTotal > $examPerCall)
+                                        <p class="pb-2 text-[11px] leading-relaxed text-ink-faint dark:text-slate-500">
+                                            {{ $examQuestionTotal }} câu · {{ \App\Services\Notebook\ArtifactGenerator::examPointsPerQuestion((int) $examSections, (int) $examQuestionsPerSection, (float) $examTotalPoints) }} điểm/câu.
+                                            Đề lớn sẽ tự soạn thành nhiều đợt rồi ghép lại.
                                         </p>
                                     @else
                                         <p class="tnum pb-2 text-[11px] leading-relaxed text-ink-faint dark:text-slate-500">
@@ -159,6 +159,17 @@
                                     @endif
                                 </div>
                             </div>
+                        @elseif ($activeType === \App\Enums\ArtifactType::MindMap->value)
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="label" for="st-mindmap-branches">Số nhánh chính</label>
+                                    <input id="st-mindmap-branches" type="number" min="2" max="8" class="input tnum" wire:model="mindmapBranches">
+                                </div>
+                                <p class="tnum self-end pb-2 text-[11px] leading-relaxed text-ink-faint dark:text-slate-500">
+                                    1 nút gốc · mỗi nhánh 2–4 nhánh con
+                                </p>
+                            </div>
+                            @error('mindmapBranches') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
                         @endif
 
                         <button type="submit" class="btn btn-primary w-full" wire:loading.attr="disabled" wire:target="generate">
@@ -567,6 +578,7 @@
                             $examAnswers = [];
                             $examIncludedPoints = 0.0;
                             $examIncludedCount = 0;
+                            $examTrueFalse = \App\Enums\QuestionType::TrueFalse;
                             foreach (($preview->payload['sections'] ?? []) as $examSection) {
                                 foreach (($examSection['questions'] ?? []) as $examQuestion) {
                                     if (($examQuestion['included'] ?? true) === false) {
@@ -574,7 +586,11 @@
                                     }
                                     $examIncludedCount++;
                                     $examIncludedPoints += (float) ($examQuestion['points'] ?? 0);
-                                    $examAnswers[] = trim(($examQuestion['answer'] ?? '') !== '' ? (string) $examQuestion['answer'] : collect($examQuestion['options'] ?? [])->firstWhere('is_correct')['content'] ?? '');
+                                    if (($examQuestion['type'] ?? '') === $examTrueFalse->value) {
+                                        $examAnswers[] = $examTrueFalse->trueFalseLabel($examQuestion['answer'] ?? null);
+                                    } else {
+                                        $examAnswers[] = trim(($examQuestion['answer'] ?? '') !== '' ? (string) $examQuestion['answer'] : collect($examQuestion['options'] ?? [])->firstWhere('is_correct')['content'] ?? '');
+                                    }
                                 }
                             }
                         @endphp
@@ -628,8 +644,20 @@
                                                     @endforeach
                                                 </ul>
                                             @endif
+                                            @if (($item['type'] ?? '') === 'true_false')
+                                                <ul class="mt-1 space-y-0.5">
+                                                    @foreach (\App\Enums\QuestionType::TrueFalse->trueFalseChoices() as $tfValue => $tfLabel)
+                                                        <li class="flex items-start gap-2 text-sm text-ink-soft dark:text-slate-300"
+                                                            :class="{{ \App\Enums\QuestionType::normalizeTruthy($item['answer'] ?? null) === $tfValue ? 'true' : 'false' }} && showAnswers ? 'font-semibold text-success' : ''">
+                                                            <span>{{ $tfLabel }}</span>
+                                                            <span x-show="{{ \App\Enums\QuestionType::normalizeTruthy($item['answer'] ?? null) === $tfValue ? 'true' : 'false' }} && showAnswers" x-cloak
+                                                                class="text-xs font-normal text-success">(đúng)</span>
+                                                        </li>
+                                                    @endforeach
+                                                </ul>
+                                            @endif
                                             @if (filled($item['answer'] ?? null))
-                                                <p x-show="showAnswers" x-cloak class="mt-1 text-xs text-success">Đáp án: {{ $item['answer'] }}</p>
+                                                <p x-show="showAnswers" x-cloak class="mt-1 text-xs text-success">Đáp án: {{ ($item['type'] ?? '') === 'true_false' ? \App\Enums\QuestionType::TrueFalse->trueFalseLabel($item['answer']) : $item['answer'] }}</p>
                                             @endif
                                             @if (filled($item['explanation'] ?? null))
                                                 <p x-show="showAnswers" x-cloak class="mt-0.5 text-xs text-ink-faint dark:text-slate-400">{{ $item['explanation'] }}</p>
@@ -668,11 +696,7 @@
                             @endforeach
                         </div>
                     @elseif ($previewType === \App\Enums\ArtifactType::MindMap)
-                        <ul class="space-y-1 text-sm text-ink-soft dark:text-slate-300">
-                            @foreach ($preview->payload['nodes'] ?? [] as $node)
-                                <li>{{ $node['label'] }}@if (! empty($node['parent'])) <span class="text-xs text-ink-faint">(thuộc {{ $node['parent'] }})</span>@endif</li>
-                            @endforeach
-                        </ul>
+                        <x-mindmap-tree :items="\App\Support\MindMapTree::build($preview->payload['nodes'] ?? [])" />
                     @else
                         <div class="notebook-markdown text-sm leading-relaxed text-ink dark:text-slate-200">{!! \Illuminate\Support\Str::markdown((string) $preview->text_content, ['html_input' => 'strip', 'allow_unsafe_links' => false]) !!}</div>
                     @endif
@@ -715,10 +739,21 @@
                                 </button>
                             @endif
                         @else
-                            <span class="mr-auto text-xs text-ink-faint dark:text-slate-500">Xuất bản vào: {{ $previewType->publishTarget() }}</span>
-                            <button type="button" wire:click="publish({{ $preview->id }})" class="btn btn-primary" wire:loading.attr="disabled" wire:target="publish">
-                                Xuất bản
-                            </button>
+                            @php $targetRoute = \App\Livewire\Notebook\Studio::publishTargetRoute($previewType); @endphp
+                            @if ($preview->isPublished() && $targetRoute)
+                                <span class="mr-auto text-xs text-ink-faint dark:text-slate-500">
+                                    Đã xuất bản vào
+                                    <a href="{{ route($targetRoute) }}" wire:navigate class="font-medium text-brand-700 hover:underline dark:text-brand-300">{{ $previewType->publishTarget() }}</a>
+                                </span>
+                                <a href="{{ route($targetRoute) }}" wire:navigate class="btn btn-primary">
+                                    Mở {{ $previewType->publishTarget() }}
+                                </a>
+                            @else
+                                <span class="mr-auto text-xs text-ink-faint dark:text-slate-500">Xuất bản vào: {{ $previewType->publishTarget() }}</span>
+                                <button type="button" wire:click="publish({{ $preview->id }})" class="btn btn-primary" wire:loading.attr="disabled" wire:target="publish">
+                                    Xuất bản
+                                </button>
+                            @endif
                         @endif
                     </div>
                 @endunless

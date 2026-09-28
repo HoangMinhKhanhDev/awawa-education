@@ -26,6 +26,9 @@ class Result extends Component
     #[Url(as: 'lan')]
     public ?int $attemptNo = null;
 
+    /** Memo danh sách lần làm: mount() và render() cũ query 2 lần. */
+    protected ?Collection $memoAttempts = null;
+
     public function mount(Exam $exam): void
     {
         $this->examId = $exam->id;
@@ -52,7 +55,11 @@ class Result extends Component
      */
     protected function attemptsFor(Exam $exam): Collection
     {
-        return ExamAttempt::query()
+        if ($this->memoAttempts !== null) {
+            return $this->memoAttempts;
+        }
+
+        return $this->memoAttempts = ExamAttempt::query()
             ->where('exam_id', $exam->id)
             ->where('student_id', auth()->id())
             ->finished()
@@ -68,6 +75,8 @@ class Result extends Component
         $attempts = $this->attemptsFor($exam);
         $user = auth()->user();
 
+        Gate::authorize('view', $attempt);
+
         return view('livewire.student.result', [
             'exam' => $exam,
             'attempt' => $attempt,
@@ -77,7 +86,7 @@ class Result extends Component
             'remainingAttempts' => $user->isStudent() ? $exam->remainingAttemptsFor($user) : 0,
             'canRetake' => $user->isStudent() && $exam->allowsRetake() && $exam->canAttemptAgain($user),
             'examQuestions' => $exam->examQuestions()->with(['question.options'])->get(),
-            'answers' => $attempt->answers()->get()->keyBy('question_id'),
+            'answers' => $attempt->answers()->with('question')->get()->keyBy('question_id'),
         ]);
     }
 }

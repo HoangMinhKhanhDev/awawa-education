@@ -6,27 +6,42 @@
         </div>
 
         @if ($providers !== [])
-            <div class="mx-auto flex min-w-0 max-w-full items-center gap-1.5 rounded-full border border-rule bg-white p-1 dark:border-night-700 dark:bg-night-800">
-                <label class="sr-only" for="notebook-provider">Nhà cung cấp AI</label>
-                <select id="notebook-provider" wire:model="selectedProviderKey" wire:change="providerChanged"
-                    class="max-w-28 border-0 bg-transparent py-1 pl-2 pr-6 text-xs font-medium text-ink focus:ring-0 sm:max-w-40 dark:text-slate-200">
-                    @foreach ($providers as $provider)
-                        <option value="{{ $provider['key'] }}">{{ $provider['label'] }}</option>
-                    @endforeach
-                </select>
-                <span class="h-5 w-px bg-rule dark:bg-night-700"></span>
-                <label class="sr-only" for="notebook-model">Model AI</label>
-                <select id="notebook-model" wire:model="selectedModel" wire:change="saveSelectedModel"
-                    class="min-w-0 max-w-36 border-0 bg-transparent py-1 pl-1 pr-6 text-xs font-semibold text-brand-700 focus:ring-0 sm:max-w-64 dark:text-brand-300">
-                    @foreach ($availableModels as $model)
-                        <option value="{{ $model['id'] }}">{{ $model['name'] }}{{ $model['free'] ? ' · miễn phí' : '' }}</option>
-                    @endforeach
-                </select>
-                <button type="button" wire:click="refreshModels" wire:loading.attr="disabled" wire:target="refreshModels,providerChanged"
-                    class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-ink-faint hover:bg-paper-2 hover:text-ink disabled:opacity-50 dark:text-slate-500 dark:hover:bg-white/5 dark:hover:text-white"
-                    title="Tải lại danh sách model" aria-label="Tải lại danh sách model">
-                    <x-icon name="refresh" class="h-3.5 w-3.5" />
+            <div class="relative mx-auto min-w-0 max-w-full" x-data="{ aiSettings: false }" @click.outside="aiSettings = false">
+                <button type="button" @click="aiSettings = ! aiSettings"
+                    class="flex max-w-full items-center gap-1.5 rounded-full border border-rule bg-white px-2.5 py-1 text-xs text-ink-faint transition-colors hover:text-ink dark:border-night-700 dark:bg-night-800 dark:text-slate-400 dark:hover:text-white"
+                    :aria-expanded="aiSettings ? 'true' : 'false'" aria-label="Cài đặt AI">
+                    <x-icon name="sparkles" class="h-3.5 w-3.5 shrink-0" />
+                    <span class="max-w-28 truncate font-medium sm:max-w-40">{{ $selectedModel !== '' ? \Illuminate\Support\Str::afterLast($selectedModel, '/') : 'Chọn AI' }}</span>
+                    <x-icon name="chevron-down" class="h-3 w-3 shrink-0" />
                 </button>
+
+                <div x-show="aiSettings" x-cloak
+                    class="panel absolute left-1/2 top-full z-40 mt-1 w-72 max-w-[86vw] -translate-x-1/2 space-y-2 p-3 shadow-lg">
+                    <div>
+                        <label class="label" for="notebook-provider">Nhà cung cấp AI</label>
+                        <select id="notebook-provider" wire:model="selectedProviderKey" wire:change="providerChanged" class="input py-1.5 text-xs">
+                            @foreach ($providers as $provider)
+                                <option value="{{ $provider['key'] }}">{{ $provider['label'] }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label class="label" for="notebook-model">Model AI</label>
+                        <div class="flex items-center gap-1.5">
+                            <select id="notebook-model" wire:model="selectedModel" wire:change="saveSelectedModel" class="input min-w-0 flex-1 py-1.5 text-xs">
+                                @foreach ($availableModels as $model)
+                                    <option value="{{ $model['id'] }}">{{ $model['name'] }}{{ $model['free'] ? ' · miễn phí' : '' }}</option>
+                                @endforeach
+                            </select>
+                            <button type="button" wire:click="refreshModels" wire:loading.attr="disabled" wire:target="refreshModels,providerChanged"
+                                class="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] text-ink-faint hover:bg-paper-2 hover:text-ink disabled:opacity-50 dark:text-slate-500 dark:hover:bg-white/5 dark:hover:text-white"
+                                title="Tải lại danh sách model" aria-label="Tải lại danh sách model">
+                                <x-icon name="refresh" class="h-3.5 w-3.5" />
+                            </button>
+                        </div>
+                    </div>
+                    <p class="text-[11px] leading-relaxed text-ink-faint dark:text-slate-500">Mặc định do quản trị viên đặt. Chỉ đổi khi AI báo lỗi hoặc hết lượt miễn phí.</p>
+                </div>
             </div>
         @else
             <p class="text-center text-xs text-ink-faint dark:text-slate-500">Chưa có model AI khả dụng</p>

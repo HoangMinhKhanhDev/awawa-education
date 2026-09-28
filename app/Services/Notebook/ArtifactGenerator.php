@@ -64,10 +64,11 @@ class ArtifactGenerator
     }
 
     /**
-     * Số câu tối đa một lần soạn đề thi chịu được trước khi bị cắt cụt giữa chừng.
-     * Dùng chung cho kiểm tra lúc bấm "Tạo" lẫn lúc sinh, để hai nơi không lệch nhau.
+     * Số câu tối đa cho một lần gọi AI. Đề lớn hơn con số này được tự chia
+     * thành nhiều đợt gọi rồi ghép lại, thay vì chặn người dùng như trước.
+     * Chỉnh qua `NOTEBOOK_MAX_ARTIFACT_TOKENS` cho khớp nhà cung cấp đang dùng.
      */
-    public static function maxQuestionsPerExam(): int
+    public static function questionsPerAiCall(): int
     {
         return max(1, (int) floor((self::tokenCap() - self::TOKEN_OVERHEAD) / self::TOKENS_PER_QUESTION));
     }
@@ -80,13 +81,16 @@ class ArtifactGenerator
     {
         $instruction = trim((string) ($params['instruction'] ?? ''));
 
-        $this->guardAgainstOversizedRequest($type, $params);
-
         $pinned = $this->ai->pinnedSelection($notebook->settings['ai_provider'] ?? null, $notebook->settings['ai_model'] ?? null);
+
+        if ($type === ArtifactType::Exam && $this->examNeedsChunking($params)) {
+            return $this->generateChunkedExam($notebook, $params, $instruction, $pinned, $subjectId, $userId);
+        }
 
         $decoded = null;
         $result = null;
         $lastError = null;
+        $titleInstruction = $instruction;
 
         // Lần 1 soạn bình thường; nếu JSON hỏng thì yêu cầu lại lần 2 với chỉ dẫn gọn.
         foreach ([0, 1] as $round) {
@@ -113,10 +117,24 @@ class ArtifactGenerator
 
             try {
                 $decoded = $this->decodeJson($result->text);
+                $payload = $this->normalize($type, $decoded, $params);
+
+                // AI đôi khi trả thiếu (VD: xin 2 phần × 5 câu mà chỉ được 1 phần).
+                // Im lặng nhận thì đề bị cụt mà không ai hay. Thiếu ở lần 1 thì
+                // yêu cầu lại lần 2 kèm số còn thiếu; vẫn thiếu thì báo hỏng rõ
+                // ràng để giáo viên bấm "Tạo lại", thay vì một bản nháp dở dang.
+                $shortfall = $this->completenessError($type, $payload, $params);
+
+                if ($shortfall !== null) {
+                    $lastError = new RuntimeException($shortfall);
+                    $instruction .= "\n".$shortfall.' Hãy tạo lại đầy đủ, không rút gọn, không gộp phần.';
+
+                    continue;
+                }
 
                 return [
-                    'title' => $this->titleFrom($notebook, $type, $instruction, $params, $decoded),
-                    'payload' => $this->normalize($type, $decoded, $params),
+                    'title' => $this->titleFrom($notebook, $type, $titleInstruction, $params, $decoded),
+                    'payload' => $payload,
                     'text' => null,
                     'provider' => $result->providerKey,
                     'model' => $result->model,
@@ -148,52 +166,301 @@ class ArtifactGenerator
      */
     protected function maxTokensFor(ArtifactType $type, array $params): int
     {
-        $cap = self::tokenCap();
-
         if ($type === ArtifactType::Exam) {
             $questions = max(1, (int) ($params['exam_sections'] ?? 2)) * max(1, (int) ($params['exam_questions_per_section'] ?? 5));
 
-            return min($cap, self::TOKEN_OVERHEAD + $questions * self::TOKENS_PER_QUESTION);
+            return self::maxTokensForCount($questions);
         }
 
         if ($type === ArtifactType::Questions) {
-            return min($cap, self::TOKEN_OVERHEAD + max(1, (int) ($params['count'] ?? 5)) * self::TOKENS_PER_QUESTION);
+            return self::maxTokensForCount(max(1, (int) ($params['count'] ?? 5)));
         }
 
-        return min($cap, self::TOKENS_PER_PROSE);
+        return min(self::tokenCap(), self::TOKENS_PER_PROSE);
+    }
+
+    protected static function maxTokensForCount(int $questions): int
+    {
+        return min(self::tokenCap(), self::TOKEN_OVERHEAD + max(1, $questions) * self::TOKENS_PER_QUESTION);
+    }
+
+    protected function examNeedsChunking(array $params): bool
+    {
+        $total = max(1, (int) ($params['exam_sections'] ?? 2)) * max(1, (int) ($params['exam_questions_per_section'] ?? 5));
+
+        return $total > self::questionsPerAiCall();
     }
 
     /**
-     * Chặn sớm cấu hình vượt quá khả năng sinh, thay vì để AI trả cụt giữa chừng.
+     * Soạn đề lớn thành nhiều đợt gọi AI rồi ghép lại. Mỗi đợt chỉ xin vừa đủ
+     * ngân sách một lần gọi, nên đề 50-100 câu vẫn ra đủ mà không bị chặn.
      *
      * @param  array<string, mixed>  $params
+     * @param  array<string, mixed>  $pinned
+     * @return array{title: string, payload: array|null, text: string|null, provider: string, model: string, tokens: int}
      */
-    protected function guardAgainstOversizedRequest(ArtifactType $type, array $params): void
+    protected function generateChunkedExam(Notebook $notebook, array $params, string $instruction, array $pinned, ?int $subjectId, ?int $userId): array
     {
-        if ($type !== ArtifactType::Exam) {
-            return;
-        }
-
         $sections = max(1, (int) ($params['exam_sections'] ?? 2));
         $perSection = max(1, (int) ($params['exam_questions_per_section'] ?? 5));
-        $total = $sections * $perSection;
-        $allowed = self::maxQuestionsPerExam();
+        $parts = $this->splitExamIntoParts($sections, $perSection);
+        $partCount = count($parts);
 
-        if ($total > $allowed) {
-            throw new RuntimeException(self::oversizedExamMessage($total, $allowed));
+        // Mỗi phần trong đề có đúng số câu đã hứa; đợt nào cũng có thể bị chia
+        // nhỏ thêm nếu một phần dài hơn ngân sách một lần gọi.
+        $plannedCounts = array_fill(0, $sections, 0);
+
+        foreach ($parts as $part) {
+            foreach ($part as $slot) {
+                $plannedCounts[$slot['index']] += $slot['count'];
+            }
         }
+
+        $assembled = [];
+        $titles = [];
+        $totalTokens = 0;
+        $providerKey = '';
+        $model = '';
+
+        foreach ($parts as $partIndex => $part) {
+            $expected = array_sum(array_column($part, 'count'));
+            $listing = implode(', ', array_map(
+                fn (array $slot): string => 'phần '.$this->toRoman($slot['index'] + 1).' ('.$slot['count'].' câu)',
+                $part,
+            ));
+
+            $partInstruction = $instruction === ''
+                ? 'Soạn đề thi đợt '.($partIndex + 1)."/{$partCount}. Toàn đề có {$sections} phần, mỗi phần {$perSection} câu. Đợt này chỉ soạn: {$listing}."
+                : "Nhiệm vụ: {$instruction}\nĐây là đợt ".($partIndex + 1)."/{$partCount} của đề gồm {$sections} phần, mỗi phần {$perSection} câu. Đợt này chỉ soạn: {$listing}.";
+
+            $partInstruction .= "\nĐánh số và đặt tên các phần đúng theo toàn đề (VD: đợt gồm phần 2 và 3 thì đặt PHẦN II, PHẦN III). Không soạn phần ngoài danh sách.";
+
+            $decoded = $this->requestJsonPart($notebook, $partInstruction, $params, $expected, $pinned, $subjectId, $userId);
+
+            if (isset($decoded['title']) && is_string($decoded['title']) && trim($decoded['title']) !== '') {
+                $titles[] = trim($decoded['title']);
+            }
+
+            $returned = $this->listFrom(['questions' => $decoded['sections'] ?? $decoded]);
+            $slotCursor = 0;
+
+            foreach ($this->distinctIndexes($part) as $sectionIndex) {
+                $wanted = $plannedCounts[$sectionIndex] ?? 0;
+
+                if ($wanted <= 0) {
+                    continue;
+                }
+
+                $have = count((array) ($assembled[$sectionIndex]['questions'] ?? []));
+                $need = $wanted - $have;
+
+                if ($need <= 0) {
+                    continue;
+                }
+
+                $taken = [];
+
+                while ($need > 0 && $slotCursor < count($returned)) {
+                    $section = $returned[$slotCursor];
+                    $slotCursor++;
+
+                    if (! is_array($section)) {
+                        continue;
+                    }
+
+                    foreach ($this->listFrom(['questions' => $section['questions'] ?? $section]) as $question) {
+                        if ($need <= 0) {
+                            break;
+                        }
+
+                        $taken[] = $question;
+                        $need--;
+                    }
+
+                    if (! isset($assembled[$sectionIndex]) && isset($section['title'])) {
+                        $assembled[$sectionIndex]['title'] = $section['title'];
+                    }
+
+                    if (! isset($assembled[$sectionIndex]) && isset($section['instructions'])) {
+                        $assembled[$sectionIndex]['instructions'] = $section['instructions'];
+                    }
+                }
+
+                foreach ($taken as $question) {
+                    $assembled[$sectionIndex]['questions'][] = $question;
+                }
+            }
+
+            $totalTokens += $decoded['_tokens'] ?? 0;
+            $providerKey = $decoded['_provider'] ?? $providerKey;
+            $model = $decoded['_model'] ?? $model;
+        }
+
+        ksort($assembled);
+
+        $merged = [
+            'title' => $titles[0] ?? '',
+            'description' => '',
+            'sections' => array_values(array_map(
+                fn (int $index): array => [
+                    'title' => $assembled[$index]['title'] ?? 'Phần '.$this->toRoman($index + 1),
+                    'instructions' => $assembled[$index]['instructions'] ?? '',
+                    'questions' => $assembled[$index]['questions'] ?? [],
+                ],
+                range(0, $sections - 1),
+            )),
+        ];
+
+        $payload = $this->normalizeExam($merged, $params);
+
+        $shortfall = $this->completenessError(ArtifactType::Exam, $payload, $params);
+
+        if ($shortfall !== null) {
+            throw new RuntimeException($shortfall.'. Hãy bấm "Tạo lại" để thử tiếp.');
+        }
+
+        return [
+            'title' => $this->titleFrom($notebook, ArtifactType::Exam, $instruction, $params, $merged),
+            'payload' => $payload,
+            'text' => null,
+            'provider' => $providerKey,
+            'model' => $model,
+            'tokens' => $totalTokens,
+        ];
     }
 
     /**
-     * Thông điệp cho giáo viên khi cấu trúc đề vượt trần, dùng chung cho cả lúc
-     * bấm "Tạo" lẫn lúc soạn nền.
+     * Chia đề thành các đợt, mỗi đợt vừa ngân sách một lần gọi AI. Một phần dài
+     * hơn ngân sách thì tự cắt nhỏ ra nhiều đợt.
+     *
+     * @return array<int, array<int, array{index: int, count: int}>>
      */
-    public static function oversizedExamMessage(int $total, ?int $allowed = null): string
+    protected function splitExamIntoParts(int $sections, int $perSection): array
     {
-        $allowed ??= self::maxQuestionsPerExam();
+        $chunk = self::questionsPerAiCall();
+        $parts = [];
+        $current = [];
+        $currentTotal = 0;
 
-        return "Đề này yêu cầu {$total} câu, vượt giới hạn {$allowed} câu mỗi lần soạn. "
-            .'Hãy giảm số câu mỗi phần, hoặc soạn 2 đề rồi ghép lại.';
+        for ($index = 0; $index < $sections; $index++) {
+            $remaining = $perSection;
+
+            while ($remaining > 0) {
+                $space = $chunk - $currentTotal;
+
+                if ($space <= 0) {
+                    $parts[] = $current;
+                    $current = [];
+                    $currentTotal = 0;
+                    $space = $chunk;
+                }
+
+                $take = min($remaining, $space);
+                $current[] = ['index' => $index, 'count' => $take];
+                $currentTotal += $take;
+                $remaining -= $take;
+
+                if ($currentTotal >= $chunk) {
+                    $parts[] = $current;
+                    $current = [];
+                    $currentTotal = 0;
+                }
+            }
+        }
+
+        if ($current !== []) {
+            $parts[] = $current;
+        }
+
+        return $parts === [] ? [[['index' => 0, 'count' => max(1, $perSection)]]] : $parts;
+    }
+
+    /**
+     * @param  array<int, array{index: int, count: int}>  $part
+     * @return array<int, int>
+     */
+    protected function distinctIndexes(array $part): array
+    {
+        $indexes = [];
+
+        foreach ($part as $slot) {
+            if (! in_array($slot['index'], $indexes, true)) {
+                $indexes[] = $slot['index'];
+            }
+        }
+
+        return $indexes;
+    }
+
+    /**
+     * Gọi AI một đợt với tối đa một lần thử lại khi JSON hỏng hoặc thiếu câu.
+     *
+     * @param  array<string, mixed>  $params
+     * @param  array<string, mixed>  $pinned
+     * @return array<string, mixed>
+     */
+    protected function requestJsonPart(Notebook $notebook, string $instruction, array $params, int $expected, array $pinned, ?int $subjectId, ?int $userId): array
+    {
+        $lastError = null;
+
+        foreach ([0, 1] as $round) {
+            $messages = $this->composer->artifactMessages(
+                $notebook,
+                $this->buildInstruction($notebook, ArtifactType::Exam, $instruction, $params, strictJson: true),
+                $this->schemaHint(ArtifactType::Exam),
+            );
+
+            $result = $this->ai->chat($messages, [
+                'purpose' => AiPurpose::Artifact,
+                'subject_id' => $subjectId,
+                'user_id' => $userId,
+                'provider_key' => $pinned['provider_key'],
+                'model' => $pinned['model'],
+                'temperature' => $round === 1 ? 0.2 : 0.5,
+                'max_tokens' => self::maxTokensForCount($expected),
+                'timeout' => $this->timeout(),
+            ]);
+
+            try {
+                $decoded = $this->decodeJson($result->text);
+
+                $actual = 0;
+
+                foreach ($this->listFrom(['questions' => $decoded['sections'] ?? $decoded]) as $section) {
+                    $actual += count($this->listFrom(['questions' => $section['questions'] ?? $section]));
+                }
+
+                if ($actual < $expected) {
+                    $lastError = new RuntimeException("AI chỉ soạn được {$actual}/{$expected} câu ở đợt này.");
+                    $instruction .= "\nĐợt trước chỉ được {$actual}/{$expected} câu. Hãy tạo lại đầy đủ, không rút gọn.";
+                } else {
+                    $decoded['_tokens'] = $result->totalTokens();
+                    $decoded['_provider'] = $result->providerKey;
+                    $decoded['_model'] = $result->model;
+
+                    return $decoded;
+                }
+            } catch (RuntimeException $exception) {
+                $lastError = $exception;
+            }
+        }
+
+        throw $lastError ?? new RuntimeException('AI không trả về nội dung hợp lệ.');
+    }
+
+    protected function toRoman(int $number): string
+    {
+        $map = ['X' => 10, 'IX' => 9, 'V' => 5, 'IV' => 4, 'I' => 1];
+        $result = '';
+
+        foreach ($map as $roman => $value) {
+            while ($number >= $value) {
+                $result .= $roman;
+                $number -= $value;
+            }
+        }
+
+        return $result === '' ? '1' : $result;
     }
 
     /**
@@ -220,6 +487,13 @@ class ArtifactGenerator
                 .' Điểm mặc định mỗi câu: '.(float) ($params['points'] ?? 1).'.';
         }
 
+        if ($type === ArtifactType::MindMap) {
+            $branches = min(8, max(2, (int) ($params['mindmap_branches'] ?? 5)));
+
+            $base .= "\nCấu trúc sơ đồ bắt buộc: 1 nút gốc là chủ đề trung tâm, đúng {$branches} nhánh chính, mỗi nhánh chính 2–4 nhánh con, tối đa 3 tầng. "
+                .'Mỗi nhãn dưới 12 từ, bám sát tài liệu nguồn, nhánh chính bao quát các ý lớn không trùng nhau.';
+        }
+
         if ($type === ArtifactType::Exam) {
             $sections = max(1, (int) ($params['exam_sections'] ?? 2));
             $perSection = max(1, (int) ($params['exam_questions_per_section'] ?? 5));
@@ -233,7 +507,8 @@ class ArtifactGenerator
                 ."\n- Tỉ lệ câu hỏi: ".$this->questionTypeLabel((string) ($params['question_type'] ?? 'mixed')).'.'
                 .' Độ khó chung: '.$this->difficultyLabel((string) ($params['difficulty'] ?? 'medium')).'.'
                 ."\n- Phần phải có \"title\" (VD: PHẦN I) và \"instructions\" (hướng dẫn làm phần, VD: Chọn một đáp án đúng nhất)."
-                ."\n- Câu trắc nghiệm: đúng 4 lựa chọn và đúng 1 đáp án có is_correct=true. Câu tự luận/điền khuyết không có lựa chọn."
+                ."\n- Câu trắc nghiệm: đúng 4 lựa chọn và đúng 1 đáp án có is_correct=true; đảo vị trí đáp án đúng ngẫu nhiên, không dồn về lựa chọn đầu. Câu tự luận/điền khuyết không có lựa chọn."
+                ."\n- Câu đúng/sai: không có lựa chọn, đáp án chỉ ghi \"true\" hoặc \"false\", cấm ghi chữ cái."
                 ."\n- Mỗi câu cần \"difficulty\" và \"explanation\" ngắn gọn.";
         }
 
@@ -263,14 +538,20 @@ class ArtifactGenerator
     {
         return match ($type) {
             ArtifactType::Questions => 'Một mảng JSON các câu hỏi. Mỗi câu: {"type":"multiple_choice|true_false|fill_blank|essay","content":"...","options":[{"content":"...","is_correct":true}],"answer":"...","explanation":"...","difficulty":"easy|medium|hard","points":1,"topic":"..."}. '
-                .'Với multiple_choice cần 4 lựa chọn và đúng 1 đáp án is_correct=true. '
-                .'Với true_false không có lựa chọn, "answer" phải là "true" (đúng) hoặc "false" (sai), và nội dung câu phải là một mệnh đề có thể đúng hoặc sai. '
+                .'Với multiple_choice cần đúng 4 lựa chọn và đúng 1 đáp án is_correct=true; vị trí đáp án đúng phải ngẫu nhiên (lúc A, lúc B, C, D), cấm luôn đặt ở lựa chọn đầu tiên; trường "answer" của trắc nghiệm để trống. '
+                .'Với true_false: tuyệt đối không có "options", "answer" chỉ được là "true" (đúng) hoặc "false" (sai), cấm ghi chữ cái như "A"/"B"; nội dung câu phải là một mệnh đề có thể đúng hoặc sai. '
                 .'Chỉ trả về JSON, không kèm chữ nào khác.',
             ArtifactType::Exam => 'Một object JSON: {"title":"...","description":"...","sections":[{"title":"PHẦN I","instructions":"...","questions":[<câu hỏi như trên>]}]}. '
                 .'Câu hỏi trong đề dùng đúng cấu trúc: {"type":"multiple_choice|true_false|fill_blank|essay","content":"...","options":[{"content":"...","is_correct":true}],"answer":"...","explanation":"...","difficulty":"easy|medium|hard","points":1,"topic":"..."}. '
+                .'Với multiple_choice cần đúng 4 lựa chọn và đúng 1 đáp án is_correct=true; vị trí đáp án đúng phải ngẫu nhiên (lúc A, lúc B, C, D), cấm luôn đặt ở lựa chọn đầu tiên; trường "answer" của trắc nghiệm để trống. '
+                .'Với true_false: tuyệt đối không có "options", "answer" chỉ được là "true" (đúng) hoặc "false" (sai), cấm ghi chữ cái như "A"/"B". '
                 .'Chỉ trả về JSON, không kèm chữ nào khác.',
             ArtifactType::Flashcards => 'Một mảng JSON: [{"front":"câu hỏi/khái niệm","back":"trả lời ngắn"}]. 8–15 thẻ. Chỉ trả về JSON.',
-            ArtifactType::MindMap => 'Một object JSON: {"title":"...","nodes":[{"id":"n1","label":"...","parent":null},{"id":"n2","label":"...","parent":"n1"}]}. Chỉ trả về JSON.',
+            ArtifactType::MindMap => 'Một object JSON cây sơ đồ tư duy: {"title":"chủ đề trung tâm","nodes":[{"id":"n1","label":"...","parent":null},{"id":"n2","label":"...","parent":"n1"}]}. '
+                .'Quy tắc: đúng 1 node gốc (parent=null) là chủ đề trung tâm; 4–7 nhánh chính có parent là id của gốc; mỗi nhánh chính có 2–5 nhánh con; tối đa 3 tầng. '
+                .'Mỗi label là một khái niệm hoặc cụm từ ngắn dưới 12 từ, không viết thành câu dài. '
+                .'id là n1, n2... tăng dần, parent phải là id của một node đã có trong danh sách. '
+                .'Chỉ trả về JSON, không kèm chữ nào khác.',
             default => 'Văn bản Markdown tiếng Việt có tiêu đề, mục rõ ràng, ngắn gọn.',
         };
     }
@@ -585,15 +866,51 @@ class ArtifactGenerator
     }
 
     /**
+     * AI trả thiếu số lượng đã hứa thì coi như hỏng để thử lại, thay vì im lặng
+     * nhận một đề cụt. Trả về null khi đủ.
+     *
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $params
+     */
+    protected function completenessError(ArtifactType $type, array $payload, array $params): ?string
+    {
+        if ($type === ArtifactType::Exam) {
+            $expected = max(1, (int) ($params['exam_sections'] ?? 2))
+                * max(1, (int) ($params['exam_questions_per_section'] ?? 5));
+
+            $actual = 0;
+
+            foreach ((array) ($payload['sections'] ?? []) as $section) {
+                $actual += count((array) ($section['questions'] ?? []));
+            }
+
+            return $actual < $expected
+                ? "AI chỉ soạn được {$actual}/{$expected} câu"
+                : null;
+        }
+
+        if ($type === ArtifactType::Questions) {
+            $expected = max(1, (int) ($params['count'] ?? 5));
+            $actual = count((array) ($payload['items'] ?? []));
+
+            return $actual < $expected
+                ? "AI chỉ soạn được {$actual}/{$expected} câu"
+                : null;
+        }
+
+        return null;
+    }
+
+    /**
      * @param  array<int, array<string, mixed>>  $items
      * @param  array<string, mixed>  $params
      * @return array<int, array<string, mixed>>
      */
-    protected function normalizeQuestions(array $items, array $params): array
+    protected function normalizeQuestions(array $items, array $params, ?int $limit = null): array
     {
         $out = [];
 
-        foreach (array_slice($items, 0, 30) as $item) {
+        foreach (array_slice($items, 0, $limit ?? 30) as $item) {
             if (blank($item['content'] ?? null)) {
                 continue;
             }
@@ -615,12 +932,36 @@ class ArtifactGenerator
                         'is_correct' => (bool) ($option['is_correct'] ?? false),
                     ];
                 }
+
+                // AI hay trá hình câu đúng/sai thành trắc nghiệm 2 lựa chọn
+                // "Đúng"/"Sai": đổi về đúng loại để chấm và hiển thị đúng.
+                $disguised = $this->truthyAnswerFrom($options);
+
+                if (count($options) === 2 && $disguised !== null) {
+                    $type = QuestionType::TrueFalse;
+                    $answer = $disguised;
+                    $options = [];
+                }
             }
 
             $answer = CitationStripper::clean((string) ($item['answer'] ?? ''));
 
             if ($type === QuestionType::TrueFalse) {
                 $answer = QuestionType::normalizeTruthy($answer) ?? $this->truthyFromOptions($item) ?? QuestionType::FALSE;
+                $options = [];
+            }
+
+            if ($type === QuestionType::MultipleChoice) {
+                // Đáp án trắc nghiệm nằm ở is_correct của từng lựa chọn; chữ cái
+                // "A"/"B"... do AI ghi thêm vào trường answer là rác hiển thị
+                // (làm bảng đáp án toàn chữ cái) nên bỏ.
+                if (preg_match('/^[A-Fa-f][.\)]?$/u', trim($answer)) === 1) {
+                    $answer = '';
+                }
+
+                // AI có thói quen dồn đáp án đúng lên đầu khiến cả đề toàn A:
+                // đảo thứ tự lựa chọn, is_correct đi theo từng lựa chọn.
+                shuffle($options);
             }
 
             $out[] = [
@@ -665,12 +1006,12 @@ class ArtifactGenerator
                 : [['title' => 'Phần I', 'instructions' => '', 'questions' => $this->listFrom($decoded)]];
         }
 
-        foreach ((array) $rawSections as $section) {
+        foreach (array_slice((array) $rawSections, 0, $sections) as $section) {
             if (! is_array($section)) {
                 continue;
             }
 
-            $questions = $this->normalizeQuestions($this->listFrom(['questions' => $section['questions'] ?? $section]), $params);
+            $questions = $this->normalizeQuestions($this->listFrom(['questions' => $section['questions'] ?? $section]), $params, $perSection);
 
             if ($questions === []) {
                 continue;
@@ -683,7 +1024,7 @@ class ArtifactGenerator
                     $question['points'] = $pointsPerQuestion;
 
                     return $this->normalizeAnswers($question);
-                }, $questions),
+                }, array_slice($questions, 0, $perSection)),
             ];
         }
 
@@ -701,6 +1042,40 @@ class ArtifactGenerator
             ],
             'sections' => $out,
         ];
+    }
+
+    /**
+     * Suy đáp án đúng/sai từ lựa chọn được AI đánh dấu đúng. Trả về null khi
+     * các lựa chọn không phải một cặp đúng/sai phân biệt được, hoặc không có
+     * lựa chọn nào được đánh dấu.
+     *
+     * @param  array<int, array<string, mixed>>  $options
+     */
+    protected function truthyAnswerFrom(array $options): ?string
+    {
+        $values = [];
+
+        foreach ($options as $option) {
+            $normalized = QuestionType::normalizeTruthy((string) ($option['content'] ?? ''));
+
+            if ($normalized === null) {
+                return null;
+            }
+
+            $values[] = $normalized;
+        }
+
+        if (count(array_unique($values)) !== 2) {
+            return null;
+        }
+
+        foreach ($options as $option) {
+            if (! empty($option['is_correct'])) {
+                return QuestionType::normalizeTruthy((string) $option['content']);
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -790,6 +1165,10 @@ class ArtifactGenerator
     }
 
     /**
+     * AI hay trả parent không tồn tại, id trùng nhau hoặc không có nút gốc.
+     * Chuẩn hoá để cây luôn vẽ được: id duy nhất, parent lạ hoặc tự tham chiếu
+     * thì đưa về tầng gốc, và node đầu tiên làm gốc khi thiếu.
+     *
      * @param  array<string, mixed>  $decoded
      * @return array<string, mixed>
      */
@@ -802,8 +1181,15 @@ class ArtifactGenerator
                 continue;
             }
 
-            $nodes[] = [
-                'id' => (string) ($node['id'] ?? 'n'.($index + 1)),
+            $id = trim((string) ($node['id'] ?? 'n'.($index + 1)));
+
+            // Giữ lần xuất hiện đầu tiên, bỏ id trùng để cây không bị ghi đè.
+            if ($id === '' || isset($nodes[$id])) {
+                continue;
+            }
+
+            $nodes[$id] = [
+                'id' => $id,
                 'label' => CitationStripper::clean((string) $node['label']),
                 'parent' => $node['parent'] ?? null,
             ];
@@ -813,6 +1199,25 @@ class ArtifactGenerator
             throw new RuntimeException('Sơ đồ AI trả về không có node hợp lệ.');
         }
 
-        return ['nodes' => $nodes];
+        foreach ($nodes as $id => $node) {
+            $parent = $node['parent'];
+
+            $parent = is_scalar($parent) ? trim((string) $parent) : null;
+
+            // Parent lạ, rỗng hoặc tự trỏ chính mình thì thành nút tầng gốc.
+            if ($parent === null || $parent === '' || $parent === $id || ! isset($nodes[$parent])) {
+                $parent = null;
+            }
+
+            $nodes[$id]['parent'] = $parent;
+        }
+
+        // Không có nút gốc thì lấy node đầu tiên làm gốc để cây luôn vẽ được.
+        if (! in_array(null, array_column($nodes, 'parent'), true)) {
+            $first = array_key_first($nodes);
+            $nodes[$first]['parent'] = null;
+        }
+
+        return ['nodes' => array_values($nodes)];
     }
 }

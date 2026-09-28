@@ -13,12 +13,13 @@ use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 use Livewire\WithFileUploads;
+use Livewire\WithPagination;
 
 #[Layout('components.layouts.app')]
 #[Title('Tài liệu')]
 class DocumentsIndex extends Component
 {
-    use AssignsContent, WithFileUploads;
+    use AssignsContent, WithFileUploads, WithPagination;
 
     public bool $showForm = false;
 
@@ -141,7 +142,7 @@ class DocumentsIndex extends Component
         $subject = app(SubjectContext::class)->subject();
 
         return view('livewire.teacher.documents-index', [
-            'documents' => Document::query()->with('creator')->orderByDesc('created_at')->get(),
+            'documents' => Document::query()->with('creator')->orderByDesc('created_at')->paginate(20),
             'subject' => $subject,
             'featureEnabled' => $subject?->hasFeature(SubjectFeature::Documents) ?? false,
             'openAssignments' => $this->openAssignmentsByKey(),

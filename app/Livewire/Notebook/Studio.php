@@ -34,6 +34,9 @@ class Studio extends Component
 
     public float $points = 1;
 
+    /** Số nhánh chính của sơ đồ tư duy do AI soạn. */
+    public int $mindmapBranches = 5;
+
     /** Số phần của đề thi do AI soạn. */
     public int $examSections = 2;
 
@@ -82,9 +85,16 @@ class Studio extends Component
         $this->guard();
     }
 
+    /** Memo trong một request: render() cũ gọi notebook() ~7 lần. */
+    protected ?Notebook $memoNotebook = null;
+
     protected function notebook(): Notebook
     {
-        return Notebook::query()->findOrFail($this->notebookId);
+        if ($this->memoNotebook === null) {
+            $this->memoNotebook = Notebook::query()->with('subject')->findOrFail($this->notebookId);
+        }
+
+        return $this->memoNotebook;
     }
 
     protected function guard(): void
@@ -132,8 +142,9 @@ class Studio extends Component
             'points' => ['numeric', 'min:0.25', 'max:100'],
             'questionType' => ['required', 'in:mixed,multiple_choice,true_false,fill_blank,essay'],
             'difficulty' => ['required', 'in:easy,medium,hard'],
-            'examSections' => ['integer', 'min:1', 'max:6'],
-            'examQuestionsPerSection' => ['integer', 'min:1', 'max:30'],
+            'mindmapBranches' => ['integer', 'min:2', 'max:8'],
+            'examSections' => ['integer', 'min:1', 'max:10'],
+            'examQuestionsPerSection' => ['integer', 'min:1', 'max:50'],
             'examTotalPoints' => ['numeric', 'min:1', 'max:100'],
             'examDurationMinutes' => ['integer', 'min:1', 'max:600'],
         ]);
@@ -158,15 +169,16 @@ class Studio extends Component
             return;
         }
 
-        // Chặn ngay ở đây thay vì tạo artefact rồi mới báo lỗi vài chục giây sau:
-        // giáo viên thấy lỗi ngay khi bấm "Tạo" thay vì phải chờ nền xong rồi mới thấy.
+        // Đề lớn hơn ngân sách một lần gọi AI thì hệ thống tự chia thành nhiều
+        // đợt soạn rồi ghép lại, nên ở đây không chặn nữa.
         if ($type === ArtifactType::Exam) {
             $total = $this->examSections * $this->examQuestionsPerSection;
 
-            if ($total > ArtifactGenerator::maxQuestionsPerExam()) {
-                $this->error = ArtifactGenerator::oversizedExamMessage($total);
-
-                return;
+            if ($total > ArtifactGenerator::questionsPerAiCall()) {
+                session()->flash(
+                    'notebook_status',
+                    "Đề {$total} câu sẽ được soạn thành nhiều đợt rồi ghép lại, bạn có thể chuyển sang màn khác trong lúc chờ."
+                );
             }
         }
 
@@ -288,6 +300,9 @@ class Studio extends Component
 
     /**
      * Báo cho giáo viên biết nội dung nào vừa soạn xong, kể cả lúc họ đã chuyển sang màn khác.
+     *
+     * Giữ hành vi "hiện một lần": render đầu tiên đánh dấu _notified_at nên
+     * lần sau không lặp lại. Chỉ chạm tới nội dung 5 phút gần nhất.
      */
     protected function collectNotices(): ?string
     {
@@ -343,6 +358,10 @@ class Studio extends Component
                 'exam_shuffle_questions' => $this->examShuffleQuestions,
                 'exam_shuffle_options' => $this->examShuffleOptions,
             ];
+        }
+
+        if ($type === ArtifactType::MindMap) {
+            $params += ['mindmap_branches' => min(8, max(2, $this->mindmapBranches))];
         }
 
         return $params;
@@ -491,7 +510,7 @@ class Studio extends Component
                 'draftPayload.sections.*' => ['array'],
                 'draftPayload.sections.*.title' => ['required', 'string', 'max:180'],
                 'draftPayload.sections.*.instructions' => ['nullable', 'string', 'max:2000'],
-                'draftPayload.sections.*.questions' => ['required', 'array', 'min:1', 'max:30'],
+                'draftPayload.sections.*.questions' => ['required', 'array', 'min:1', 'max:100'],
                 'draftPayload.sections.*.questions.*' => ['array'],
                 'draftPayload.sections.*.questions.*.included' => ['nullable', 'boolean'],
                 'draftPayload.sections.*.questions.*.content' => ['required', 'string', 'max:5000'],
@@ -844,6 +863,23 @@ class Studio extends Component
         session()->flash('notebook_status', 'Đã giao đề cho học sinh '.$subjectName.'. Họ sẽ thấy ở Bài sắp tới.');
 
         $this->dispatch('notebook-artifact-published');
+    }
+
+    /**
+     * Trang xem nội dung sau khi xuất bản, để giáo viên biết đi tiếp ở đâu.
+     * Đề thi có luồng riêng (publishAndOpen/deliverExam) nên trả về null.
+     */
+    public static function publishTargetRoute(ArtifactType $type): ?string
+    {
+        return match ($type) {
+            ArtifactType::Questions => 'studio.questions',
+            ArtifactType::MindMap => 'map',
+            ArtifactType::Document,
+            ArtifactType::Flashcards,
+            ArtifactType::StudyGuide,
+            ArtifactType::Briefing => 'studio.documents',
+            default => null,
+        };
     }
 
     public function delete(int $id): void

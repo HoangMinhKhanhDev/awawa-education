@@ -89,7 +89,7 @@ trait AssignsContent
     {
         return Assignment::query()
             ->open()
-            ->get()
+            ->get(['id', 'assignable_type', 'assignable_id'])
             ->mapWithKeys(fn (Assignment $assignment): array => [
                 $this->keyFor($assignment) => $assignment,
             ])
