@@ -4,10 +4,15 @@ namespace App\Livewire\Teacher;
 
 use App\Enums\MembershipStatus;
 use App\Enums\Role;
+use App\Models\AssignmentReceipt;
+use App\Models\ExamAttempt;
 use App\Models\TeamMembership;
 use App\Models\User;
+use App\Services\StudentAbility;
 use App\Support\SubjectContext;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -181,6 +186,49 @@ class StudentsIndex extends Component
             'subject' => $subject,
             'members' => $members,
             'candidates' => $candidates,
+            'abilities' => app(StudentAbility::class)->rows()->keyBy('student_id'),
+            'lastActive' => $this->lastActiveByStudent($memberIds),
         ]);
+    }
+
+    /**
+     * Lần hoạt động gần nhất của từng học sinh: nộp bài, mở hoặc xem xong
+     * nội dung được giao. Tính một lần cho cả bảng để tránh N+1.
+     *
+     * @param  array<int, int>  $memberIds
+     * @return array<int, Carbon|null>
+     */
+    protected function lastActiveByStudent(array $memberIds): array
+    {
+        if ($memberIds === []) {
+            return [];
+        }
+
+        $submitted = ExamAttempt::query()
+            ->finished()
+            ->whereIn('student_id', $memberIds)
+            ->groupBy('student_id')
+            ->pluck(DB::raw('MAX(submitted_at)'), 'student_id');
+
+        $receipts = AssignmentReceipt::query()
+            ->whereIn('user_id', $memberIds)
+            ->groupBy('user_id')
+            ->pluck(DB::raw('MAX(opened_at)'), 'user_id');
+
+        $done = AssignmentReceipt::query()
+            ->whereIn('user_id', $memberIds)
+            ->groupBy('user_id')
+            ->pluck(DB::raw('MAX(completed_at)'), 'user_id');
+
+        $out = [];
+
+        foreach ($memberIds as $id) {
+            $out[$id] = collect([$submitted->get($id), $receipts->get($id), $done->get($id)])
+                ->filter()
+                ->map(fn ($value): Carbon => Carbon::parse($value))
+                ->max();
+        }
+
+        return $out;
     }
 }

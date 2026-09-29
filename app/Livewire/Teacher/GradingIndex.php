@@ -8,6 +8,7 @@ use App\Enums\QuestionType;
 use App\Enums\SubjectFeature;
 use App\Models\Exam;
 use App\Models\ExamAttempt;
+use App\Models\ExamQuestion;
 use App\Services\Assignments\AssignmentManager;
 use App\Services\NotificationDispatcher;
 use App\Support\SubjectContext;
@@ -77,6 +78,10 @@ class GradingIndex extends Component
 
         $exam = $attempt->exam;
 
+        $pivotPoints = ExamQuestion::query()
+            ->where('exam_id', $exam?->id)
+            ->pluck('points', 'question_id');
+
         foreach ($this->manual as $answerId => $data) {
             $answer = $attempt->answers()->whereKey($answerId)->with('question')->first();
 
@@ -84,7 +89,11 @@ class GradingIndex extends Component
                 continue;
             }
 
-            $max = (float) ($answer->question?->points ?? 0);
+            $pivot = $pivotPoints->get($answer->question_id);
+
+            $max = $pivot !== null
+                ? (float) $pivot
+                : (float) ($answer->question?->points ?? 0);
             $points = $data['points'] === null || $data['points'] === ''
                 ? null
                 : max(0, min((float) $data['points'], $max));

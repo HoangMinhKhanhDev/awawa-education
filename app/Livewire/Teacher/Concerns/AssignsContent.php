@@ -116,8 +116,10 @@ trait AssignsContent
 
     protected function keyFor(Assignment $assignment): string
     {
-        $type = AssignableType::tryFrom($assignment->assignable_type);
+        // assignable_type lưu FQCN nên phải đối chiếu qua modelClass(),
+        // tryFrom() lên slug luôn trả về null và sinh key `other-id` sai.
+        $type = AssignableType::tryFromModelClass($assignment->assignable_type);
 
-        return ($type?->value ?? 'other').'-'.$assignment->assignable_id;
+        return $this->assignKey($type?->value ?? 'other', $assignment->assignable_id);
     }
 }

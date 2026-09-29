@@ -6,6 +6,8 @@ use App\Enums\AttemptStatus;
 use App\Enums\QuestionType;
 use App\Models\AttemptAnswer;
 use App\Models\ExamAttempt;
+use App\Models\ExamQuestion;
+use Illuminate\Support\Collection;
 
 class GradingService
 {
@@ -16,8 +18,15 @@ class GradingService
     {
         $attempt->loadMissing('answers.question.options');
 
+        // Điểm của câu tính theo đề (bảng pivot), không phải điểm gốc của câu
+        // trong ngân hàng — giáo viên có thể cho câu 1 điểm trong đề 10 điểm
+        // nhưng 2 điểm trong đề khác.
+        $pivotPoints = ExamQuestion::query()
+            ->where('exam_id', $attempt->exam_id)
+            ->pluck('points', 'question_id');
+
         foreach ($attempt->answers as $answer) {
-            $this->gradeAnswer($answer);
+            $this->gradeAnswer($answer, $pivotPoints);
         }
 
         $attempt->recomputeScore();
@@ -36,7 +45,10 @@ class GradingService
         ])->save();
     }
 
-    public function gradeAnswer(AttemptAnswer $answer): void
+    /**
+     * @param  Collection<int, float>|null  $pivotPoints  điểm từng câu trong đề, khoá theo question_id
+     */
+    public function gradeAnswer(AttemptAnswer $answer, ?Collection $pivotPoints = null): void
     {
         $question = $answer->question;
 
@@ -55,9 +67,14 @@ class GradingService
             default => false,
         };
 
+        $pivot = $pivotPoints?->get($answer->question_id);
+
+        // Đề cũ có thể để trống điểm từng câu thì giữ điểm gốc ngân hàng.
+        $points = $pivot !== null ? (float) $pivot : (float) $question->points;
+
         $answer->forceFill([
             'is_correct' => $isCorrect,
-            'awarded_points' => $isCorrect ? (float) $question->points : 0,
+            'awarded_points' => $isCorrect ? $points : 0,
         ])->save();
     }
 

@@ -6,6 +6,10 @@
                 Thêm hoặc gỡ học sinh khỏi đội tuyển môn <span class="font-medium" style="color: {{ $subject?->color }}">{{ $subject?->name }}</span>. Học sinh chỉ làm bài sau khi vào đội.
             </p>
         </div>
+        <a href="{{ route('students.export') }}" class="btn btn-outline shrink-0 px-3 py-2 text-xs">
+            <x-icon name="download" class="h-4 w-4" />
+            Xuất Excel
+        </a>
     </div>
 
     @if (session('status'))
@@ -32,13 +36,28 @@
 
             <div class="divide-y divide-rule dark:divide-night-700">
                 @forelse ($members as $membership)
+                    @php
+                        $ability = $abilities->get($membership->student_id);
+                        $activeAt = $lastActive[$membership->student_id] ?? null;
+                    @endphp
                     <div class="flex items-center gap-3 px-5 py-3.5" wire:key="member-{{ $membership->id }}">
                         <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-600 text-sm font-semibold text-white">
                             {{ $membership->student?->initials() }}
                         </span>
                         <div class="min-w-0 flex-1">
-                            <p class="truncate text-sm font-medium text-ink dark:text-slate-100">{{ $membership->student?->name }}</p>
-                            <p class="truncate text-xs text-ink-faint dark:text-slate-500">{{ $membership->student?->email }}</p>
+                            <p class="truncate text-sm font-medium text-ink dark:text-slate-100">
+                                <a href="{{ route('students.show', $membership->student_id) }}" wire:navigate class="hover:text-brand-700 dark:hover:text-brand-300">{{ $membership->student?->name }}</a>
+                            </p>
+                            <p class="tnum mt-0.5 truncate text-xs text-ink-faint dark:text-slate-500">
+                                @if ($ability && $ability['exams'] > 0)
+                                    ĐTL {{ number_format($ability['average'], 0) }}% · {{ $ability['exams'] }} đề
+                                @else
+                                    Chưa có bài làm
+                                @endif
+                                @if ($activeAt)
+                                    <span class="mx-1.5">·</span>hđ {{ $activeAt->diffForHumans() }}
+                                @endif
+                            </p>
                         </div>
                         <button type="button" wire:click="removeStudent({{ $membership->student_id }})" wire:confirm="Gỡ học sinh khỏi đội?"
                             class="btn btn-ghost px-3 py-1.5 text-xs text-signal hover:bg-signal-soft dark:text-red-400 dark:hover:bg-red-500/10">Gỡ</button>

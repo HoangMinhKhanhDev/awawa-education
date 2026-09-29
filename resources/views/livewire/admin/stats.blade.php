@@ -79,10 +79,10 @@
                     <div>
                         <div class="flex items-baseline justify-between text-sm">
                             <span class="font-medium text-ink dark:text-slate-200">{{ $row['name'] }}</span>
-                            <span class="tnum text-ink-soft dark:text-slate-400">{{ $row['average'] }} điểm — {{ $row['attempts'] }} bài</span>
+                            <span class="tnum text-ink-soft dark:text-slate-400">{{ $row['average'] }}% — {{ $row['attempts'] }} bài đã chấm</span>
                         </div>
                         <div class="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-paper-2 dark:bg-night-700">
-                            <div class="h-full rounded-full bg-success" style="width: {{ min(100, (int) round(($row['average'] / 10) * 100)) }}%"></div>
+                            <div class="h-full rounded-full bg-success" style="width: {{ min(100, (int) round($row['average'])) }}%"></div>
                         </div>
                     </div>
                 @empty

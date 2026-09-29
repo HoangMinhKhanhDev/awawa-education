@@ -110,6 +110,9 @@ class ExamAttempt extends Model
 
     /**
      * Tính lại điểm từ các câu trả lời đã chấm.
+     *
+     * Đồng thời chốt lại tổng điểm theo đề hiện tại: giáo viên sửa thang điểm
+     * sau khi học sinh đã nộp thì % các bài cũ vẫn đúng mẫu số mới.
      */
     public function recomputeScore(): void
     {
@@ -132,6 +135,7 @@ class ExamAttempt extends Model
             'auto_score' => $auto,
             'manual_score' => $manual,
             'score' => $auto + $manual,
+            'max_score' => (float) ($this->exam->total_points ?? $this->max_score),
         ])->save();
     }
 

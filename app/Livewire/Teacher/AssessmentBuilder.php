@@ -29,6 +29,8 @@ class AssessmentBuilder extends Component
 
     public int $maxAttempts = 1;
 
+    public float $examWeight = 1;
+
     public bool $shuffleQuestions = false;
 
     public bool $shuffleOptions = false;
@@ -90,6 +92,7 @@ class AssessmentBuilder extends Component
         $this->description = (string) $exam->description;
         $this->durationMinutes = $exam->duration_minutes;
         $this->maxAttempts = $exam->maxAttempts();
+        $this->examWeight = $exam->weight();
         $this->shuffleQuestions = $exam->shuffle_questions;
         $this->shuffleOptions = $exam->shuffle_options;
         $this->startsAt = $exam->starts_at?->format('Y-m-d\TH:i') ?? '';
@@ -112,6 +115,7 @@ class AssessmentBuilder extends Component
             'description' => ['nullable', 'string', 'max:2000'],
             'durationMinutes' => ['nullable', 'integer', 'min:1', 'max:600'],
             'maxAttempts' => ['required', 'integer', 'min:1', 'max:20'],
+            'examWeight' => ['required', 'numeric', 'min:0.5', 'max:5'],
             'startsAt' => ['nullable', 'date'],
             'endsAt' => ['nullable', 'date', 'after_or_equal:startsAt'],
             'dueAt' => ['nullable', 'date'],
@@ -120,6 +124,8 @@ class AssessmentBuilder extends Component
             'endsAt.after_or_equal' => 'Thời điểm kết thúc phải sau thời điểm bắt đầu.',
             'maxAttempts.min' => 'Học sinh phải được làm bài ít nhất một lần.',
             'maxAttempts.max' => 'Số lần làm tối đa không vượt quá 20.',
+            'examWeight.min' => 'Hệ số đề ít nhất là 0.5.',
+            'examWeight.max' => 'Hệ số đề không vượt quá 5.',
         ]);
 
         $exam->update([
@@ -128,6 +134,7 @@ class AssessmentBuilder extends Component
             'duration_minutes' => $this->durationMinutes,
             'settings' => array_merge($exam->settings ?? [], [
                 'max_attempts' => $this->maxAttempts,
+                'weight' => $this->examWeight,
             ]),
             'shuffle_questions' => $this->shuffleQuestions,
             'shuffle_options' => $this->shuffleOptions,

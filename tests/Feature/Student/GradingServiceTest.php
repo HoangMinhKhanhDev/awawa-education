@@ -128,4 +128,40 @@ class GradingServiceTest extends TestCase
         $this->assertFalse($attempt->answers()->first()->is_correct);
         $this->assertEquals(0.0, (float) $attempt->score);
     }
+
+    public function test_auto_grading_uses_the_points_of_the_question_inside_the_exam(): void
+    {
+        $subject = Subject::factory()->create();
+        $exam = Exam::factory()->create([
+            'subject_id' => $subject->id,
+            'type' => ExamType::Exam,
+            'status' => ExamStatus::Published,
+            'total_points' => 2,
+        ]);
+
+        // Câu 4 điểm trong ngân hàng nhưng chỉ 2 điểm trong đề này.
+        $question = Question::factory()->create(['subject_id' => $subject->id, 'type' => QuestionType::MultipleChoice, 'points' => 4]);
+        $correct = $question->options()->create(['content' => 'A', 'is_correct' => true, 'order' => 0]);
+        ExamQuestion::create(['exam_id' => $exam->id, 'question_id' => $question->id, 'order' => 0, 'points' => 2]);
+
+        $student = User::factory()->student($subject)->create();
+
+        $attempt = ExamAttempt::create([
+            'subject_id' => $subject->id,
+            'exam_id' => $exam->id,
+            'student_id' => $student->id,
+            'status' => AttemptStatus::InProgress,
+            'started_at' => now(),
+            'max_score' => 4,
+        ]);
+
+        AttemptAnswer::create(['attempt_id' => $attempt->id, 'question_id' => $question->id, 'selected_option_ids' => [$correct->id]]);
+
+        app(GradingService::class)->gradeAttempt($attempt);
+
+        $attempt->refresh();
+
+        $this->assertEquals(2.0, (float) $attempt->score);
+        $this->assertEquals(2.0, (float) $attempt->max_score);
+    }
 }

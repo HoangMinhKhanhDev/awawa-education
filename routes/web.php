@@ -6,6 +6,7 @@ use App\Http\Controllers\Auth\LogoutController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\NotebookArtifactExportController;
 use App\Http\Controllers\PushSubscriptionController;
+use App\Http\Controllers\StudentExportController;
 use App\Livewire\Admin\Stats as AdminStats;
 use App\Livewire\Admin\Subjects\Index as AdminSubjects;
 use App\Livewire\Admin\Users\Index as AdminUsers;
@@ -34,6 +35,7 @@ use App\Livewire\Teacher\DocumentsIndex;
 use App\Livewire\Teacher\ExamsIndex;
 use App\Livewire\Teacher\GradingIndex;
 use App\Livewire\Teacher\QuestionsIndex;
+use App\Livewire\Teacher\StudentShow;
 use App\Livewire\Teacher\StudentsIndex;
 use App\Livewire\Teacher\Studio;
 use Illuminate\Support\Facades\Route;
@@ -143,6 +145,12 @@ Route::middleware('auth')->group(function () {
         Route::get('/studio/{exam}/bai-lam', GradingIndex::class)->name('studio.grading');
 
         Route::get('/quan-ly-hoc-sinh', StudentsIndex::class)->name('students');
+
+        Route::get('/quan-ly-hoc-sinh/xuat-excel', [StudentExportController::class, 'team'])->name('students.export');
+
+        Route::get('/quan-ly-hoc-sinh/{student}', StudentShow::class)->name('students.show');
+
+        Route::get('/studio/{exam}/xuat-diem', [StudentExportController::class, 'examGrades'])->name('studio.grading.export');
     });
 
     /*

@@ -13,8 +13,8 @@ use Illuminate\Database\Eloquent\Model;
 /**
  * Các loại nội dung giáo viên có thể giao cho đội tuyển.
  *
- * Giá trị là tên lớp model để khớp với cột `assignable_type` của quan hệ morph,
- * tránh phải lưu thêm một cột `kind` trùng lặp.
+ * Giá trị là slug ngắn (`exam`, `document`...). Cột `assignable_type` của quan
+ * hệ morph vẫn lưu FQCN vì app không dùng morphMap; xem `tryFromModelClass()`.
  */
 enum AssignableType: string
 {
@@ -37,6 +37,23 @@ enum AssignableType: string
             self::Announcement => Announcement::class,
             self::KnowledgeMap => KnowledgeMap::class,
         };
+    }
+
+    /**
+     * Tra cứu ngược từ tên lớp model thật về loại nội dung.
+     *
+     * Cột `assignable_type` lưu FQCN (VD: `App\Models\Document`) vì app không
+     * dùng morphMap, nên không thể `tryFrom()` trực tiếp lên slug.
+     */
+    public static function tryFromModelClass(string $class): ?self
+    {
+        foreach (self::cases() as $case) {
+            if ($case->modelClass() === $class) {
+                return $case;
+            }
+        }
+
+        return null;
     }
 
     /**

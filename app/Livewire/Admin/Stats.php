@@ -84,9 +84,12 @@ class Stats extends Component
      */
     protected function subjectAverages(): Collection
     {
+        // Chỉ bài đã chấm xong, chuẩn hoá % để đề thang điểm khác nhau
+        // vẫn so được với nhau.
         $rows = ExamAttempt::query()
+            ->where('status', AttemptStatus::Graded->value)
             ->whereNotNull('score')
-            ->select('subject_id', DB::raw('AVG(score) as average'), DB::raw('COUNT(*) as attempts'))
+            ->select('subject_id', DB::raw('AVG(CASE WHEN max_score > 0 THEN score * 100.0 / max_score ELSE 0 END) as average'), DB::raw('COUNT(*) as attempts'))
             ->groupBy('subject_id')
             ->get();
 

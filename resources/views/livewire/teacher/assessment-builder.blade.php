@@ -53,11 +53,17 @@
                         <label class="label" for="b-description">Mô tả</label>
                         <textarea id="b-description" rows="2" class="input" wire:model="description"></textarea>
                     </div>
-                    <div class="grid gap-4 sm:grid-cols-3">
+                    <div class="grid gap-4 sm:grid-cols-2">
                         <div>
                             <label class="label" for="b-duration">Thời gian làm bài (phút)</label>
                             <input id="b-duration" type="number" min="1" class="input" wire:model="durationMinutes">
                             @error('durationMinutes') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
+                        </div>
+                        <div>
+                            <label class="label" for="b-weight">Hệ số đề</label>
+                            <input id="b-weight" type="number" min="0.5" max="5" step="0.5" class="input" wire:model="examWeight">
+                            @error('examWeight') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
+                            <p class="mt-1.5 text-xs text-ink-faint dark:text-slate-500">Đề quan trọng để 2–3, bài tập thường để 1.</p>
                         </div>
                         <div>
                             <label class="label" for="b-max-attempts">Số lần làm tối đa</label>

@@ -3,10 +3,10 @@
 namespace App\Livewire;
 
 use App\Models\Announcement;
-use App\Models\ExamAttempt;
 use App\Models\Subject;
 use App\Models\TeamMembership;
 use App\Models\User;
+use App\Services\StudentAbility;
 use App\Support\SubjectContext;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
@@ -46,9 +46,10 @@ class Info extends Component
     }
 
     /**
-     * Xếp hạng theo điểm phần trăm cao nhất, kèm tổng điểm và số bài đã làm.
+     * Xếp hạng theo điểm thực lực (trung bình có trọng số các lần làm đầu),
+     * kèm số đề, lần tốt nhất và tổng lượt làm.
      *
-     * @return Collection<int, array{student: User|null, best_percent: float, total: float, attempts: int}>
+     * @return Collection<int, array{student: User|null, average: float, exams: int, best_percent: float, retakes: int}>
      */
     protected function leaderboard(): Collection
     {
@@ -57,31 +58,25 @@ class Info extends Component
             ->with('student')
             ->get();
 
-        $rows = ExamAttempt::query()
-            ->finished()
-            ->select('student_id')
-            ->selectRaw('MAX(CASE WHEN max_score > 0 THEN score * 100.0 / max_score ELSE 0 END) as best_percent')
-            ->selectRaw('COUNT(*) as attempts')
-            ->selectRaw('SUM(score) as total')
-            ->groupBy('student_id')
-            ->get()
-            ->keyBy('student_id');
+        $abilities = app(StudentAbility::class)->rows()->keyBy('student_id');
 
         return $members
-            ->map(function (TeamMembership $membership) use ($rows): array {
-                $row = $rows->get($membership->student_id);
+            ->map(function (TeamMembership $membership) use ($abilities): array {
+                $row = $abilities->get($membership->student_id);
 
                 return [
                     'student' => $membership->student,
-                    'best_percent' => $row ? (float) $row->best_percent : 0.0,
-                    'total' => $row ? (float) $row->total : 0.0,
-                    'attempts' => $row ? (int) $row->attempts : 0,
+                    'average' => $row['average'] ?? 0.0,
+                    'exams' => $row['exams'] ?? 0,
+                    'best_percent' => $row['best_percent'] ?? 0.0,
+                    'retakes' => $row['retakes'] ?? 0,
                 ];
             })
             // Sắp theo khoá ít quan trọng trước, khoá chính sau, để thứ tự trước
             // được giữ làm tiêu chí phụ (PHP 8 sắp xếp ổn định).
-            ->sortByDesc('attempts')
+            ->sortByDesc('exams')
             ->sortByDesc('best_percent')
+            ->sortByDesc('average')
             ->values();
     }
 }

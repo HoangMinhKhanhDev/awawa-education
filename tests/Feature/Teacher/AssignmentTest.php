@@ -8,6 +8,8 @@ use App\Enums\ExamType;
 use App\Enums\MapVisibility;
 use App\Livewire\Dashboard;
 use App\Livewire\Teacher\AssignmentsHub;
+use App\Livewire\Teacher\DocumentsIndex;
+use App\Livewire\Teacher\ExamsIndex;
 use App\Models\Announcement;
 use App\Models\Assignment;
 use App\Models\Document;
@@ -124,6 +126,53 @@ class AssignmentTest extends TestCase
         $this->assertSame('Thấy ra đề sai', $assignment->fresh()->recall_reason);
         $this->assertDatabaseHas('documents', ['id' => $document->id]);
         $this->assertSame(1, $assignment->receipts()->count());
+    }
+
+    public function test_assigned_document_shows_the_recall_state_on_its_list_page(): void
+    {
+        $document = $this->publicDocument();
+
+        app(AssignmentManager::class)->assign($document, notify: false);
+
+        // assignable_type lưu FQCN; trang danh sách phải tra đúng key slug-id
+        // thì mới hiện "Đang giao" kèm nút thu hồi thay vì nút "Giao".
+        Livewire::test(DocumentsIndex::class)
+            ->assertSee('Đang giao')
+            ->assertSee('Thu hồi', escape: false);
+    }
+
+    public function test_same_numeric_id_across_types_does_not_hide_the_recall_button(): void
+    {
+        $document = $this->publicDocument();
+        $exam = $this->publishedExam();
+
+        // Hai bảng khác nhau nên cùng mang id 1: key tra cứu phải gồm cả loại.
+        $this->assertSame($document->id, $exam->id);
+
+        $manager = app(AssignmentManager::class);
+        $manager->assign($document, notify: false);
+        $manager->assign($exam, notify: false);
+
+        Livewire::test(DocumentsIndex::class)->assertSee('Đang giao');
+        Livewire::test(ExamsIndex::class)->assertSee('Đang giao');
+
+        Livewire::test(DocumentsIndex::class)
+            ->call('recallContent', Assignment::query()
+                ->where('assignable_type', Document::class)
+                ->where('assignable_id', $document->id)
+                ->firstOrFail()->id)
+            ->assertHasNoErrors();
+
+        // Thu hồi tài liệu không làm mất trạng thái đang giao của đề thi.
+        Livewire::test(DocumentsIndex::class)->assertSee('Giao cho học sinh');
+        Livewire::test(ExamsIndex::class)->assertSee('Đang giao');
+    }
+
+    public function test_try_from_model_class_matches_the_stored_morph_type(): void
+    {
+        $this->assertSame(AssignableType::Document, AssignableType::tryFromModelClass(Document::class));
+        $this->assertSame(AssignableType::Exam, AssignableType::tryFromModelClass(Exam::class));
+        $this->assertNull(AssignableType::tryFromModelClass('App\\Models\\KhongTonTai'));
     }
 
     public function test_recalling_twice_is_a_no_op(): void

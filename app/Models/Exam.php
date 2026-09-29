@@ -108,6 +108,17 @@ class Exam extends Model
     }
 
     /**
+     * Hệ số của đề khi tính điểm thực lực. Giáo viên đặt trong trình soạn đề,
+     * mặc định 1; đề thi thử quan trọng có thể để 2–3.
+     */
+    public function weight(): float
+    {
+        $value = $this->settings['weight'] ?? 1;
+
+        return min(5, max(0.5, is_numeric($value) ? (float) $value : 1));
+    }
+
+    /**
      * Lần làm đã dùng, tính cả lần đang làm dở.
      */
     public function attemptsUsedBy(User $user): int
