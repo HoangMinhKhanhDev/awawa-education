@@ -212,7 +212,55 @@ class StudentShowTest extends TestCase
             ->assertSee('Phân bố điểm thực lực')
             ->assertSee('Mức xem bài được giao')
             ->assertSee($exam->title)
-            ->assertSee('Lượt nộp 14 ngày qua');
+            ->assertSee('Lượt nộp 14 ngày qua')
+            ->assertSee('Xu hướng điểm lần đầu theo tuần')
+            ->assertSee('Tốt nhất', escape: false);
+    }
+
+    public function test_class_stats_attributes_scores_to_the_right_students(): void
+    {
+        $exam = Exam::factory()->create([
+            'subject_id' => $this->subject->id,
+            'type' => ExamType::Exam,
+            'status' => ExamStatus::Published,
+            'total_points' => 10,
+        ]);
+
+        // Giỏi 90%, yếu 30%: phân bố phải đếm đúng từng người.
+        ExamAttempt::factory()->graded()->create([
+            'subject_id' => $this->subject->id,
+            'exam_id' => $exam->id,
+            'student_id' => $this->student->id,
+            'score' => 9,
+            'max_score' => 10,
+        ]);
+
+        $weak = User::factory()->student($this->subject)->create(['name' => 'Hoc Sinh Yeu']);
+        TeamMembership::query()->create([
+            'subject_id' => $this->subject->id,
+            'student_id' => $weak->id,
+            'status' => MembershipStatus::Active->value,
+            'joined_at' => now(),
+        ]);
+
+        ExamAttempt::factory()->graded()->create([
+            'subject_id' => $this->subject->id,
+            'exam_id' => $exam->id,
+            'student_id' => $weak->id,
+            'score' => 3,
+            'max_score' => 10,
+        ]);
+
+        $component = Livewire::test(ClassStats::class);
+        $distribution = $component->viewData('distribution');
+
+        $this->assertSame(1, collect($distribution)->firstWhere('label', 'Giỏi (≥ 8)')['count']);
+        $this->assertSame(1, collect($distribution)->firstWhere('label', 'Yếu (< 5)')['count']);
+
+        // Bạn yếu (30%) lọt danh sách cần chú ý kèm link hồ sơ.
+        $component->assertSee('Cần chú ý')
+            ->assertSee('Hoc Sinh Yeu')
+            ->assertSee(route('students.show', $weak), escape: false);
     }
 
     public function test_team_csv_downloads_with_vietnamese_headers(): void

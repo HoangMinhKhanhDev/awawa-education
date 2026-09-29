@@ -41,11 +41,13 @@ class ClassStats extends Component
                 'examStats' => collect(),
                 'completion' => ['completed' => 0, 'opened' => 0, 'pending' => 0],
                 'daily' => collect(),
+                'trend' => collect(),
                 'violations' => 0,
+                'attention' => collect(),
             ]);
         }
 
-        $abilities = app(StudentAbility::class)->rows();
+        $abilities = app(StudentAbility::class)->rows()->keyBy('student_id');
 
         $distribution = [
             ['label' => 'Giỏi (≥ 8)', 'count' => 0, 'color' => 'bg-success'],
@@ -77,8 +79,16 @@ class ClassStats extends Component
         $examStats = $this->examStats();
         $completion = $this->assignmentCompletion($memberIds);
         $daily = $this->dailySubmissions();
+        $trend = $this->weeklyTrend();
 
         $scored = $abilities->filter(fn (array $row): bool => $row['exams'] > 0);
+
+        $members = TeamMembership::query()
+            ->active()
+            ->with('student')
+            ->get(['id', 'student_id']);
+
+        $attention = $this->attentionList($members, $abilities);
 
         $violations = (int) ExamAttempt::query()
             ->whereIn('status', [AttemptStatus::Submitted->value, AttemptStatus::Graded->value])
@@ -93,14 +103,76 @@ class ClassStats extends Component
             'examStats' => $examStats,
             'completion' => $completion,
             'daily' => $daily,
+            'trend' => $trend,
             'violations' => $violations,
+            'attention' => $attention,
         ]);
     }
 
     /**
-     * Điểm trung bình lần đầu từng đề + số lượt làm.
+     * Học sinh cần chú ý: điểm thực lực dưới 5 hoặc hơn 7 ngày không hoạt động.
      *
-     * @return Collection<int, array{title: string, weight: float, average: float|null, attempts: int}>
+     * @param  Collection<int, TeamMembership>  $members
+     * @param  Collection<int, array>  $abilities
+     * @return Collection<int, array{student: User|null, average: float|null, reasons: array<int, string>}>
+     */
+    protected function attentionList(Collection $members, Collection $abilities): Collection
+    {
+        $ids = $members->pluck('student_id')->all();
+
+        if ($ids === []) {
+            return collect();
+        }
+
+        $submitted = ExamAttempt::query()
+            ->finished()
+            ->whereIn('student_id', $ids)
+            ->groupBy('student_id')
+            ->pluck(DB::raw('MAX(submitted_at)'), 'student_id');
+
+        $opened = AssignmentReceipt::query()
+            ->whereIn('user_id', $ids)
+            ->groupBy('user_id')
+            ->pluck(DB::raw('MAX(opened_at)'), 'user_id');
+
+        $weekAgo = now()->subDays(7);
+
+        return $members
+            ->map(function (TeamMembership $membership) use ($abilities, $submitted, $opened, $weekAgo): ?array {
+                $row = $abilities->get($membership->student_id);
+                $reasons = [];
+
+                if ($row !== null && $row['exams'] > 0 && $row['average'] < 50) {
+                    $reasons[] = 'Điểm thực lực '.number_format($row['average'], 0).'%';
+                }
+
+                $last = collect([$submitted->get($membership->student_id), $opened->get($membership->student_id)])
+                    ->filter()
+                    ->map(fn ($value): Carbon => Carbon::parse($value))
+                    ->max();
+
+                if ($last === null || $last->lessThan($weekAgo)) {
+                    $reasons[] = $last === null ? 'Chưa có hoạt động nào' : 'Im ắng '.$last->diffForHumans();
+                }
+
+                if ($reasons === []) {
+                    return null;
+                }
+
+                return [
+                    'student' => $membership->student,
+                    'average' => $row['average'] ?? null,
+                    'reasons' => $reasons,
+                ];
+            })
+            ->filter()
+            ->values();
+    }
+
+    /**
+     * Điểm trung bình lần đầu và tốt nhất từng đề + số lượt làm.
+     *
+     * @return Collection<int, array{id: int, title: string, weight: float, average: float|null, best_average: float|null, attempts: int}>
      */
     protected function examStats(): Collection
     {
@@ -115,26 +187,82 @@ class ClassStats extends Component
             ->get(['exam_id', 'attempt_no', 'score', 'max_score'])
             ->groupBy('exam_id')
             ->map(function (Collection $rows): array {
-                // Lần đầu của từng học sinh trong đề.
-                $percents = $rows->groupBy('student_id')->map(function (Collection $studentRows): ?float {
-                    $first = $studentRows->sortBy('attempt_no')->first();
-                    $max = (float) $first->max_score;
+                $byStudent = $rows->groupBy('student_id');
 
-                    return $max > 0 ? round(((float) $first->score / $max) * 100, 2) : null;
-                })->filter(fn (?float $value): bool => $value !== null);
+                $pick = function (string $mode) use ($byStudent): Collection {
+                    return $byStudent->map(function (Collection $studentRows) use ($mode): ?float {
+                        $ordered = $studentRows->sortBy('attempt_no')->values();
+                        $attempt = $mode === 'first'
+                            ? $ordered->first()
+                            : $ordered->sortByDesc(fn ($row): float => (float) $row->max_score > 0
+                                ? (float) $row->score / (float) $row->max_score
+                                : -1)->first();
+                        $max = (float) $attempt->max_score;
+
+                        return $max > 0 ? round(((float) $attempt->score / $max) * 100, 2) : null;
+                    })->filter(fn (?float $value): bool => $value !== null);
+                };
+
+                $first = $pick('first');
+                $best = $pick('best');
 
                 return [
-                    'average' => $percents->isNotEmpty() ? round($percents->avg(), 2) : null,
+                    'average' => $first->isNotEmpty() ? round($first->avg(), 2) : null,
+                    'best_average' => $best->isNotEmpty() ? round($best->avg(), 2) : null,
                     'attempts' => $rows->count(),
                 ];
             });
 
         return $exams->map(fn (Exam $exam): array => [
+            'id' => $exam->id,
             'title' => $exam->title,
             'weight' => $exam->weight(),
             'average' => $firsts->get($exam->id)['average'] ?? null,
+            'best_average' => $firsts->get($exam->id)['best_average'] ?? null,
             'attempts' => $firsts->get($exam->id)['attempts'] ?? 0,
         ]);
+    }
+
+    /**
+     * Xu hướng điểm trung bình lần đầu 8 tuần gần nhất, tuần cũ trái sang phải.
+     * Mỗi cặp học sinh-đề chỉ tính một lần vào tuần nộp lần đầu.
+     *
+     * @return Collection<int, array{label: string, average: float|null}>
+     */
+    protected function weeklyTrend(): Collection
+    {
+        $firsts = ExamAttempt::query()
+            ->where('status', AttemptStatus::Graded->value)
+            ->whereNotNull('submitted_at')
+            ->get(['student_id', 'exam_id', 'attempt_no', 'score', 'max_score', 'submitted_at'])
+            ->groupBy(fn (ExamAttempt $attempt): string => $attempt->student_id.'-'.$attempt->exam_id)
+            ->map(function (Collection $rows): ?ExamAttempt {
+                $first = $rows->sortBy('attempt_no')->first();
+                $max = (float) $first->max_score;
+
+                return $max > 0 ? $first : null;
+            })
+            ->filter();
+
+        $out = collect();
+
+        for ($i = 7; $i >= 0; $i--) {
+            $start = Carbon::now()->subWeeks($i)->startOfWeek();
+            $end = (clone $start)->endOfWeek();
+
+            $week = $firsts->filter(fn (ExamAttempt $attempt): bool => $attempt->submitted_at !== null
+                && $attempt->submitted_at->greaterThanOrEqualTo($start)
+                && $attempt->submitted_at->lessThanOrEqualTo($end));
+
+            $percents = $week->map(fn (ExamAttempt $attempt): float => round(((float) $attempt->score / (float) $attempt->max_score) * 100, 2));
+
+            $out->push([
+                'label' => $start->format('d/m'),
+                'average' => $percents->isNotEmpty() ? round($percents->avg(), 1) : null,
+            ]);
+        }
+
+        return $out;
     }
 
     /**
