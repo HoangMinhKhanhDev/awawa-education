@@ -36,8 +36,11 @@ class SimpleXlsx
     {
         $strings = [];
         $stringIndex = [];
+        $stringRefs = 0;
 
-        $register = function (string $value) use (&$strings, &$stringIndex): int {
+        $register = function (string $value) use (&$strings, &$stringIndex, &$stringRefs): int {
+            $stringRefs++;
+
             if (! isset($stringIndex[$value])) {
                 $stringIndex[$value] = count($strings);
                 $strings[] = $value;
@@ -62,6 +65,8 @@ class SimpleXlsx
                 .'<sheets>'.$sheetsXml.'</sheets></workbook>',
             'xl/_rels/workbook.xml.rels' => $this->workbookRels(count($this->sheets)),
             'xl/styles.xml' => $this->styles(),
+            'docProps/core.xml' => $this->docPropsCore(),
+            'docProps/app.xml' => $this->docPropsApp(),
         ];
 
         // sharedStrings dựng sau khi mọi ô đã đăng ký chuỗi (lúc vẽ sheet).
@@ -71,7 +76,7 @@ class SimpleXlsx
             $sheetFiles[$index] = $this->worksheet($sheet, $register);
         }
 
-        $files['xl/sharedStrings.xml'] = $this->sharedStrings($strings);
+        $files['xl/sharedStrings.xml'] = $this->sharedStrings($strings, $stringRefs);
 
         foreach ($sheetFiles as $index => $xml) {
             $files['xl/worksheets/sheet'.($index + 1).'.xml'] = $xml;
@@ -121,6 +126,8 @@ class SimpleXlsx
             .$overrides
             .'<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
             .'<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>'
+            .'<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>'
+            .'<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>'
             .'</Types>';
     }
 
@@ -129,6 +136,8 @@ class SimpleXlsx
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             .'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
             .'<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+            .'<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>'
+            .'<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>'
             .'</Relationships>';
     }
 
@@ -146,6 +155,25 @@ class SimpleXlsx
             .'<Relationship Id="rId'.($sheetCount + 1).'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
             .'<Relationship Id="rId'.($sheetCount + 2).'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>'
             .'</Relationships>';
+    }
+
+    protected function docPropsCore(): string
+    {
+        return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            .'<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
+            .'<dc:creator>awawa</dc:creator>'
+            .'<cp:lastModifiedBy>awawa</cp:lastModifiedBy>'
+            .'<dcterms:created xsi:type="dcterms:W3CDTF">'.gmdate('Y-m-d\TH:i:s\Z').'</dcterms:created>'
+            .'<dcterms:modified xsi:type="dcterms:W3CDTF">'.gmdate('Y-m-d\TH:i:s\Z').'</dcterms:modified>'
+            .'</cp:coreProperties>';
+    }
+
+    protected function docPropsApp(): string
+    {
+        return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            .'<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">'
+            .'<Application>awawa</Application>'
+            .'</Properties>';
     }
 
     protected function styles(): string
@@ -168,7 +196,7 @@ class SimpleXlsx
     /**
      * @param  array<int, string>  $strings
      */
-    protected function sharedStrings(array $strings): string
+    protected function sharedStrings(array $strings, int $totalRefs): string
     {
         $items = '';
 
@@ -177,7 +205,7 @@ class SimpleXlsx
         }
 
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            .'<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="'.count($strings).'" uniqueCount="'.count($strings).'">'.$items.'</sst>';
+            .'<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="'.$totalRefs.'" uniqueCount="'.count($strings).'">'.$items.'</sst>';
     }
 
     /**

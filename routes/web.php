@@ -31,6 +31,7 @@ use App\Livewire\Teacher\AnnouncementsIndex;
 use App\Livewire\Teacher\AssessmentBuilder;
 use App\Livewire\Teacher\AssignmentsHub;
 use App\Livewire\Teacher\AssignmentsIndex;
+use App\Livewire\Teacher\ClassStats;
 use App\Livewire\Teacher\DocumentsIndex;
 use App\Livewire\Teacher\ExamsIndex;
 use App\Livewire\Teacher\GradingIndex;
@@ -146,11 +147,17 @@ Route::middleware('auth')->group(function () {
 
         Route::get('/quan-ly-hoc-sinh', StudentsIndex::class)->name('students');
 
+        Route::get('/quan-ly-hoc-sinh/thong-ke', ClassStats::class)->name('students.stats');
+
         Route::get('/quan-ly-hoc-sinh/xuat-excel', [StudentExportController::class, 'team'])->name('students.export');
+
+        Route::get('/quan-ly-hoc-sinh/xuat-csv', [StudentExportController::class, 'teamCsv'])->name('students.export.csv');
 
         Route::get('/quan-ly-hoc-sinh/{student}', StudentShow::class)->name('students.show');
 
         Route::get('/studio/{exam}/xuat-diem', [StudentExportController::class, 'examGrades'])->name('studio.grading.export');
+
+        Route::get('/studio/{exam}/xuat-diem-csv', [StudentExportController::class, 'examGradesCsv'])->name('studio.grading.export.csv');
     });
 
     /*

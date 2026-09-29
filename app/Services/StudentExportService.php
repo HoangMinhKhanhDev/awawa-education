@@ -11,7 +11,8 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 /**
- * Xuất bảng điểm ra file .xlsx cho giáo viên.
+ * Xuất bảng điểm cho giáo viên: file .xlsx chuẩn và file .csv dự phòng
+ * (mở được mọi nơi, kể cả máy không đọc được xlsx lạ).
  */
 class StudentExportService
 {
@@ -22,6 +23,71 @@ class StudentExportService
      */
     public function teamWorkbook(int $subjectId, string $subjectName): array
     {
+        $xlsx = (new SimpleXlsx)->addSheet(
+            'Cả đội',
+            $this->teamHeaders(),
+            $this->teamRows($subjectId),
+            [28, 32, 16, 10, 10, 12],
+        );
+
+        return [
+            'filename' => $this->filename('bang-diem-'.$subjectName, 'xlsx'),
+            'content' => $xlsx->build(),
+        ];
+    }
+
+    /**
+     * @return array{filename: string, content: string}
+     */
+    public function teamCsv(int $subjectId, string $subjectName): array
+    {
+        return [
+            'filename' => $this->filename('bang-diem-'.$subjectName, 'csv'),
+            'content' => $this->toCsv($this->teamHeaders(), $this->teamRows($subjectId)),
+        ];
+    }
+
+    /**
+     * @return array{filename: string, content: string}
+     */
+    public function examGradesWorkbook(Exam $exam): array
+    {
+        [$headers, $rows, $widths] = $this->examGradesTable($exam);
+
+        $xlsx = (new SimpleXlsx)->addSheet('Điểm '.$exam->title, $headers, $rows, $widths);
+
+        return [
+            'filename' => $this->filename('diem-'.$exam->title, 'xlsx'),
+            'content' => $xlsx->build(),
+        ];
+    }
+
+    /**
+     * @return array{filename: string, content: string}
+     */
+    public function examGradesCsv(Exam $exam): array
+    {
+        [$headers, $rows] = $this->examGradesTable($exam);
+
+        return [
+            'filename' => $this->filename('diem-'.$exam->title, 'csv'),
+            'content' => $this->toCsv($headers, $rows),
+        ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function teamHeaders(): array
+    {
+        return ['Họ tên', 'Email', 'Điểm thực lực (%)', 'Số đề', 'Lượt làm', 'Tốt nhất (%)'];
+    }
+
+    /**
+     * @return array<int, array<int, int|float|string>>
+     */
+    protected function teamRows(int $subjectId): array
+    {
         $members = TeamMembership::query()
             ->active()
             ->with('student')
@@ -30,7 +96,7 @@ class StudentExportService
 
         $abilities = $this->ability->rows()->keyBy('student_id');
 
-        $rows = $members->map(function (TeamMembership $membership) use ($abilities): array {
+        return $members->map(function (TeamMembership $membership) use ($abilities): array {
             $row = $abilities->get($membership->student_id);
 
             return [
@@ -42,24 +108,12 @@ class StudentExportService
                 $row['best_percent'] ?? 0.0,
             ];
         })->all();
-
-        $xlsx = (new SimpleXlsx)->addSheet(
-            'Cả đội',
-            ['Họ tên', 'Email', 'Điểm thực lực (%)', 'Số đề', 'Lượt làm', 'Tốt nhất (%)'],
-            $rows,
-            [28, 32, 16, 10, 10, 12],
-        );
-
-        return [
-            'filename' => $this->filename('bang-diem-'.$subjectName),
-            'content' => $xlsx->build(),
-        ];
     }
 
     /**
-     * @return array{filename: string, content: string}
+     * @return array{0: array<int, string>, 1: array<int, array<int, int|float|string>>, 2: array<int, float>}
      */
-    public function examGradesWorkbook(Exam $exam): array
+    protected function examGradesTable(Exam $exam): array
     {
         $questions = $exam->examQuestions()->with('question')->orderBy('order')->get();
 
@@ -102,22 +156,46 @@ class StudentExportService
                 $points,
                 $latest === null
                     ? ['', '']
-                    : [(float) $latest->score, $latest->percent()],
+                    : [(float) $latest->score, $latest->percent() ?? ''],
             );
         })->all();
 
         $widths = array_merge([28, 32], array_fill(0, $questions->count(), 10), [10, 10]);
 
-        $xlsx = (new SimpleXlsx)->addSheet('Điểm '.$exam->title, $headers, $rows, $widths);
-
-        return [
-            'filename' => $this->filename('diem-'.$exam->title),
-            'content' => $xlsx->build(),
-        ];
+        return [$headers, $rows, $widths];
     }
 
-    protected function filename(string $base): string
+    /**
+     * CSV phân cách bằng chấm phẩy + BOM để Excel tiếng Việt mở đúng font,
+     * mỗi ô một cột (không bị dồn như file comma trên máy Việt).
+     *
+     * @param  array<int, string>  $headers
+     * @param  array<int, array<int, int|float|string|null>>  $rows
+     */
+    protected function toCsv(array $headers, array $rows): string
     {
-        return Str::slug($base) ?: 'bang-diem'.'-'.now()->format('Y-m-d').'.xlsx';
+        $handle = fopen('php://temp', 'r+');
+
+        if ($handle === false) {
+            throw new \RuntimeException('Không tạo được nội dung CSV.');
+        }
+
+        fwrite($handle, "\xEF\xBB\xBF");
+        fputcsv($handle, $headers, ';');
+
+        foreach ($rows as $row) {
+            fputcsv($handle, array_map(fn ($value): string => $value === null ? '' : (string) $value, $row), ';');
+        }
+
+        rewind($handle);
+        $content = stream_get_contents($handle) ?: '';
+        fclose($handle);
+
+        return $content;
+    }
+
+    protected function filename(string $base, string $extension): string
+    {
+        return (Str::slug($base) ?: 'bang-diem').'-'.now()->format('Y-m-d').'.'.$extension;
     }
 }

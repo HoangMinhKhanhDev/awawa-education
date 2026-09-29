@@ -13,10 +13,15 @@
                 <span class="tnum">{{ $attempts->count() }} học sinh đã làm — {{ (float) $exam->total_points }} điểm tối đa</span>
             </p>
         </div>
-        <a href="{{ route('studio.grading.export', $exam) }}" class="btn btn-outline shrink-0 px-3 py-2 text-xs">
-            <x-icon name="download" class="h-4 w-4" />
-            Xuất Excel
-        </a>
+        <div class="flex shrink-0 items-center gap-1.5">
+            <a href="{{ route('studio.grading.export', $exam) }}" class="btn btn-outline px-3 py-2 text-xs" title="Tải file Excel (.xlsx)">
+                <x-icon name="download" class="h-4 w-4" />
+                Excel
+            </a>
+            <a href="{{ route('studio.grading.export.csv', $exam) }}" class="btn btn-ghost px-3 py-2 text-xs" title="Tải file CSV (mở được mọi nơi)">
+                CSV
+            </a>
+        </div>
     </div>
 
     @if (session('status'))

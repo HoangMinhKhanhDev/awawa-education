@@ -6,6 +6,7 @@ use App\Enums\ExamStatus;
 use App\Enums\ExamType;
 use App\Enums\MembershipStatus;
 use App\Enums\QuestionType;
+use App\Livewire\Teacher\ClassStats;
 use App\Livewire\Teacher\StudentShow;
 use App\Models\AttemptAnswer;
 use App\Models\Document;
@@ -187,6 +188,61 @@ class StudentShowTest extends TestCase
 
         // Scope môn lọc nên đề như không tồn tại với giáo viên môn khác.
         $this->get(route('studio.grading.export', $exam))->assertNotFound();
+    }
+
+    public function test_class_stats_shows_distribution_and_exam_averages(): void
+    {
+        $exam = Exam::factory()->create([
+            'subject_id' => $this->subject->id,
+            'type' => ExamType::Exam,
+            'status' => ExamStatus::Published,
+            'total_points' => 10,
+        ]);
+
+        ExamAttempt::factory()->graded()->create([
+            'subject_id' => $this->subject->id,
+            'exam_id' => $exam->id,
+            'student_id' => $this->student->id,
+            'score' => 8,
+            'max_score' => 10,
+        ]);
+
+        Livewire::test(ClassStats::class)
+            ->assertSee('Thống kê lớp')
+            ->assertSee('Phân bố điểm thực lực')
+            ->assertSee('Mức xem bài được giao')
+            ->assertSee($exam->title)
+            ->assertSee('Lượt nộp 14 ngày qua');
+    }
+
+    public function test_team_csv_downloads_with_vietnamese_headers(): void
+    {
+        $response = $this->get(route('students.export.csv'));
+
+        $response->assertOk();
+        $response->assertHeader('content-type', 'text/csv; charset=UTF-8');
+
+        $content = $response->getContent();
+
+        // BOM để Excel mở đúng tiếng Việt, phân cách chấm phẩy cho máy Việt.
+        $this->assertStringStartsWith("\xEF\xBB\xBF", $content);
+        $this->assertStringContainsString('Điểm thực lực (%)', $content);
+        $this->assertStringContainsString($this->student->name, $content);
+    }
+
+    public function test_exam_grades_csv_downloads(): void
+    {
+        $exam = Exam::factory()->create([
+            'subject_id' => $this->subject->id,
+            'type' => ExamType::Exam,
+            'status' => ExamStatus::Published,
+        ]);
+
+        $response = $this->get(route('studio.grading.export.csv', $exam));
+
+        $response->assertOk();
+        $response->assertHeader('content-type', 'text/csv; charset=UTF-8');
+        $this->assertStringContainsString('Họ tên', $response->getContent());
     }
 
     /**

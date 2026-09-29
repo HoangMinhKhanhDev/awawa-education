@@ -6,10 +6,19 @@
                 Thêm hoặc gỡ học sinh khỏi đội tuyển môn <span class="font-medium" style="color: {{ $subject?->color }}">{{ $subject?->name }}</span>. Học sinh chỉ làm bài sau khi vào đội.
             </p>
         </div>
-        <a href="{{ route('students.export') }}" class="btn btn-outline shrink-0 px-3 py-2 text-xs">
-            <x-icon name="download" class="h-4 w-4" />
-            Xuất Excel
-        </a>
+        <div class="flex shrink-0 items-center gap-1.5">
+            <a href="{{ route('students.stats') }}" wire:navigate class="btn btn-outline px-3 py-2 text-xs">
+                <x-icon name="chart" class="h-4 w-4" />
+                Thống kê
+            </a>
+            <a href="{{ route('students.export') }}" class="btn btn-outline px-3 py-2 text-xs" title="Tải file Excel (.xlsx)">
+                <x-icon name="download" class="h-4 w-4" />
+                Excel
+            </a>
+            <a href="{{ route('students.export.csv') }}" class="btn btn-ghost px-3 py-2 text-xs" title="Tải file CSV (mở được mọi nơi)">
+                CSV
+            </a>
+        </div>
     </div>
 
     @if (session('status'))
