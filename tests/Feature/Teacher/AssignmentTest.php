@@ -286,14 +286,14 @@ class AssignmentTest extends TestCase
         app(SubjectContext::class)->set($this->subject->id);
 
         Livewire::test(Dashboard::class)
-            ->assertSee('Được giao, chưa xem xong')
+            ->assertSee('Việc cần làm')
             ->assertSee($document->title);
 
         $manager->recall($assignment, notify: false);
 
         // Tên tài liệu vẫn có ở mục "Tài liệu công khai", nên kiểm tra trực tiếp
         // danh sách được giao thay vì tìm chuỗi trên toàn trang.
-        $component = Livewire::test(Dashboard::class)->assertDontSee('Được giao, chưa xem xong');
+        $component = Livewire::test(Dashboard::class)->assertDontSee('Việc cần làm');
 
         $this->assertCount(0, $component->viewData('studentData')['assignments']);
     }
@@ -315,8 +315,8 @@ class AssignmentTest extends TestCase
 
         $this->assertCount(0, $after->viewData('studentData')['assignments']);
 
-        // Đã xong thì hết mục "chưa xem xong".
-        Livewire::test(Dashboard::class)->assertDontSee('Được giao, chưa xem xong');
+        // Đã xong thì hết mục "việc cần làm".
+        Livewire::test(Dashboard::class)->assertDontSee('Việc cần làm');
     }
 
     public function test_student_cannot_open_or_complete_someone_elses_assignment(): void

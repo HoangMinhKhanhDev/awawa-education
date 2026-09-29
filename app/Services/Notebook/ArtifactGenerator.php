@@ -508,7 +508,7 @@ class ArtifactGenerator
                 .' Độ khó chung: '.$this->difficultyLabel((string) ($params['difficulty'] ?? 'medium')).'.'
                 ."\n- Phần phải có \"title\" (VD: PHẦN I) và \"instructions\" (hướng dẫn làm phần, VD: Chọn một đáp án đúng nhất)."
                 ."\n- Câu trắc nghiệm: đúng 4 lựa chọn và đúng 1 đáp án có is_correct=true; đảo vị trí đáp án đúng ngẫu nhiên, không dồn về lựa chọn đầu. Câu tự luận/điền khuyết không có lựa chọn."
-                ."\n- Câu đúng/sai: không có lựa chọn, đáp án chỉ ghi \"true\" hoặc \"false\", cấm ghi chữ cái."
+                ."\n- Câu đúng/sai: gom thành chùm đúng 4 câu trong một phần riêng, đoạn thông tin chung đặt ở \"instructions\" của phần để cả 4 câu cùng nhận định; mỗi câu chỉ ghi \"true\" hoặc \"false\", cấm ghi chữ cái."
                 ."\n- Mỗi câu cần \"difficulty\" và \"explanation\" ngắn gọn.";
         }
 
@@ -544,7 +544,7 @@ class ArtifactGenerator
             ArtifactType::Exam => 'Một object JSON: {"title":"...","description":"...","sections":[{"title":"PHẦN I","instructions":"...","questions":[<câu hỏi như trên>]}]}. '
                 .'Câu hỏi trong đề dùng đúng cấu trúc: {"type":"multiple_choice|true_false|fill_blank|essay","content":"...","options":[{"content":"...","is_correct":true}],"answer":"...","explanation":"...","difficulty":"easy|medium|hard","points":1,"topic":"..."}. '
                 .'Với multiple_choice cần đúng 4 lựa chọn và đúng 1 đáp án is_correct=true; vị trí đáp án đúng phải ngẫu nhiên (lúc A, lúc B, C, D), cấm luôn đặt ở lựa chọn đầu tiên; trường "answer" của trắc nghiệm để trống. '
-                .'Với true_false: tuyệt đối không có "options", "answer" chỉ được là "true" (đúng) hoặc "false" (sai), cấm ghi chữ cái như "A"/"B". '
+                .'Với true_false: gom thành chùm đúng 4 câu trong một phần riêng, "instructions" của phần là đoạn thông tin chung để cả 4 câu cùng nhận định; mỗi câu là một mệnh đề với "answer" chỉ được là "true" (đúng) hoặc "false" (sai), tuyệt đối không có "options", cấm ghi chữ cái như "A"/"B". '
                 .'Chỉ trả về JSON, không kèm chữ nào khác.',
             ArtifactType::Flashcards => 'Một mảng JSON: [{"front":"câu hỏi/khái niệm","back":"trả lời ngắn"}]. 8–15 thẻ. Chỉ trả về JSON.',
             ArtifactType::MindMap => 'Một object JSON cây sơ đồ tư duy: {"title":"chủ đề trung tâm","nodes":[{"id":"n1","label":"...","parent":null},{"id":"n2","label":"...","parent":"n1"}]}. '

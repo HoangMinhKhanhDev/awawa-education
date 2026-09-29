@@ -294,6 +294,31 @@ class InfoLeaderboardTest extends TestCase
         $this->assertSame(70.0, $this->averageOf('Hoc Sinh Co Trong So'));
     }
 
+    public function test_leaderboard_shows_student_avatars(): void
+    {
+        $exam = Exam::factory()->create(['subject_id' => $this->subject->id]);
+
+        $withAvatar = $this->member('Hoc Sinh Co Anh');
+        $withAvatar->forceFill(['avatar' => 'avatars/1/anh.jpg'])->save();
+
+        ExamAttempt::factory()->graded()->create([
+            'subject_id' => $this->subject->id,
+            'exam_id' => $exam->id,
+            'student_id' => $withAvatar->id,
+            'score' => 8,
+            'max_score' => 10,
+        ]);
+
+        $viewer = $this->member('Triệu Thường Chung');
+
+        $this->actingAs($viewer);
+        app(SubjectContext::class)->set($this->subject->id);
+
+        Livewire::test(Info::class)
+            ->assertSee('avatars/1/anh.jpg', escape: false)
+            ->assertSee('Hoc Sinh Co Anh');
+    }
+
     public function test_lowest_exam_is_dropped_from_four_exams(): void
     {
         $exams = [

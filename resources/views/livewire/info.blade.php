@@ -45,12 +45,24 @@
                         @php $isMe = $row['student']?->id === $user->id; @endphp
                         <div class="grid grid-cols-[1.5rem_1fr_auto_auto] items-center gap-x-4 px-5 py-3.5 {{ $isMe ? 'bg-brand-50/60 dark:bg-brand-500/10' : '' }}">
                             <span class="tnum text-lg font-semibold {{ $rank === 0 ? 'text-brand-700 dark:text-brand-300' : 'text-ink-faint dark:text-slate-500' }}">{{ $rank + 1 }}</span>
-                            <div class="min-w-0">
-                                <p class="truncate text-sm font-medium text-ink dark:text-slate-100">
-                                    {{ $row['student']?->name }}
-                                    @if ($isMe)<span class="ml-1 text-xs font-normal text-brand-700 dark:text-brand-300">bạn</span>@endif
-                                </p>
-                                <p class="tnum mt-0.5 text-xs text-ink-faint dark:text-slate-500">{{ $row['exams'] }} đề · {{ $row['retakes'] }} lượt làm</p>
+                            <div class="flex min-w-0 items-center gap-2.5">
+                                <span class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-600 text-sm font-semibold text-white">
+                                    @if ($row['student']?->avatar)
+                                        <img src="{{ $row['student']->avatarUrl() }}" alt="" loading="lazy" width="40" height="40" class="h-full w-full object-cover">
+                                    @else
+                                        {{ $row['student']?->initials() }}
+                                    @endif
+                                </span>
+                                <div class="min-w-0">
+                                    <p class="truncate text-sm font-medium text-ink dark:text-slate-100">
+                                        {{ $row['student']?->name }}
+                                        @if ($isMe)<span class="ml-1 text-xs font-normal text-brand-700 dark:text-brand-300">bạn</span>@endif
+                                    </p>
+                                    @if (filled($row['student']?->note))
+                                        <p class="truncate text-xs italic text-ink-soft dark:text-slate-400">“{{ $row['student']->note }}”</p>
+                                    @endif
+                                    <p class="tnum mt-0.5 text-xs text-ink-faint dark:text-slate-500">{{ $row['exams'] }} đề · {{ $row['retakes'] }} lượt làm</p>
+                                </div>
                             </div>
                             <span class="tnum w-20 text-right text-lg font-semibold text-ink dark:text-white">{{ number_format($row['average'], 0) }}%</span>
                             <span class="tnum w-20 text-right text-sm text-ink-soft dark:text-slate-400">{{ number_format($row['best_percent'], 0) }}%</span>

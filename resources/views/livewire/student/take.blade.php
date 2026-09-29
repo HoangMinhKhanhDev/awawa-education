@@ -1,7 +1,8 @@
 @php
     $answered = collect($answers)->filter(fn ($a) => ! empty($a['selected']) || filled($a['text'] ?? null))->count();
-    $total = $examQuestions->count();
+    $total = $questionGroups->sum(fn ($group) => $group['items']->count());
     $percent = $total > 0 ? (int) round($answered / $total * 100) : 0;
+    $questionNo = 0;
 @endphp
 
 <div class="space-y-6"
@@ -79,11 +80,22 @@
     @endif
 
     <div class="space-y-4">
-        @foreach ($examQuestions as $index => $examQuestion)
-            @php $question = $examQuestion->question; @endphp
+        @foreach ($questionGroups as $group)
+            @if ($group['section'] !== null && (filled($group['section']->title) || filled($group['section']->instructions)))
+                <div class="panel border-brand-300 p-4 sm:p-5 dark:border-brand-500/40" wire:key="take-s-{{ $group['section']->id }}">
+                    @if (filled($group['section']->title))
+                        <h2 class="text-sm font-semibold uppercase text-ink dark:text-white">{{ $group['section']->title }}</h2>
+                    @endif
+                    @if (filled($group['section']->instructions))
+                        <p class="exam-protected mt-1.5 whitespace-pre-line text-sm italic leading-relaxed text-ink-soft dark:text-slate-300">{{ $group['section']->instructions }}</p>
+                    @endif
+                </div>
+            @endif
+            @foreach ($group['items'] as $examQuestion)
+            @php $question = $examQuestion->question; $questionNo++; @endphp
             <div class="panel p-4 sm:p-5" wire:key="take-q-{{ $examQuestion->id }}">
                 <div class="flex items-start gap-3">
-                    <span class="tnum mt-0.5 w-5 shrink-0 text-sm font-semibold text-ink-faint dark:text-slate-500">{{ $index + 1 }}</span>
+                    <span class="tnum mt-0.5 w-5 shrink-0 text-sm font-semibold text-ink-faint dark:text-slate-500">{{ $questionNo }}</span>
                     <div class="min-w-0 flex-1">
                         <div class="flex flex-wrap items-center gap-2">
                             <span class="chip chip-neutral">{{ $question->type->label() }}</span>
@@ -123,6 +135,7 @@
                     </div>
                 </div>
             </div>
+            @endforeach
         @endforeach
     </div>
 

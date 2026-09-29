@@ -132,6 +132,9 @@
                                         <option value="essay">Toàn bộ là tự luận</option>
                                         <option value="fill_blank">Toàn bộ là điền khuyết</option>
                                     </select>
+                                    @if ($questionType === 'true_false')
+                                        <p class="mt-1.5 text-[11px] text-ink-faint dark:text-slate-500">Câu đúng/sai được gom thành chùm 4 mệnh đề chung một đoạn thông tin.</p>
+                                    @endif
                                 </div>
                                 <div>
                                     <label class="label" for="st-exam-diff">Độ khó chung</label>

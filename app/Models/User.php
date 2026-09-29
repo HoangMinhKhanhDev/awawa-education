@@ -31,6 +31,7 @@ class User extends Authenticatable
         'subject_id',
         'google_id',
         'avatar',
+        'note',
         'must_change_password',
         'last_login_at',
         'is_active',

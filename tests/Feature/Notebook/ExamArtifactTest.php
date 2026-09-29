@@ -255,6 +255,35 @@ class ExamArtifactTest extends TestCase
         $this->assertCount(2, $payload['sections'][1]['questions']);
     }
 
+    public function test_exam_prompt_groups_true_false_into_clusters_of_four(): void
+    {
+        $this->fakeExamJson([
+            ['title' => 'PHẦN I', 'questions' => [$this->question('Câu 1', 'essay')]],
+        ]);
+
+        $this->generateExam([
+            'examSections' => 1,
+            'examQuestionsPerSection' => 4,
+            'examTotalPoints' => 4,
+            'questionType' => 'true_false',
+        ]);
+
+        Http::assertSent(function (HttpRequest $request): bool {
+            $body = $request->data();
+
+            if (! is_array($body)) {
+                return false;
+            }
+
+            $prompt = implode("\n", array_map(
+                fn (array $message): string => (string) ($message['content'] ?? ''),
+                $body['messages'] ?? []
+            ));
+
+            return str_contains($prompt, 'chùm đúng 4 câu');
+        });
+    }
+
     public function test_exam_prompt_states_the_structure_and_the_answer_key_rule(): void
     {
         $this->fakeExamJson([

@@ -4,6 +4,8 @@ namespace App\Livewire\Student;
 
 use App\Models\Exam;
 use App\Models\ExamAttempt;
+use App\Models\ExamQuestion;
+use App\Models\ExamSection;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Gate;
@@ -77,6 +79,8 @@ class Result extends Component
 
         Gate::authorize('view', $attempt);
 
+        $examQuestions = $exam->examQuestions()->with(['question.options', 'section'])->get();
+
         return view('livewire.student.result', [
             'exam' => $exam,
             'attempt' => $attempt,
@@ -85,8 +89,36 @@ class Result extends Component
             'maxAttempts' => $exam->maxAttempts(),
             'remainingAttempts' => $user->isStudent() ? $exam->remainingAttemptsFor($user) : 0,
             'canRetake' => $user->isStudent() && $exam->allowsRetake() && $exam->canAttemptAgain($user),
-            'examQuestions' => $exam->examQuestions()->with(['question.options'])->get(),
+            'questionGroups' => $this->groupBySection($examQuestions),
             'answers' => $attempt->answers()->with('question')->get()->keyBy('question_id'),
         ]);
+    }
+
+    /**
+     * Nhóm câu theo phần để hiện đoạn thông tin chung (đúng/sai chùm 4).
+     *
+     * @param  Collection<int, ExamQuestion>  $examQuestions
+     * @return Collection<int, array{section: ExamSection|null, items: Collection<int, ExamQuestion>}>
+     */
+    protected function groupBySection(Collection $examQuestions): Collection
+    {
+        $groups = collect();
+        $order = [];
+
+        foreach ($examQuestions as $examQuestion) {
+            $key = $examQuestion->exam_section_id ?? 0;
+
+            if (! isset($order[$key])) {
+                $order[$key] = count($order);
+                $groups->push([
+                    'section' => $examQuestion->section,
+                    'items' => collect(),
+                ]);
+            }
+
+            $groups[$order[$key]]['items']->push($examQuestion);
+        }
+
+        return $groups;
     }
 }

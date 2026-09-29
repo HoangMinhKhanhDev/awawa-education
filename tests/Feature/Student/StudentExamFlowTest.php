@@ -12,6 +12,7 @@ use App\Models\AttemptAnswer;
 use App\Models\Exam;
 use App\Models\ExamAttempt;
 use App\Models\ExamQuestion;
+use App\Models\ExamSection;
 use App\Models\Question;
 use App\Models\Subject;
 use App\Models\TeamMembership;
@@ -101,6 +102,108 @@ class StudentExamFlowTest extends TestCase
         $this->assertSame(AttemptStatus::Graded, $attempt->status);
         $this->assertEquals(4.0, (float) $attempt->score);
         $this->assertNotNull($attempt->submitted_at);
+    }
+
+    /**
+     * @return array{0: Exam, 1: ExamSection, 2: array<int, Question>}
+     */
+    private function makeTrueFalseCluster(): array
+    {
+        $exam = Exam::factory()->create([
+            'subject_id' => $this->subject->id,
+            'type' => ExamType::Exam,
+            'status' => ExamStatus::Published,
+            'total_points' => 4,
+        ]);
+
+        $section = ExamSection::create([
+            'exam_id' => $exam->id,
+            'title' => 'PHẦN II',
+            'instructions' => 'Rừng là lá phổi xanh của Trái Đất.',
+            'order' => 0,
+        ]);
+
+        $questions = [];
+
+        foreach (['true', 'false', 'true', 'false'] as $index => $answer) {
+            $question = Question::factory()->create([
+                'subject_id' => $this->subject->id,
+                'type' => QuestionType::TrueFalse,
+                'points' => 1,
+                'answer' => $answer,
+            ]);
+
+            ExamQuestion::create([
+                'exam_id' => $exam->id,
+                'exam_section_id' => $section->id,
+                'question_id' => $question->id,
+                'order' => $index,
+                'points' => 1,
+            ]);
+
+            $questions[] = $question;
+        }
+
+        return [$exam, $section, $questions];
+    }
+
+    public function test_take_shows_the_shared_passage_before_its_cluster(): void
+    {
+        [$exam] = $this->makeTrueFalseCluster();
+        $student = $this->member($this->subject);
+
+        $this->actingAs($student);
+        app(SubjectContext::class)->set($this->subject->id);
+
+        Livewire::test(Take::class, ['exam' => $exam])
+            ->assertSee('PHẦN II')
+            ->assertSee('Rừng là lá phổi xanh của Trái Đất.');
+    }
+
+    public function test_true_false_cluster_scores_each_statement_independently(): void
+    {
+        [$exam, , $questions] = $this->makeTrueFalseCluster();
+        $student = $this->member($this->subject);
+
+        $this->actingAs($student);
+        app(SubjectContext::class)->set($this->subject->id);
+
+        // Đúng 3/4 mệnh đề thì được 3 điểm, không mất trắng.
+        $component = Livewire::test(Take::class, ['exam' => $exam]);
+
+        $answers = ['true', 'false', 'true', 'true'];
+
+        foreach ($questions as $index => $question) {
+            $component->set('answers.'.$question->id.'.text', $answers[$index]);
+        }
+
+        $component->call('submit')->assertRedirect(route('student.result', $exam));
+
+        $attempt = ExamAttempt::query()->where('exam_id', $exam->id)->firstOrFail();
+
+        $this->assertSame(AttemptStatus::Graded, $attempt->status);
+        $this->assertEquals(3.0, (float) $attempt->score);
+    }
+
+    public function test_result_shows_the_shared_passage(): void
+    {
+        [$exam, , $questions] = $this->makeTrueFalseCluster();
+        $student = $this->member($this->subject);
+
+        $this->actingAs($student);
+        app(SubjectContext::class)->set($this->subject->id);
+
+        $component = Livewire::test(Take::class, ['exam' => $exam]);
+
+        foreach ($questions as $question) {
+            $component->set('answers.'.$question->id.'.text', 'true');
+        }
+
+        $component->call('submit');
+
+        Livewire::test(Result::class, ['exam' => $exam])
+            ->assertSee('PHẦN II')
+            ->assertSee('Rừng là lá phổi xanh của Trái Đất.');
     }
 
     public function test_student_can_view_result(): void

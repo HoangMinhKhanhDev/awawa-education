@@ -7,6 +7,8 @@ use App\Enums\ExamStatus;
 use App\Models\AttemptAnswer;
 use App\Models\Exam;
 use App\Models\ExamAttempt;
+use App\Models\ExamQuestion;
+use App\Models\ExamSection;
 use App\Services\Assignments\AssignmentManager;
 use App\Services\GradingService;
 use Carbon\Exceptions\InvalidFormatException;
@@ -268,7 +270,7 @@ class Take extends Component
         $exam = Exam::query()->findOrFail($this->examId);
         $attempt = ExamAttempt::query()->findOrFail($this->attemptId);
 
-        $examQuestions = $exam->examQuestions()->with(['question.options'])->get();
+        $examQuestions = $exam->examQuestions()->with(['question.options', 'section'])->get();
 
         if ($exam->shuffle_questions) {
             $examQuestions = $examQuestions->sortBy(
@@ -279,10 +281,39 @@ class Take extends Component
         return view('livewire.student.take', [
             'exam' => $exam,
             'attempt' => $attempt,
-            'examQuestions' => $examQuestions,
+            'questionGroups' => $this->groupBySection($examQuestions),
             'optionOrder' => fn (Collection $options) => $exam->shuffle_options
                 ? $options->sortBy(fn ($option) => crc32($attempt->id.'-o-'.$option->id))->values()
                 : $options,
         ]);
+    }
+
+    /**
+     * Nhóm câu theo phần để hiện đoạn thông tin chung (đúng/sai chùm 4).
+     * Câu không thuộc phần nào gom vào nhóm cuối. Giữ đúng thứ tự đã trộn.
+     *
+     * @param  Collection<int, ExamQuestion>  $examQuestions
+     * @return Collection<int, array{section: ExamSection|null, items: Collection<int, ExamQuestion>}>
+     */
+    protected function groupBySection(Collection $examQuestions): Collection
+    {
+        $groups = collect();
+        $order = [];
+
+        foreach ($examQuestions as $examQuestion) {
+            $key = $examQuestion->exam_section_id ?? 0;
+
+            if (! isset($order[$key])) {
+                $order[$key] = count($order);
+                $groups->push([
+                    'section' => $examQuestion->section,
+                    'items' => collect(),
+                ]);
+            }
+
+            $groups[$order[$key]]['items']->push($examQuestion);
+        }
+
+        return $groups;
     }
 }

@@ -105,17 +105,30 @@
     @endif
 
     <div class="space-y-4">
-        @foreach ($examQuestions as $index => $examQuestion)
+        @php $questionNo = 0; @endphp
+        @foreach ($questionGroups as $group)
+            @if ($group['section'] !== null && (filled($group['section']->title) || filled($group['section']->instructions)))
+                <div class="panel border-brand-300 p-4 sm:p-5 dark:border-brand-500/40">
+                    @if (filled($group['section']->title))
+                        <h2 class="text-sm font-semibold uppercase text-ink dark:text-white">{{ $group['section']->title }}</h2>
+                    @endif
+                    @if (filled($group['section']->instructions))
+                        <p class="mt-1.5 whitespace-pre-line text-sm italic leading-relaxed text-ink-soft dark:text-slate-300">{{ $group['section']->instructions }}</p>
+                    @endif
+                </div>
+            @endif
+            @foreach ($group['items'] as $examQuestion)
             @php
                 $question = $examQuestion->question;
                 $answer = $answers->get($question->id);
                 $awarded = $answer?->awarded_points;
                 $pending = $question->type === \App\Enums\QuestionType::Essay && $awarded === null;
+                $questionNo++;
             @endphp
             <div class="panel p-4 sm:p-5" wire:key="result-q-{{ $examQuestion->id }}">
                 <div class="flex items-start gap-3">
                     <span class="tnum mt-0.5 w-5 shrink-0 text-sm font-semibold {{ $pending ? 'text-warning' : ($answer?->is_correct ? 'text-success' : 'text-signal') }}">
-                        {{ $index + 1 }}
+                        {{ $questionNo }}
                     </span>
                     <div class="min-w-0 flex-1">
                         <p class="whitespace-pre-line leading-relaxed text-ink dark:text-slate-100">{{ $question->content }}</p>
@@ -179,6 +192,7 @@
                     </div>
                 </div>
             </div>
+            @endforeach
         @endforeach
     </div>
 </div>

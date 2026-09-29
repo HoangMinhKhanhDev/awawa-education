@@ -6,21 +6,35 @@
 
     <div class="page-head">
         <div class="flex items-center gap-4">
-            <span class="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-brand-600 text-lg font-semibold text-white">
-                @if ($avatar)
-                    <img src="{{ $avatar->temporaryUrl() }}" alt="" class="h-full w-full object-cover">
-                @elseif ($user->avatar)
-                    <img src="{{ $user->avatarUrl() }}" alt="" class="h-full w-full object-cover">
-                @else
-                    {{ $user->initials() }}
-                @endif
-            </span>
-            <div>
+            <div class="relative shrink-0">
+                <label for="profile-avatar" title="Bấm để đổi ảnh đại diện"
+                    class="flex h-14 w-14 cursor-pointer items-center justify-center overflow-hidden rounded-[14px] bg-brand-600 text-lg font-semibold text-white transition-opacity hover:opacity-90">
+                    <span wire:loading.remove wire:target="avatar">
+                        @if ($avatar)
+                            <img src="{{ $avatar->temporaryUrl() }}" alt="" class="h-full w-full object-cover">
+                        @elseif ($user->avatar)
+                            <img src="{{ $user->avatarUrl() }}" alt="" class="h-full w-full object-cover">
+                        @else
+                            {{ $user->initials() }}
+                        @endif
+                    </span>
+                    <span wire:loading wire:target="avatar" class="animate-pulse text-xs text-white/90">…</span>
+                </label>
+                <input id="profile-avatar" type="file" class="sr-only" wire:model="avatar" accept="image/jpeg,image/png,image/webp">
+            </div>
+            <div class="min-w-0">
                 <h1 class="page-title">{{ $user->name }}</h1>
                 <p class="page-sub">
                     {{ $user->role->label() }}@if ($user->subject)<span class="mx-1.5 text-rule-strong dark:text-night-700">/</span><span style="color: {{ $user->subject->color }}">{{ $user->subject->name }}</span>@endif
                     <span class="mx-1.5 text-rule-strong dark:text-night-700">/</span>{{ $user->email }}
                 </p>
+                <p class="mt-1 text-xs text-ink-faint dark:text-slate-500">
+                    Bấm vào ảnh để đổi (JPG, PNG, WebP — tối đa 5MB)
+                    @if ($user->avatar)
+                        <span class="mx-1.5">·</span><button type="button" wire:click="removeAvatar" class="font-medium text-signal hover:underline dark:text-red-400">Xóa ảnh</button>
+                    @endif
+                </p>
+                @error('avatar') <p class="mt-1 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
             </div>
         </div>
     </div>
@@ -63,6 +77,11 @@
                                 @error('dateOfBirth') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
                             </div>
                         </div>
+                        <div>
+                            <label class="label" for="profile-note">Ghi chú về bản thân <span class="font-normal text-ink-faint dark:text-slate-500">(hiện cùng tên bạn ở bảng xếp hạng)</span></label>
+                            <textarea id="profile-note" rows="2" maxlength="200" class="input" wire:model="note" placeholder="VD: Mục tiêu 9+ Toán, đang ôn bất đẳng thức"></textarea>
+                            @error('note') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
+                        </div>
                     @endif
 
                     @if ($user->isTeacher())
@@ -77,18 +96,6 @@
                             </div>
                         </div>
                     @endif
-
-                    <div>
-                        <label class="label" for="profile-avatar">Ảnh đại diện</label>
-                        <input id="profile-avatar" type="file" class="input" wire:model="avatar" accept="image/*">
-                        @error('avatar') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
-                        <div class="mt-2 flex items-center gap-4">
-                            <span wire:loading wire:target="avatar" class="text-xs text-ink-faint dark:text-slate-500">Đang tải ảnh…</span>
-                            @if ($user->avatar)
-                                <button type="button" wire:click="removeAvatar" class="text-xs font-medium text-signal hover:underline dark:text-red-400">Xóa ảnh hiện tại</button>
-                            @endif
-                        </div>
-                    </div>
 
                     <div class="flex justify-end">
                         <button type="submit" class="btn btn-primary" wire:loading.attr="disabled" wire:target="save">
