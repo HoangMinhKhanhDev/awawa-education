@@ -9,6 +9,7 @@ use App\Models\ExamAttempt;
 use App\Models\TeamMembership;
 use App\Models\User;
 use App\Services\StudentAbility;
+use App\Support\SafeCache;
 use App\Support\SubjectContext;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Carbon;
@@ -181,58 +182,73 @@ class ClassStats extends Component
     /**
      * Điểm trung bình lần đầu và tốt nhất từng đề + số lượt làm.
      *
+     * Cache mảng thô chứ không cache Collection, vì giá trị cache phải sống sót
+     * qua các lần deploy. Xem `App\Support\SafeCache`.
+     *
      * @return Collection<int, array{id: int, title: string, weight: float, average: float|null, best_average: float|null, attempts: int}>
      */
     protected function examStats(int $subjectId): Collection
     {
-        return Cache::remember('class-exam-stats:v1:subject:'.$subjectId, 120, function () use ($subjectId): Collection {
-            $exams = Exam::query()->where('subject_id', $subjectId)->orderBy('created_at')->get(['id', 'title', 'settings']);
+        $rows = SafeCache::remember(
+            'class-exam-stats:v2:subject:'.$subjectId,
+            120,
+            fn (): array => $this->computeExamStats($subjectId),
+        );
 
-            if ($exams->isEmpty()) {
-                return collect();
-            }
+        return collect($rows);
+    }
 
-            $firsts = ExamAttempt::query()
-                ->where('subject_id', $subjectId)
-                ->where('status', AttemptStatus::Graded->value)
-                ->get(['exam_id', 'student_id', 'attempt_no', 'score', 'max_score'])
-                ->groupBy('exam_id')
-                ->map(function (Collection $rows): array {
-                    $byStudent = $rows->groupBy('student_id');
+    /**
+     * @return array<int, array{id: int, title: string, weight: float, average: float|null, best_average: float|null, attempts: int}>
+     */
+    protected function computeExamStats(int $subjectId): array
+    {
+        $exams = Exam::query()->where('subject_id', $subjectId)->orderBy('created_at')->get(['id', 'title', 'settings']);
 
-                    $pick = function (string $mode) use ($byStudent): Collection {
-                        return $byStudent->map(function (Collection $studentRows) use ($mode): ?float {
-                            $ordered = $studentRows->sortBy('attempt_no')->values();
-                            $attempt = $mode === 'first'
-                                ? $ordered->first()
-                                : $ordered->sortByDesc(fn ($row): float => (float) $row->max_score > 0
-                                    ? (float) $row->score / (float) $row->max_score
-                                    : -1)->first();
-                            $max = (float) $attempt->max_score;
+        if ($exams->isEmpty()) {
+            return [];
+        }
 
-                            return $max > 0 ? round(((float) $attempt->score / $max) * 100, 2) : null;
-                        })->filter(fn (?float $value): bool => $value !== null);
-                    };
+        $firsts = ExamAttempt::query()
+            ->where('subject_id', $subjectId)
+            ->where('status', AttemptStatus::Graded->value)
+            ->get(['exam_id', 'student_id', 'attempt_no', 'score', 'max_score'])
+            ->groupBy('exam_id')
+            ->map(function (Collection $rows): array {
+                $byStudent = $rows->groupBy('student_id');
 
-                    $first = $pick('first');
-                    $best = $pick('best');
+                $pick = function (string $mode) use ($byStudent): Collection {
+                    return $byStudent->map(function (Collection $studentRows) use ($mode): ?float {
+                        $ordered = $studentRows->sortBy('attempt_no')->values();
+                        $attempt = $mode === 'first'
+                            ? $ordered->first()
+                            : $ordered->sortByDesc(fn ($row): float => (float) $row->max_score > 0
+                                ? (float) $row->score / (float) $row->max_score
+                                : -1)->first();
+                        $max = (float) $attempt->max_score;
 
-                    return [
-                        'average' => $first->isNotEmpty() ? round($first->avg(), 2) : null,
-                        'best_average' => $best->isNotEmpty() ? round($best->avg(), 2) : null,
-                        'attempts' => $rows->count(),
-                    ];
-                });
+                        return $max > 0 ? round(((float) $attempt->score / $max) * 100, 2) : null;
+                    })->filter(fn (?float $value): bool => $value !== null);
+                };
 
-            return $exams->map(fn (Exam $exam): array => [
-                'id' => $exam->id,
-                'title' => $exam->title,
-                'weight' => $exam->weight(),
-                'average' => $firsts->get($exam->id)['average'] ?? null,
-                'best_average' => $firsts->get($exam->id)['best_average'] ?? null,
-                'attempts' => $firsts->get($exam->id)['attempts'] ?? 0,
-            ]);
-        });
+                $first = $pick('first');
+                $best = $pick('best');
+
+                return [
+                    'average' => $first->isNotEmpty() ? round($first->avg(), 2) : null,
+                    'best_average' => $best->isNotEmpty() ? round($best->avg(), 2) : null,
+                    'attempts' => $rows->count(),
+                ];
+            });
+
+        return $exams->map(fn (Exam $exam): array => [
+            'id' => $exam->id,
+            'title' => $exam->title,
+            'weight' => $exam->weight(),
+            'average' => $firsts->get($exam->id)['average'] ?? null,
+            'best_average' => $firsts->get($exam->id)['best_average'] ?? null,
+            'attempts' => $firsts->get($exam->id)['attempts'] ?? 0,
+        ])->all();
     }
 
     /**

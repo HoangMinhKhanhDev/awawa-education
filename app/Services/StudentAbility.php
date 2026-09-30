@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\AttemptStatus;
 use App\Models\Exam;
 use App\Models\ExamAttempt;
+use App\Support\SafeCache;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 
@@ -18,27 +19,45 @@ use Illuminate\Support\Facades\Cache;
 class StudentAbility
 {
     /**
-     * @return Collection<int, array{student_id: int, average: float, exams: int, best_percent: float, retakes: int, details: Collection<int, array{exam_id: int, exam_title: string, weight: float, first_percent: float|null, best_percent: float, attempts: int}>}>
+     * @return Collection<int, array{student_id: int, average: float, exams: int, best_percent: float, retakes: int, details: array<int, array{exam_id: int, exam_title: string, weight: float, first_percent: float|null, best_percent: float, attempts: int}>}>
      */
     public function rows(?int $subjectId = null): Collection
     {
-        $cacheKey = 'ability:v1:subject:'.($subjectId ?? 'all');
+        // Cache mảng thô chứ không cache Collection: giá trị cache phải sống sót
+        // qua các lần deploy (class PHP đổi thì cache Eloquent unserialize ra
+        // `__PHP_Incomplete_Class` và làm vỡ trang). Xem `SafeCache`.
+        $rows = SafeCache::remember(
+            $this->cacheKey($subjectId),
+            120,
+            fn (): array => $this->computeRows($subjectId)->all(),
+        );
 
-        return Cache::remember($cacheKey, 120, fn (): Collection => $this->computeRows($subjectId));
+        return collect($rows);
     }
 
     public static function forgetCache(?int $subjectId = null): void
     {
-        Cache::forget('ability:v1:subject:'.($subjectId ?? 'all'));
+        Cache::forget(self::keyFor($subjectId));
 
         if ($subjectId !== null) {
-            Cache::forget('class-exam-stats:v1:subject:'.$subjectId);
+            Cache::forget('class-exam-stats:v2:subject:'.$subjectId);
             Cache::forget('class-violations:v1:subject:'.$subjectId);
         }
     }
 
+    protected function cacheKey(?int $subjectId): string
+    {
+        return self::keyFor($subjectId);
+    }
+
+    protected static function keyFor(?int $subjectId): string
+    {
+        // `v2` vì `v1` lưu Collection, cache đó không dùng được nữa.
+        return 'ability:v2:subject:'.($subjectId ?? 'all');
+    }
+
     /**
-     * @return Collection<int, array{student_id: int, average: float, exams: int, best_percent: float, retakes: int, details: Collection<int, array{exam_id: int, exam_title: string, weight: float, first_percent: float|null, best_percent: float, attempts: int}>}>
+     * @return Collection<int, array{student_id: int, average: float, exams: int, best_percent: float, retakes: int, details: array<int, array{exam_id: int, exam_title: string, weight: float, first_percent: float|null, best_percent: float, attempts: int}>}>
      */
     protected function computeRows(?int $subjectId = null): Collection
     {
@@ -70,7 +89,7 @@ class StudentAbility
     /**
      * @param  Collection<int, Collection<int, ExamAttempt>>  $byExam
      * @param  Collection<int, Exam>  $exams
-     * @return array{student_id: int, average: float, exams: int, best_percent: float, retakes: int, details: Collection}
+     * @return array{student_id: int, average: float, exams: int, best_percent: float, retakes: int, details: array<int, array{exam_id: int, exam_title: string, weight: float, first_percent: float|null, best_percent: float, attempts: int}>}
      */
     protected function summarize(int $studentId, Collection $byExam, Collection $exams): array
     {
@@ -103,7 +122,9 @@ class StudentAbility
             'exams' => $details->count(),
             'best_percent' => $details->max('best_percent') ?? 0.0,
             'retakes' => $details->sum('attempts'),
-            'details' => $details,
+            // Mảng thô để serialize được: Collection lồng bên trong sẽ hỏng khi
+            // unserialize sau một lần deploy.
+            'details' => $details->all(),
         ];
     }
 
