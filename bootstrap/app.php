@@ -3,6 +3,7 @@
 use App\Http\Middleware\EnsureRole;
 use App\Http\Middleware\EnsureSubjectFeature;
 use App\Http\Middleware\EnsureTeamMember;
+use App\Http\Middleware\LogClientErrors;
 use App\Http\Middleware\SecureHeaders;
 use App\Http\Middleware\SetSubjectContext;
 use Illuminate\Foundation\Application;
@@ -34,6 +35,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             SetSubjectContext::class,
             SecureHeaders::class,
+            LogClientErrors::class,
         ]);
 
         $middleware->alias([

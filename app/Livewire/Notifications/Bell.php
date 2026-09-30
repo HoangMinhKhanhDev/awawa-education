@@ -3,6 +3,7 @@
 namespace App\Livewire\Notifications;
 
 use Illuminate\Contracts\View\View;
+use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Facades\Cache;
 use Livewire\Component;
 
@@ -64,9 +65,19 @@ class Bell extends Component
             ? Cache::remember(
                 'bell-recent:'.$user->id,
                 30,
-                fn () => $user->notifications()->limit(5)->get(),
+                // Chỉ cache mảng dữ liệu thô. Cache đang serialize, lần đọc lại
+                // sẽ không còn là model Eloquent nên view đọc `->read_at` sẽ vỡ.
+                fn (): array => $user->notifications()->limit(5)->get()
+                    ->map(fn (DatabaseNotification $n): array => [
+                        'id' => $n->id,
+                        'title' => (string) ($n->data['title'] ?? 'Thông báo'),
+                        'body' => (string) ($n->data['body'] ?? ''),
+                        'unread' => $n->read_at === null,
+                        'created_at' => $n->created_at?->diffForHumans(),
+                    ])
+                    ->all(),
             )
-            : collect();
+            : [];
 
         return view('livewire.notifications.bell', [
             'unreadCount' => $unreadCount,

@@ -23,14 +23,14 @@
 
         <div class="max-h-80 overflow-y-auto">
             @forelse ($recent as $notification)
-                @php $unread = $notification->read_at === null; @endphp
-                <button type="button" wire:click="open('{{ $notification->id }}')"
+                @php $unread = $notification['unread']; @endphp
+                <button type="button" wire:click="open('{{ $notification['id'] }}')"
                     class="flex w-full gap-3 border-b border-rule px-4 py-3 text-left transition-colors last:border-0 hover:bg-paper-2 dark:border-night-700 dark:hover:bg-white/5">
                     <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full {{ $unread ? 'bg-brand-600' : 'bg-transparent' }}"></span>
                     <span class="min-w-0">
-                        <span class="block truncate text-sm font-medium text-ink dark:text-slate-100">{{ $notification->data['title'] ?? 'Thông báo' }}</span>
-                        <span class="mt-0.5 line-clamp-2 block text-xs leading-relaxed text-ink-soft dark:text-slate-400">{{ $notification->data['body'] ?? '' }}</span>
-                        <span class="mt-1 block text-[11px] text-ink-faint dark:text-slate-500">{{ $notification->created_at?->diffForHumans() }}</span>
+                        <span class="block truncate text-sm font-medium text-ink dark:text-slate-100">{{ $notification['title'] }}</span>
+                        <span class="mt-0.5 line-clamp-2 block text-xs leading-relaxed text-ink-soft dark:text-slate-400">{{ $notification['body'] }}</span>
+                        <span class="mt-1 block text-[11px] text-ink-faint dark:text-slate-500">{{ $notification['created_at'] }}</span>
                     </span>
                 </button>
             @empty
