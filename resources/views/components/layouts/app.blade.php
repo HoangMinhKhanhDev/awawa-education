@@ -34,33 +34,17 @@
     @livewireStyles
 </head>
 <body class="min-h-full">
-    {{-- Thanh tiến độ chuyển trang: wire:navigate không có indicator mặc định nên
-        click xong im lặng 1-3s mới đổi trang. Prefetch (hover) + thanh này làm
-        cảm giác chuyển trang tức thì. --}}
-    <div x-data="{
-        show: false,
-        width: 0,
-        timer: null,
-        start() {
-            this.show = true;
-            this.width = 8;
-            clearInterval(this.timer);
-            this.timer = setInterval(() => { this.width = Math.min(90, this.width + (90 - this.width) * 0.12); }, 120);
-        },
-        done() {
-            clearInterval(this.timer);
-            this.width = 100;
-            setTimeout(() => { this.show = false; this.width = 0; }, 200);
-        },
-    }" x-on:livewire:navigating.window="start()" x-on:livewire:navigated.window="done()"
-        x-show="show" x-cloak class="fixed inset-x-0 top-0 z-[100] h-[3px]">
-        <div class="h-full bg-brand-600 transition-[width] duration-150 dark:bg-brand-400" :style="`width: ${width}%`"></div>
+    {{-- Thanh tiến độ chuyển trang (JS thuần trong app.js): wire:navigate không có
+        indicator mặc định nên click xong im lặng 1-3s mới đổi trang. Prefetch
+        (hover) + thanh này làm cảm giác chuyển trang tức thì. --}}
+    <div id="nav-progress" class="fixed inset-x-0 top-0 z-[100] hidden h-[3px]">
+        <div id="nav-progress-fill" class="h-full bg-brand-600 transition-[width] duration-150 dark:bg-brand-400" style="width: 0%"></div>
     </div>
-    <div class="{{ $fullBleed ? 'h-dvh overflow-hidden' : 'min-h-dvh' }} lg:flex" x-data="{ drawer: false }">
+    <div class="{{ $fullBleed ? 'h-dvh overflow-hidden' : 'min-h-dvh' }} lg:flex">
         {{-- Rail desktop --}}
         <aside class="hidden w-64 shrink-0 border-r border-rule bg-white lg:flex lg:flex-col dark:border-night-700 dark:bg-night-800">
             <div class="flex h-16 items-center justify-between pl-5 pr-3">
-                <a href="{{ route('dashboard') }}" wire:navigate class="flex items-center">
+                <a href="{{ route('dashboard') }}" wire:navigate.hover class="flex items-center">
                     <x-logo />
                 </a>
                 <livewire:notifications.bell />
@@ -122,9 +106,9 @@
             {{-- Top bar mobile --}}
             <header class="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-rule bg-white/95 px-3 backdrop-blur lg:hidden dark:border-night-700 dark:bg-night-800/95">
                 <div class="flex items-center gap-2">
-                    <button type="button" @click="drawer = true"
+                    <button type="button" onclick="window.awawaDrawer.open()"
                         class="flex h-10 w-10 items-center justify-center rounded-[10px] text-ink-soft hover:bg-paper-2 dark:text-slate-300 dark:hover:bg-white/5"
-                        aria-label="Mở menu">
+                        aria-label="Mở menu" aria-controls="mobile-drawer" aria-expanded="false">
                         <x-icon name="menu" class="h-[22px] w-[22px]" />
                     </button>
                     <a href="{{ route('dashboard') }}" wire:navigate.hover
@@ -153,19 +137,16 @@
             </main>
         </div>
 
-        {{-- Drawer mobile --}}
-        <div x-cloak x-show="drawer" class="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true">
-            <div x-show="drawer" x-transition.opacity @click="drawer = false"
-                class="absolute inset-0 bg-night-900/60"></div>
+        {{-- Drawer mobile (JS thuần, xem window.awawaDrawer trong app.js) --}}
+        <div id="mobile-drawer" class="fixed inset-0 z-50 hidden lg:hidden" role="dialog" aria-modal="true" aria-hidden="true" aria-label="Menu">
+            <div data-drawer-backdrop onclick="window.awawaDrawer.close()"
+                class="absolute inset-0 bg-night-900/60 opacity-0 transition-opacity duration-200"></div>
 
-            <div x-show="drawer" x-transition:enter="transition ease-out duration-200"
-                x-transition:enter-start="-translate-x-full" x-transition:enter-end="translate-x-0"
-                x-transition:leave="transition ease-in duration-150" x-transition:leave-start="translate-x-0"
-                x-transition:leave-end="-translate-x-full"
-                class="absolute left-0 top-0 flex h-full w-72 max-w-[82%] flex-col border-r border-rule bg-white dark:border-night-700 dark:bg-night-800">
+            <div data-drawer-panel
+                class="absolute left-0 top-0 flex h-full w-72 max-w-[82%] -translate-x-full flex-col border-r border-rule bg-white transition-transform duration-200 ease-out dark:border-night-700 dark:bg-night-800">
                 <div class="flex h-16 items-center justify-between pl-5 pr-3">
                     <x-logo />
-                    <button type="button" @click="drawer = false"
+                    <button type="button" onclick="window.awawaDrawer.close()"
                         class="flex h-10 w-10 items-center justify-center rounded-[10px] text-ink-soft hover:bg-paper-2 dark:text-slate-300 dark:hover:bg-white/5"
                         aria-label="Đóng menu">
                         <x-icon name="x" class="h-6 w-6" />

@@ -178,6 +178,124 @@ document.addEventListener('livewire:navigated', () => {
     clearPendingLinks();
 });
 
+/*
+ * Menu mobile (drawer) bằng JS thuần, không phụ thuộc Alpine.
+ *
+ * Drawer từng dùng x-data/x-show; khi Alpine khởi tạo lỗi (đã thấy
+ * `drawer is not defined` trên production) thì menu chết hoàn toàn. Bản này
+ * mặc định `hidden`, mở/đóng bằng class nên luôn hoạt động.
+ */
+function drawerParts() {
+    const root = document.getElementById('mobile-drawer');
+
+    if (! root) {
+        return null;
+    }
+
+    return {
+        root,
+        backdrop: root.querySelector('[data-drawer-backdrop]'),
+        panel: root.querySelector('[data-drawer-panel]'),
+        toggles: Array.from(document.querySelectorAll('[aria-controls="mobile-drawer"]')),
+    };
+}
+
+window.awawaDrawer = {
+    open() {
+        const parts = drawerParts();
+
+        if (! parts || ! parts.root.classList.contains('hidden')) {
+            return;
+        }
+
+        parts.root.classList.remove('hidden');
+        parts.root.setAttribute('aria-hidden', 'false');
+        parts.toggles.forEach((button) => button.setAttribute('aria-expanded', 'true'));
+        document.body.classList.add('overflow-hidden');
+
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            parts.backdrop?.classList.remove('opacity-0');
+            parts.panel?.classList.remove('-translate-x-full');
+        }));
+    },
+    close() {
+        const parts = drawerParts();
+
+        if (! parts || parts.root.classList.contains('hidden')) {
+            return;
+        }
+
+        parts.backdrop?.classList.add('opacity-0');
+        parts.panel?.classList.add('-translate-x-full');
+        parts.root.setAttribute('aria-hidden', 'true');
+        parts.toggles.forEach((button) => button.setAttribute('aria-expanded', 'false'));
+        document.body.classList.remove('overflow-hidden');
+
+        setTimeout(() => {
+            drawerParts()?.root.classList.add('hidden');
+        }, 220);
+    },
+};
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+        window.awawaDrawer.close();
+    }
+});
+
+// Đóng menu khi chuyển trang xong, kẻo drawer treo sau wire:navigate.
+document.addEventListener('livewire:navigated', () => {
+    window.awawaDrawer.close();
+});
+
+/*
+ * Thanh tiến độ chuyển trang bằng JS thuần (chạy cùng listener dim nội dung
+ * ở trên). Không dùng Alpine để không thêm scope nào vào shell layout.
+ */
+let navProgressTimer = null;
+
+function navProgressEls() {
+    const bar = document.getElementById('nav-progress');
+    const fill = document.getElementById('nav-progress-fill');
+
+    return bar && fill ? { bar, fill } : null;
+}
+
+document.addEventListener('livewire:navigating', () => {
+    const els = navProgressEls();
+
+    if (! els) {
+        return;
+    }
+
+    els.bar.classList.remove('hidden');
+
+    let width = 8;
+
+    els.fill.style.width = '8%';
+    clearInterval(navProgressTimer);
+    navProgressTimer = setInterval(() => {
+        width = Math.min(90, width + (90 - width) * 0.12);
+        els.fill.style.width = `${width}%`;
+    }, 120);
+});
+
+document.addEventListener('livewire:navigated', () => {
+    const els = navProgressEls();
+
+    if (! els) {
+        return;
+    }
+
+    clearInterval(navProgressTimer);
+    els.fill.style.width = '100%';
+
+    setTimeout(() => {
+        els.bar.classList.add('hidden');
+        els.fill.style.width = '0%';
+    }, 200);
+});
+
 window.awawaNotebookPanels = () => ({
     dragging: null,
     sourcesWidth: 300,

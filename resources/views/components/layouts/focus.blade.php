@@ -27,24 +27,8 @@
     @livewireStyles
 </head>
 <body class="min-h-full">
-    <div x-data="{
-        show: false,
-        width: 0,
-        timer: null,
-        start() {
-            this.show = true;
-            this.width = 8;
-            clearInterval(this.timer);
-            this.timer = setInterval(() => { this.width = Math.min(90, this.width + (90 - this.width) * 0.12); }, 120);
-        },
-        done() {
-            clearInterval(this.timer);
-            this.width = 100;
-            setTimeout(() => { this.show = false; this.width = 0; }, 200);
-        },
-    }" x-on:livewire:navigating.window="start()" x-on:livewire:navigated.window="done()"
-        x-show="show" x-cloak class="fixed inset-x-0 top-0 z-[100] h-[3px]">
-        <div class="h-full bg-brand-600 transition-[width] duration-150 dark:bg-brand-400" :style="`width: ${width}%`"></div>
+    <div id="nav-progress" class="fixed inset-x-0 top-0 z-[100] hidden h-[3px]">
+        <div id="nav-progress-fill" class="h-full bg-brand-600 transition-[width] duration-150 dark:bg-brand-400" style="width: 0%"></div>
     </div>
     <header class="sticky top-0 z-30 border-b border-rule bg-white/95 backdrop-blur dark:border-night-700 dark:bg-night-800/95">
         <div class="mx-auto flex h-14 w-full max-w-4xl items-center justify-between px-4">
