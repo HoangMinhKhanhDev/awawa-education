@@ -25,6 +25,8 @@ Schedule::call(function (): void {
 
 Schedule::command('awawa:due-reminders')->everyFifteenMinutes()->withoutOverlapping();
 
+Schedule::command('files:prune-orphans')->dailyAt('03:20')->withoutOverlapping(30)->name('awawa:prune-files');
+
 /*
 | Chạy queue bằng cron trên shared hosting (không có supervisor/daemon):
 | cron mỗi phút gọi `schedule:run`, lệnh này xử lý tối đa 100 job rồi dừng,
