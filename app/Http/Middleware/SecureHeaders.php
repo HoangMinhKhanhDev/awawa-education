@@ -6,6 +6,14 @@ use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
+/**
+ * Header bảo mật cho mọi response.
+ *
+ * Không đặt `Content-Security-Policy` ở đây: Hostinger chèn sẵn CSP của hạ tầng
+ * (`upgrade-insecure-requests`) ở tầng máy chủ nên header PHP này bị ghi đè và
+ * tạo cảm giác an toàn giả. Muốn siết CSP thì tắt ở hPanel trước, rồi thêm
+ * header ở đây. Còn lại 4 header dưới đang hoạt động bình thường.
+ */
 class SecureHeaders
 {
     public function handle(Request $request, Closure $next): Response
@@ -16,10 +24,6 @@ class SecureHeaders
         $response->headers->set('X-Content-Type-Options', 'nosniff');
         $response->headers->set('X-Frame-Options', 'SAMEORIGIN');
         $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
-        $response->headers->set(
-            'Content-Security-Policy',
-            "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self'; object-src 'none'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'"
-        );
 
         if ($request->isSecure() || ($request->header('X-Forwarded-Proto') === 'https')) {
             $response->headers->set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
