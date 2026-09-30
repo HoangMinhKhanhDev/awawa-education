@@ -5,9 +5,10 @@ namespace App\Notifications;
 use App\Models\Assignment;
 use App\Notifications\Channels\WebPushChannel;
 use App\Support\WebPushSender;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Notification;
 
-class AssignmentRecalledNotification extends Notification
+class AssignmentRecalledNotification extends Notification implements ShouldQueue
 {
     public function __construct(
         public Assignment $assignment,
@@ -20,7 +21,9 @@ class AssignmentRecalledNotification extends Notification
     {
         $channels = ['database'];
 
-        if (app(WebPushSender::class)->configured() && $notifiable->pushSubscriptions()->exists()) {
+        $hasPush = $notifiable->push_subscriptions_count ?? $notifiable->pushSubscriptions()->exists();
+
+        if (app(WebPushSender::class)->configured() && $hasPush) {
             $channels[] = WebPushChannel::class;
         }
 

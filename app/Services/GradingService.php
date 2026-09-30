@@ -8,6 +8,7 @@ use App\Models\AttemptAnswer;
 use App\Models\ExamAttempt;
 use App\Models\ExamQuestion;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class GradingService
 {
@@ -16,48 +17,103 @@ class GradingService
      */
     public function gradeAttempt(ExamAttempt $attempt): void
     {
-        $attempt->loadMissing('answers.question.options');
+        DB::transaction(function () use ($attempt): void {
+            $locked = ExamAttempt::query()->whereKey($attempt->getKey())->lockForUpdate()->firstOrFail();
 
-        // Điểm của câu tính theo đề (bảng pivot), không phải điểm gốc của câu
-        // trong ngân hàng — giáo viên có thể cho câu 1 điểm trong đề 10 điểm
-        // nhưng 2 điểm trong đề khác.
-        $pivotPoints = ExamQuestion::query()
-            ->where('exam_id', $attempt->exam_id)
-            ->pluck('points', 'question_id');
+            if ($locked->status !== AttemptStatus::InProgress) {
+                return;
+            }
 
-        foreach ($attempt->answers as $answer) {
-            $this->gradeAnswer($answer, $pivotPoints);
-        }
+            $locked->loadMissing('answers.question.options');
 
-        $attempt->recomputeScore();
+            // Điểm của câu tính theo đề (bảng pivot), không phải điểm gốc của câu
+            // trong ngân hàng — giáo viên có thể cho câu 1 điểm trong đề 10 điểm
+            // nhưng 2 điểm trong đề khác.
+            $pivotPoints = ExamQuestion::query()
+                ->where('exam_id', $locked->exam_id)
+                ->pluck('points', 'question_id');
 
-        $submittedAt = $attempt->submitted_at ?? now();
+            // Gom 1 upsert duy nhất thay vì N UPDATE tuần tự (đề 50 câu = 50
+            // write nối tiếp, dễ `database is locked` khi nhiều HS nộp cùng lúc).
+            $now = now();
+            $rows = [];
+            $auto = 0.0;
+            $manual = 0.0;
+            $hasPendingManual = false;
 
-        $attempt->forceFill([
-            'submitted_at' => $submittedAt,
-            'time_spent_seconds' => $attempt->started_at !== null
-                ? max(0, (int) $attempt->started_at->diffInSeconds($submittedAt))
-                : null,
-            'status' => $attempt->hasPendingManualGrading()
-                ? AttemptStatus::Submitted
-                : AttemptStatus::Graded,
-            'graded_at' => $attempt->hasPendingManualGrading() ? $attempt->graded_at : now(),
-        ])->save();
+            foreach ($locked->answers as $answer) {
+                $scored = $this->scoreAnswer($answer, $pivotPoints);
+
+                if ($scored === null) {
+                    $hasPendingManual = true;
+
+                    continue;
+                }
+
+                [$isCorrect, $awarded] = $scored;
+
+                $rows[] = [
+                    'attempt_id' => $locked->getKey(),
+                    'question_id' => $answer->question_id,
+                    'is_correct' => $isCorrect,
+                    'awarded_points' => $awarded,
+                    'updated_at' => $now,
+                    'created_at' => $answer->created_at ?? $now,
+                ];
+
+                if ($answer->question?->type === QuestionType::Essay) {
+                    $manual += $awarded;
+                } else {
+                    $auto += $awarded;
+                }
+            }
+
+            if ($rows !== []) {
+                AttemptAnswer::query()->upsert(
+                    $rows,
+                    ['attempt_id', 'question_id'],
+                    ['is_correct', 'awarded_points', 'updated_at']
+                );
+            }
+
+            $submittedAt = $locked->submitted_at ?? $now;
+
+            $locked->forceFill([
+                'auto_score' => $auto,
+                'manual_score' => $manual,
+                'score' => $auto + $manual,
+                'max_score' => (float) ($locked->exam->total_points ?? $locked->max_score),
+                'submitted_at' => $submittedAt,
+                'time_spent_seconds' => $locked->started_at !== null
+                    ? max(0, (int) $locked->started_at->diffInSeconds($submittedAt))
+                    : null,
+                'status' => $hasPendingManual
+                    ? AttemptStatus::Submitted
+                    : AttemptStatus::Graded,
+                'graded_at' => $hasPendingManual ? $locked->graded_at : $now,
+            ])->save();
+
+            StudentAbility::forgetCache($locked->subject_id);
+        });
     }
 
     /**
+     * Tính điểm 1 câu mà không ghi DB. Trả về null khi câu chờ chấm tay
+     * (tự luận). Câu mất dữ liệu gốc tính 0 điểm như trước đây.
+     *
      * @param  Collection<int, float>|null  $pivotPoints  điểm từng câu trong đề, khoá theo question_id
+     * @return array{0: bool, 1: float}|null
      */
-    public function gradeAnswer(AttemptAnswer $answer, ?Collection $pivotPoints = null): void
+    public function scoreAnswer(AttemptAnswer $answer, ?Collection $pivotPoints = null): ?array
     {
         $question = $answer->question;
 
         if ($question === null) {
-            return;
+            return [false, 0.0];
         }
 
         if ($question->type === QuestionType::Essay) {
-            return;
+            return null;
         }
 
         $pivot = $pivotPoints?->get($answer->question_id);
@@ -68,12 +124,7 @@ class GradingService
         if ($question->type === QuestionType::TrueFalseCluster) {
             $awarded = $this->gradeTrueFalseCluster($answer, $points);
 
-            $answer->forceFill([
-                'is_correct' => $points > 0 && $awarded >= $points,
-                'awarded_points' => $awarded,
-            ])->save();
-
-            return;
+            return [$points > 0 && $awarded >= $points, $awarded];
         }
 
         $isCorrect = match ($question->type) {
@@ -83,9 +134,25 @@ class GradingService
             default => false,
         };
 
+        return [$isCorrect, $isCorrect ? $points : 0.0];
+    }
+
+    /**
+     * @param  Collection<int, float>|null  $pivotPoints  điểm từng câu trong đề, khoá theo question_id
+     */
+    public function gradeAnswer(AttemptAnswer $answer, ?Collection $pivotPoints = null): void
+    {
+        $scored = $this->scoreAnswer($answer, $pivotPoints);
+
+        if ($scored === null) {
+            return;
+        }
+
+        [$isCorrect, $awarded] = $scored;
+
         $answer->forceFill([
             'is_correct' => $isCorrect,
-            'awarded_points' => $isCorrect ? $points : 0,
+            'awarded_points' => $awarded,
         ])->save();
     }
 

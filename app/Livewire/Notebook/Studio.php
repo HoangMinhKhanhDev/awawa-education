@@ -300,6 +300,22 @@ class Studio extends Component
         }
 
         $this->generating = $this->notebook()->artifacts()->where('status', 'generating')->exists();
+
+        // Không có gì đang soạn và không có thông báo nào chờ hiện thì bỏ
+        // re-render (render nạp 5-6 query + toàn bộ draft). Poll 10s/tab lúc
+        // idle trước đây là nguồn tải lớn nhất của trang Studio.
+        if (! $this->generating && ! $this->hasPendingNotices()) {
+            $this->skipRender();
+        }
+    }
+
+    protected function hasPendingNotices(): bool
+    {
+        return $this->notebook()
+            ->artifacts()
+            ->whereIn('status', ['draft', 'failed'])
+            ->where('updated_at', '>=', now()->subMinutes(5))
+            ->exists();
     }
 
     /**

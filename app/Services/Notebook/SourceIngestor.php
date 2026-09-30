@@ -38,7 +38,7 @@ class SourceIngestor
 
     public function fromUpload(Notebook $notebook, UploadedFile $file, ?string $title = null): NotebookSource
     {
-        $path = $file->store("notebook/{$notebook->id}", 'public');
+        $path = $file->store("notebook/{$notebook->id}", 'local');
 
         $source = $this->createSource($notebook, [
             'type' => 'file',
@@ -52,12 +52,21 @@ class SourceIngestor
 
         $this->extractAndStore(
             $source,
-            Storage::disk('public')->path($path),
+            $this->absoluteSourcePath($path),
             (string) $file->getClientOriginalName(),
             (string) $file->getMimeType(),
         );
 
         return $source->refresh();
+    }
+
+    protected function absoluteSourcePath(string $path): string
+    {
+        if (Storage::disk('local')->exists($path)) {
+            return Storage::disk('local')->path($path);
+        }
+
+        return Storage::disk('public')->path($path);
     }
 
     public function fromDocument(Notebook $notebook, Document $document): NotebookSource
@@ -74,7 +83,7 @@ class SourceIngestor
             'status' => 'processing',
         ]);
 
-        $absolute = Storage::disk('public')->path($document->file_path);
+        $absolute = $this->absoluteSourcePath($document->file_path);
 
         $this->extractAndStore($source, $absolute, (string) $document->original_name, (string) $document->mime);
 
@@ -130,7 +139,7 @@ class SourceIngestor
                 return $this->markFailed($source, 'Không tìm thấy tệp nguồn để thử lại.');
             }
 
-            $absolutePath = Storage::disk('public')->path($source->file_path);
+            $absolutePath = $this->absoluteSourcePath($source->file_path);
 
             $this->extractAndStore($source, $absolutePath, (string) $source->original_name, (string) $source->mime);
 
@@ -167,6 +176,7 @@ class SourceIngestor
     public function remove(NotebookSource $source): void
     {
         if ($source->file_path !== null && ! $source->ref_id) {
+            Storage::disk('local')->delete($source->file_path);
             Storage::disk('public')->delete($source->file_path);
         }
 
@@ -215,25 +225,38 @@ class SourceIngestor
 
         NotebookChunk::query()->where('source_id', $source->id)->delete();
 
-        $created = [];
+        $now = now();
+        $rows = [];
 
         foreach ($this->chunkText($text) as $position => $chunk) {
-            $created[] = NotebookChunk::create([
+            $rows[] = [
                 'notebook_id' => $source->notebook_id,
                 'source_id' => $source->id,
                 'position' => $position,
                 'content' => $chunk['content'],
                 'char_start' => $chunk['start'],
                 'char_end' => $chunk['end'],
-            ]);
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
         }
 
+        // 1 INSERT bulk thay vì create() từng chunk (file 200k chars ~ 200 INSERT).
+        if ($rows !== []) {
+            NotebookChunk::query()->insert($rows);
+        }
+
+        $created = NotebookChunk::query()
+            ->where('source_id', $source->id)
+            ->orderBy('position')
+            ->get(['id', 'position', 'content']);
+
         $highlightIds = app(HighlightPickerService::class)->highlightedChunkIds(
-            array_map(fn (NotebookChunk $chunk): array => [
+            $created->map(fn (NotebookChunk $chunk): array => [
                 'id' => $chunk->id,
                 'position' => $chunk->position,
                 'content' => (string) $chunk->content,
-            ], $created),
+            ])->all(),
         );
 
         if ($highlightIds !== []) {
@@ -292,25 +315,53 @@ class SourceIngestor
 
     protected function extractFile(string $absolutePath, string $name, string $mime): string
     {
-        $extension = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+        $maxBytes = NotebookConfig::maxFileBytes();
+        $size = is_file($absolutePath) ? filesize($absolutePath) : false;
 
-        if (in_array($extension, ['txt', 'md', 'markdown', 'csv', 'html', 'htm'], true) || str_starts_with($mime, 'text/')) {
-            if (in_array($extension, ['html', 'htm'], true)) {
-                return trim(strip_tags((string) file_get_contents($absolutePath)));
+        if ($size !== false && $size > $maxBytes) {
+            throw new RuntimeException('Tệp vượt quá giới hạn '.NotebookConfig::maxFileMegabytes().'MB.');
+        }
+
+        // Chặn XXE/SSRF qua entity ngoài khi parse DOCX (zip+xml): tắt loader
+        // entity ngoài và network trên libxml trước khi PhpWord đọc file.
+        $previousEntityLoader = libxml_disable_entity_loader(true);
+        $previousUseInternalErrors = libxml_use_internal_errors(true);
+
+        try {
+            $extension = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+
+            if (in_array($extension, ['txt', 'md', 'markdown', 'csv', 'html', 'htm'], true) || str_starts_with($mime, 'text/')) {
+                $contents = file_get_contents($absolutePath);
+
+                if (! is_string($contents)) {
+                    throw new RuntimeException('Không đọc được nội dung tệp.');
+                }
+
+                if (strlen($contents) > $maxBytes * 2) {
+                    $contents = substr($contents, 0, $maxBytes * 2);
+                }
+
+                if (in_array($extension, ['html', 'htm'], true)) {
+                    return trim(strip_tags($contents));
+                }
+
+                return $contents;
             }
 
-            return (string) file_get_contents($absolutePath);
-        }
+            if ($extension === 'pdf' || str_contains($mime, 'pdf')) {
+                return (new PdfParser)->parseFile($absolutePath)->getText();
+            }
 
-        if ($extension === 'pdf' || str_contains($mime, 'pdf')) {
-            return (new PdfParser)->parseFile($absolutePath)->getText();
-        }
+            if ($extension === 'docx') {
+                return $this->extractDocx($absolutePath);
+            }
 
-        if ($extension === 'docx') {
-            return $this->extractDocx($absolutePath);
+            throw new RuntimeException('Định dạng tệp chưa hỗ trợ. Hãy dùng PDF, DOCX, TXT hoặc MD.');
+        } finally {
+            libxml_disable_entity_loader($previousEntityLoader);
+            libxml_use_internal_errors($previousUseInternalErrors);
+            libxml_clear_errors();
         }
-
-        throw new RuntimeException('Định dạng tệp chưa hỗ trợ. Hãy dùng PDF, DOCX, TXT hoặc MD.');
     }
 
     protected function extractDocx(string $absolutePath): string

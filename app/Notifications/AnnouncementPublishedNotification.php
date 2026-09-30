@@ -5,9 +5,10 @@ namespace App\Notifications;
 use App\Models\Announcement;
 use App\Notifications\Channels\WebPushChannel;
 use App\Support\WebPushSender;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Notification;
 
-class AnnouncementPublishedNotification extends Notification
+class AnnouncementPublishedNotification extends Notification implements ShouldQueue
 {
     public function __construct(
         public Announcement $announcement,
@@ -20,7 +21,9 @@ class AnnouncementPublishedNotification extends Notification
     {
         $channels = ['database'];
 
-        if (app(WebPushSender::class)->configured() && $notifiable->pushSubscriptions()->exists()) {
+        $hasPush = $notifiable->push_subscriptions_count ?? $notifiable->pushSubscriptions()->exists();
+
+        if (app(WebPushSender::class)->configured() && $hasPush) {
             $channels[] = WebPushChannel::class;
         }
 

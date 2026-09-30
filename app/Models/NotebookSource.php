@@ -123,10 +123,17 @@ class NotebookSource extends Model
             return $this->url;
         }
 
-        if (in_array($this->type, ['file', 'document'], true) && filled($this->file_path)) {
-            return Storage::disk('public')->url($this->file_path);
+        // File notebook là private (disk local), không còn URL /storage/... công khai.
+        // Muốn tải bản gốc thì đi qua Document liên kết (nếu có).
+        return null;
+    }
+
+    public function fileDisk(): string
+    {
+        if (filled($this->file_path) && Storage::disk('local')->exists($this->file_path)) {
+            return 'local';
         }
 
-        return null;
+        return 'public';
     }
 }

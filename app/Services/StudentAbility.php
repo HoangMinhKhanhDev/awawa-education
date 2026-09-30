@@ -6,6 +6,7 @@ use App\Enums\AttemptStatus;
 use App\Models\Exam;
 use App\Models\ExamAttempt;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Điểm thực lực của học sinh, dùng chung cho bảng xếp hạng, bảng đội,
@@ -19,10 +20,31 @@ class StudentAbility
     /**
      * @return Collection<int, array{student_id: int, average: float, exams: int, best_percent: float, retakes: int, details: Collection<int, array{exam_id: int, exam_title: string, weight: float, first_percent: float|null, best_percent: float, attempts: int}>}>
      */
-    public function rows(): Collection
+    public function rows(?int $subjectId = null): Collection
+    {
+        $cacheKey = 'ability:v1:subject:'.($subjectId ?? 'all');
+
+        return Cache::remember($cacheKey, 120, fn (): Collection => $this->computeRows($subjectId));
+    }
+
+    public static function forgetCache(?int $subjectId = null): void
+    {
+        Cache::forget('ability:v1:subject:'.($subjectId ?? 'all'));
+
+        if ($subjectId !== null) {
+            Cache::forget('class-exam-stats:v1:subject:'.$subjectId);
+            Cache::forget('class-violations:v1:subject:'.$subjectId);
+        }
+    }
+
+    /**
+     * @return Collection<int, array{student_id: int, average: float, exams: int, best_percent: float, retakes: int, details: Collection<int, array{exam_id: int, exam_title: string, weight: float, first_percent: float|null, best_percent: float, attempts: int}>}>
+     */
+    protected function computeRows(?int $subjectId = null): Collection
     {
         $attempts = ExamAttempt::query()
             ->where('status', AttemptStatus::Graded->value)
+            ->when($subjectId !== null, fn ($query) => $query->where('subject_id', $subjectId))
             ->get(['student_id', 'exam_id', 'attempt_no', 'score', 'max_score']);
 
         if ($attempts->isEmpty()) {
@@ -31,6 +53,7 @@ class StudentAbility
 
         $exams = Exam::query()
             ->whereIn('id', $attempts->pluck('exam_id')->unique()->all())
+            ->when($subjectId !== null, fn ($query) => $query->where('subject_id', $subjectId))
             ->get(['id', 'title', 'settings'])
             ->keyBy('id');
 

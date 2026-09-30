@@ -37,6 +37,9 @@
                         <div class="flex flex-wrap items-center gap-2">
                             <p class="font-medium text-ink dark:text-slate-100">{{ $key->name }}</p>
                             <span class="chip {{ $statusClass }}">{{ $statusLabel }}</span>
+                            @if ($key->isLegacyHash())
+                                <span class="chip chip-warning" title="Key tạo trước bản vá HMAC, vẫn chạy nhưng nên xoay để lên hash mới">Hash cũ — nên xoay</span>
+                            @endif
                         </div>
                         <p class="mt-0.5 font-mono text-xs text-ink-faint dark:text-slate-500">{{ $key->maskedKey() }}</p>
                         <p class="tnum mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-faint dark:text-slate-500">
@@ -48,6 +51,10 @@
                     </div>
 
                     <div class="flex flex-wrap items-center gap-1.5">
+                        @if ($key->isLegacyHash() && ! $key->isRevoked())
+                            <button type="button" wire:click="rotate({{ $key->id }})" wire:confirm="Xoay khóa {{ $key->name }}? Khóa cũ sẽ mất hiệu lực ngay."
+                                class="btn btn-primary px-3 py-1.5 text-xs">Xoay lên hash mới</button>
+                        @endif
                         <button type="button" wire:click="toggleActive({{ $key->id }})" class="btn btn-ghost px-3 py-1.5 text-xs">
                             {{ $key->is_active ? 'Tạm khóa' : 'Kích hoạt' }}
                         </button>

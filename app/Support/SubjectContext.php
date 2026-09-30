@@ -14,14 +14,22 @@ class SubjectContext
 {
     protected ?int $subjectId = null;
 
+    protected ?Subject $memoSubject = null;
+
+    protected bool $memoLoaded = false;
+
     public function set(?int $subjectId): void
     {
         $this->subjectId = $subjectId;
+        $this->memoSubject = null;
+        $this->memoLoaded = false;
     }
 
     public function setFromSubject(?Subject $subject): void
     {
         $this->subjectId = $subject?->getKey();
+        $this->memoSubject = $subject;
+        $this->memoLoaded = $subject !== null;
     }
 
     public function id(): ?int
@@ -35,7 +43,12 @@ class SubjectContext
             return null;
         }
 
-        return Subject::query()->find($this->subjectId);
+        if (! $this->memoLoaded) {
+            $this->memoSubject = Subject::query()->find($this->subjectId);
+            $this->memoLoaded = true;
+        }
+
+        return $this->memoSubject;
     }
 
     public function has(): bool
@@ -46,5 +59,7 @@ class SubjectContext
     public function clear(): void
     {
         $this->subjectId = null;
+        $this->memoSubject = null;
+        $this->memoLoaded = false;
     }
 }

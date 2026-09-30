@@ -17,11 +17,13 @@ use App\Support\SubjectContext;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 #[Layout('components.layouts.app')]
 class AssessmentBuilder extends Component
 {
+    #[Locked]
     public int $examId;
 
     public string $title = '';
@@ -114,7 +116,11 @@ class AssessmentBuilder extends Component
 
     protected function exam(): Exam
     {
-        return Exam::query()->findOrFail($this->examId);
+        $exam = Exam::query()->findOrFail($this->examId);
+
+        Gate::authorize('update', $exam);
+
+        return $exam;
     }
 
     protected function loadMeta(): void
@@ -285,7 +291,10 @@ class AssessmentBuilder extends Component
         $added = 0;
 
         foreach ($ids as $questionId) {
-            $question = Question::query()->whereKey($questionId)->first();
+            $question = Question::query()
+                ->where('subject_id', $exam->subject_id)
+                ->whereKey($questionId)
+                ->first();
 
             if ($question === null) {
                 continue;
@@ -566,6 +575,7 @@ class AssessmentBuilder extends Component
             'examQuestions' => $exam->examQuestions()->with(['question.options', 'section'])->get(),
             'bankQuestions' => Question::query()
                 ->active()
+                ->where('subject_id', $exam->subject_id)
                 ->when($this->questionSearch !== '', fn ($query) => $query->where('content', 'like', '%'.$this->questionSearch.'%'))
                 ->orderByDesc('created_at')
                 ->limit(30)

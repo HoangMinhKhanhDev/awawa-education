@@ -21,7 +21,8 @@ class ApiKeyFactory extends Factory
         return [
             'name' => fake()->words(2, true),
             'prefix' => 'awawa_'.fake()->bothify('??????'),
-            'key_hash' => hash('sha256', fake()->uuid()),
+            'key_hash' => ApiKey::hashKey('awawa_'.fake()->bothify('????????????????????????????????????????')),
+            'hash_version' => 'hmac',
             'scopes' => ApiScope::values(),
             'rate_limit_per_minute' => 60,
             'is_active' => true,

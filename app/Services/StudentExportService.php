@@ -88,26 +88,31 @@ class StudentExportService
      */
     protected function teamRows(int $subjectId): array
     {
-        $members = TeamMembership::query()
+        $abilities = $this->ability->rows($subjectId)->keyBy('student_id');
+        $rows = [];
+
+        // chunk() thay vì get() toàn bộ để đội đông không phình RAM.
+        TeamMembership::query()
             ->active()
             ->with('student')
             ->where('subject_id', $subjectId)
-            ->get();
+            ->orderBy('id')
+            ->chunk(500, function (Collection $members) use ($abilities, &$rows): void {
+                foreach ($members as $membership) {
+                    $row = $abilities->get($membership->student_id);
 
-        $abilities = $this->ability->rows()->keyBy('student_id');
+                    $rows[] = [
+                        $membership->student?->name ?? '',
+                        $membership->student?->email ?? '',
+                        $row['average'] ?? 0.0,
+                        $row['exams'] ?? 0,
+                        $row['retakes'] ?? 0,
+                        $row['best_percent'] ?? 0.0,
+                    ];
+                }
+            });
 
-        return $members->map(function (TeamMembership $membership) use ($abilities): array {
-            $row = $abilities->get($membership->student_id);
-
-            return [
-                $membership->student?->name ?? '',
-                $membership->student?->email ?? '',
-                $row['average'] ?? 0.0,
-                $row['exams'] ?? 0,
-                $row['retakes'] ?? 0,
-                $row['best_percent'] ?? 0.0,
-            ];
-        })->all();
+        return $rows;
     }
 
     /**
@@ -123,18 +128,33 @@ class StudentExportService
             ['Tổng', 'Tỉ lệ (%)'],
         );
 
-        $attempts = ExamAttempt::query()
+        $attempts = collect();
+
+        ExamAttempt::query()
             ->where('exam_id', $exam->id)
             ->where('status', AttemptStatus::Graded->value)
             ->with(['student', 'answers'])
-            ->get()
-            ->groupBy('student_id');
+            ->orderBy('id')
+            ->chunk(500, function (Collection $chunk) use ($attempts): void {
+                foreach ($chunk as $attempt) {
+                    $attempts->push($attempt);
+                }
+            });
 
-        $members = TeamMembership::query()
+        $attempts = $attempts->groupBy('student_id');
+
+        $members = collect();
+
+        TeamMembership::query()
             ->active()
             ->with('student')
             ->where('subject_id', $exam->subject_id)
-            ->get();
+            ->orderBy('id')
+            ->chunk(500, function (Collection $chunk) use ($members): void {
+                foreach ($chunk as $membership) {
+                    $members->push($membership);
+                }
+            });
 
         $rows = $members->map(function (TeamMembership $membership) use ($attempts, $questions): array {
             /** @var Collection<int, ExamAttempt> $studentAttempts */

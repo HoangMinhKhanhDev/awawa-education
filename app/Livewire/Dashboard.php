@@ -296,7 +296,7 @@ class Dashboard extends Component
             return ['average' => null, 'exams' => 0, 'rank' => null, 'members' => 0];
         }
 
-        $abilities = app(StudentAbility::class)->rows();
+        $abilities = app(StudentAbility::class)->rows($user->subject_id);
 
         $mine = $abilities->firstWhere('student_id', $user->id);
 
@@ -305,7 +305,7 @@ class Dashboard extends Component
                 'average' => null,
                 'exams' => 0,
                 'rank' => null,
-                'members' => TeamMembership::query()->active()->count(),
+                'members' => TeamMembership::query()->active()->where('subject_id', $user->subject_id)->count(),
             ];
         }
 
@@ -321,7 +321,7 @@ class Dashboard extends Component
             'average' => $mine['average'],
             'exams' => $mine['exams'],
             'rank' => $rank === false ? null : $rank + 1,
-            'members' => TeamMembership::query()->active()->count(),
+            'members' => TeamMembership::query()->active()->where('subject_id', $user->subject_id)->count(),
         ];
     }
 

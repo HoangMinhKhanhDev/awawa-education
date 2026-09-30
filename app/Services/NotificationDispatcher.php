@@ -53,14 +53,23 @@ class NotificationDispatcher
      */
     public function examDueSoon(Exam $exam, string $milestone): int
     {
-        $recipients = $this->teamMembers($exam->subject_id)
-            ->reject(fn (User $user) => ExamAttempt::query()
-                ->withoutSubjectScope()
-                ->where('exam_id', $exam->id)
-                ->where('student_id', $user->id)
-                ->finished()
-                ->exists())
-            ->values();
+        $members = $this->teamMembers($exam->subject_id);
+
+        if ($members->isEmpty()) {
+            return 0;
+        }
+
+        // 1 query duy nhất thay vì exists() cho từng thành viên (N+1).
+        $submittedIds = ExamAttempt::query()
+            ->withoutSubjectScope()
+            ->where('exam_id', $exam->id)
+            ->whereIn('student_id', $members->pluck('id')->all())
+            ->finished()
+            ->distinct()
+            ->pluck('student_id')
+            ->all();
+
+        $recipients = $members->reject(fn (User $user) => in_array($user->id, $submittedIds, true))->values();
 
         if ($recipients->isNotEmpty()) {
             Notification::send($recipients, new ExamDueSoonNotification($exam, $milestone));
@@ -78,7 +87,7 @@ class NotificationDispatcher
             ->withoutSubjectScope()
             ->where('subject_id', $subjectId)
             ->where('status', MembershipStatus::Active->value)
-            ->with('student')
+            ->with(['student' => fn ($query) => $query->withCount('pushSubscriptions')])
             ->get()
             ->pluck('student')
             ->filter()

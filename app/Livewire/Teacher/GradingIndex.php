@@ -11,15 +11,18 @@ use App\Models\ExamAttempt;
 use App\Models\ExamQuestion;
 use App\Services\Assignments\AssignmentManager;
 use App\Services\NotificationDispatcher;
+use App\Services\StudentAbility;
 use App\Support\SubjectContext;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 #[Layout('components.layouts.app')]
 class GradingIndex extends Component
 {
+    #[Locked]
     public int $examId;
 
     public ?int $gradingAttemptId = null;
@@ -51,6 +54,7 @@ class GradingIndex extends Component
     {
         $attempt = ExamAttempt::query()->findOrFail($attemptId);
         Gate::authorize('grade', $attempt);
+        abort_unless($attempt->exam_id === $this->examId, 403);
 
         $this->gradingAttemptId = $attemptId;
         $this->manual = [];
@@ -75,6 +79,7 @@ class GradingIndex extends Component
     {
         $attempt = ExamAttempt::query()->findOrFail($this->gradingAttemptId);
         Gate::authorize('grade', $attempt);
+        abort_unless($attempt->exam_id === $this->examId, 403);
 
         $exam = $attempt->exam;
 
@@ -106,6 +111,8 @@ class GradingIndex extends Component
 
         $attempt->recomputeScore();
 
+        StudentAbility::forgetCache($attempt->subject_id);
+
         if ($attempt->hasPendingManualGrading()) {
             $attempt->forceFill(['status' => AttemptStatus::Submitted])->save();
         } else {
@@ -132,12 +139,18 @@ class GradingIndex extends Component
     public function render(): View
     {
         $exam = Exam::query()->findOrFail($this->examId);
+        Gate::authorize('view', $exam);
 
         $gradingAttempt = $this->gradingAttemptId !== null
             ? ExamAttempt::query()
                 ->with(['student', 'answers.question.options'])
                 ->findOrFail($this->gradingAttemptId)
             : null;
+
+        if ($gradingAttempt !== null) {
+            Gate::authorize('grade', $gradingAttempt);
+            abort_unless($gradingAttempt->exam_id === $exam->id, 403);
+        }
 
         return view('livewire.teacher.grading-index', [
             'exam' => $exam,

@@ -52,15 +52,26 @@ class GoogleController extends Controller
                 'name' => $googleUser->getName() ?: Str::before($email, '@'),
                 'email' => $email,
                 'password' => Str::random(40),
+            ]);
+
+            $user->forceFill([
                 'role' => Role::Student,
                 'google_id' => $googleUser->getId(),
                 'avatar' => $googleUser->getAvatar(),
                 'email_verified_at' => now(),
                 'last_login_at' => now(),
+            ])->save();
+        }
+
+        if (! $user->is_active) {
+            Auth::logout();
+
+            return redirect()->route('login')->withErrors([
+                'email' => 'Tài khoản của bạn đang chờ quản trị viên duyệt.',
             ]);
         }
 
-        Auth::login($user, remember: true);
+        Auth::login($user, remember: false);
         request()->session()->regenerate();
 
         if ($user->must_change_password) {

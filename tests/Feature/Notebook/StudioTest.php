@@ -37,6 +37,7 @@ class StudioTest extends TestCase
         parent::setUp();
 
         Storage::fake('public');
+        Storage::fake('local');
 
         $this->subject = Subject::factory()->create();
         $this->subject->features()->where('feature', SubjectFeature::AiTools->value)->update(['is_enabled' => true]);
@@ -272,7 +273,7 @@ class StudioTest extends TestCase
 
         $this->assertTrue($document->is_public);
         $this->assertSame($this->subject->id, $document->subject_id);
-        Storage::disk('public')->assertExists($document->file_path);
+        Storage::disk('local')->assertExists($document->file_path);
         $this->assertSame('published', $artifact->fresh()->status);
     }
 
@@ -385,7 +386,9 @@ class StudioTest extends TestCase
         Livewire::test(Studio::class, ['notebookId' => $this->notebook->id])->call('publish', $artifact->id);
 
         $document = Document::query()->firstOrFail();
-        $content = Storage::disk('public')->get($document->file_path);
+        $content = Storage::disk('local')->get($document->file_path);
+
+        $this->assertIsString($content);
 
         $this->assertStringContainsString('**Mặt trước:** Bất đẳng thức Cauchy là gì?', $content);
         $this->assertStringContainsString('**Mặt sau:** Bất đẳng thức cho tổng bình phương', $content);

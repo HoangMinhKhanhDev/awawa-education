@@ -12,6 +12,7 @@ use App\Services\Notebook\PromptComposer;
 use App\Support\NotebookConfig;
 use App\Support\SubjectContext;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\On;
 use Livewire\Component;
@@ -73,9 +74,29 @@ class Chat extends Component
         abort_unless($this->notebook()->isOwnedBy(auth()->user()), 403);
     }
 
+    protected function hitChatLimiter(): bool
+    {
+        $key = 'notebook-chat:'.auth()->id();
+
+        if (RateLimiter::tooManyAttempts($key, 20)) {
+            $this->error = 'Bạn đang hỏi quá nhanh. Vui lòng chờ 1 phút rồi thử lại.';
+
+            return false;
+        }
+
+        RateLimiter::hit($key, 60);
+
+        return true;
+    }
+
     public function send(): void
     {
         $this->guard();
+
+        if (! $this->hitChatLimiter()) {
+            return;
+        }
+
         $this->resetErrorBag();
         $this->error = null;
 

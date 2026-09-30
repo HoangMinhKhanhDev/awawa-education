@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password as PasswordRule;
 use Livewire\Attributes\Layout;
@@ -46,6 +47,14 @@ class ResetPassword extends Component
 
     public function resetPassword(): void
     {
+        $key = 'password-reset-attempt:'.mb_strtolower($this->email).'|'.request()->ip();
+
+        if (RateLimiter::tooManyAttempts($key, 5)) {
+            $this->addError('email', 'Bạn đã thử quá nhiều lần. Vui lòng thử lại sau 1 phút.');
+
+            return;
+        }
+
         $this->validate();
 
         $status = Password::reset(
@@ -67,10 +76,14 @@ class ResetPassword extends Component
         );
 
         if ($status !== Password::PASSWORD_RESET) {
-            $this->addError('email', __($status));
+            RateLimiter::hit($key, 60);
+
+            $this->addError('email', 'Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.');
 
             return;
         }
+
+        RateLimiter::clear($key);
 
         session()->flash('status', 'Đặt lại mật khẩu thành công. Bạn có thể đăng nhập ngay.');
 

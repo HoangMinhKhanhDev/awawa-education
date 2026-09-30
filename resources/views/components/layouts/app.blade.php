@@ -34,6 +34,28 @@
     @livewireStyles
 </head>
 <body class="min-h-full">
+    {{-- Thanh tiến độ chuyển trang: wire:navigate không có indicator mặc định nên
+        click xong im lặng 1-3s mới đổi trang. Prefetch (hover) + thanh này làm
+        cảm giác chuyển trang tức thì. --}}
+    <div x-data="{
+        show: false,
+        width: 0,
+        timer: null,
+        start() {
+            this.show = true;
+            this.width = 8;
+            clearInterval(this.timer);
+            this.timer = setInterval(() => { this.width = Math.min(90, this.width + (90 - this.width) * 0.12); }, 120);
+        },
+        done() {
+            clearInterval(this.timer);
+            this.width = 100;
+            setTimeout(() => { this.show = false; this.width = 0; }, 200);
+        },
+    }" x-on:livewire:navigating.window="start()" x-on:livewire:navigated.window="done()"
+        x-show="show" x-cloak class="fixed inset-x-0 top-0 z-[100] h-[3px]">
+        <div class="h-full bg-brand-600 transition-[width] duration-150 dark:bg-brand-400" :style="`width: ${width}%`"></div>
+    </div>
     <div class="{{ $fullBleed ? 'h-dvh overflow-hidden' : 'min-h-dvh' }} lg:flex" x-data="{ drawer: false }">
         {{-- Rail desktop --}}
         <aside class="hidden w-64 shrink-0 border-r border-rule bg-white lg:flex lg:flex-col dark:border-night-700 dark:bg-night-800">
@@ -57,7 +79,7 @@
 
             <nav class="flex-1 space-y-0.5 overflow-y-auto px-3 py-4" aria-label="Điều hướng chính">
                 @foreach ($navItems as $item)
-                    <a href="{{ $item['url'] }}" wire:navigate class="nav-item {{ $item['active'] ? 'nav-item-active' : '' }}">
+                    <a href="{{ $item['url'] }}" wire:navigate.hover class="nav-item {{ $item['active'] ? 'nav-item-active' : '' }}">
                         <x-icon :name="$item['icon']" class="h-[18px] w-[18px]" />
                         <span>{{ $item['label'] }}</span>
                     </a>
@@ -105,7 +127,7 @@
                         aria-label="Mở menu">
                         <x-icon name="menu" class="h-[22px] w-[22px]" />
                     </button>
-                    <a href="{{ route('dashboard') }}" wire:navigate>
+                    <a href="{{ route('dashboard') }}" wire:navigate.hover
                         <x-logo class="h-8 w-8" text-class="text-base" />
                     </a>
                 </div>
@@ -163,7 +185,7 @@
 
                 <nav class="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
                     @foreach ($navItems as $item)
-                        <a href="{{ $item['url'] }}" wire:navigate class="nav-item {{ $item['active'] ? 'nav-item-active' : '' }}">
+                        <a href="{{ $item['url'] }}" wire:navigate.hover class="nav-item {{ $item['active'] ? 'nav-item-active' : '' }}">
                             <x-icon :name="$item['icon']" class="h-[18px] w-[18px]" />
                             <span>{{ $item['label'] }}</span>
                         </a>
@@ -195,7 +217,7 @@
                 aria-label="Điều hướng nhanh">
                 <div class="mx-auto flex max-w-lg items-stretch justify-around">
                     @foreach ($primaryItems as $item)
-                        <a href="{{ $item['url'] }}" wire:navigate
+                        <a href="{{ $item['url'] }}" wire:navigate.hover
                             class="relative flex flex-1 flex-col items-center gap-1 px-1 py-2.5 text-[11px] font-medium {{ $item['active'] ? 'text-brand-700 dark:text-brand-300' : 'text-ink-faint dark:text-slate-400' }}">
                             @if ($item['active'])
                                 <span class="absolute top-0 h-[2px] w-8 rounded-full bg-brand-600 dark:bg-brand-400"></span>

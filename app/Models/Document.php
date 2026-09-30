@@ -47,9 +47,40 @@ class Document extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
+    /**
+     * Disk đang giữ file thật. File mới nằm ở `local` (private), file cũ
+     * vẫn có thể nằm ở `public` trong thời gian migrate — đọc thử local trước.
+     */
+    public function fileDisk(): string
+    {
+        if (Storage::disk('local')->exists($this->file_path)) {
+            return 'local';
+        }
+
+        return 'public';
+    }
+
+    public function fileExists(): bool
+    {
+        return Storage::disk($this->fileDisk())->exists($this->file_path);
+    }
+
     public function url(): string
     {
-        return Storage::disk('public')->url($this->file_path);
+        if (! $this->isViewable()) {
+            return route('documents.file', $this);
+        }
+
+        return route('documents.show', $this);
+    }
+
+    /**
+     * URL trực tiếp tới file gốc (PDF/docx...) — luôn qua controller có auth,
+     * không còn trỏ thẳng /storage/... để tránh lộ tài liệu riêng tư.
+     */
+    public function fileUrl(): string
+    {
+        return route('documents.file', $this);
     }
 
     /**
@@ -66,13 +97,11 @@ class Document extends Model
 
     /**
      * Link mở tài liệu: văn bản thuần thì vào trang đọc trong app, còn lại
-     * (PDF, docx, xlsx...) thì mở file thật vì trình duyệt không hiển thị được.
+     * (PDF, docx, xlsx...) thì qua controller file có kiểm quyền.
      */
     public function viewerUrl(): string
     {
-        return $this->isViewable()
-            ? route('documents.show', $this)
-            : $this->url();
+        return $this->url();
     }
 
     /**
@@ -80,7 +109,13 @@ class Document extends Model
      */
     public function readContent(): ?string
     {
-        if (! $this->isViewable() || ! Storage::disk('public')->exists($this->file_path)) {
+        if (! $this->isViewable()) {
+            return null;
+        }
+
+        $disk = $this->fileDisk();
+
+        if (! Storage::disk($disk)->exists($this->file_path)) {
             return null;
         }
 
@@ -89,7 +124,7 @@ class Document extends Model
             return null;
         }
 
-        $contents = Storage::disk('public')->get($this->file_path);
+        $contents = Storage::disk($this->fileDisk())->get($this->file_path);
 
         return is_string($contents) ? $contents : null;
     }

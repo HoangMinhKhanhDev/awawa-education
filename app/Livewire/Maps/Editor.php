@@ -7,11 +7,13 @@ use App\Models\KnowledgeMapVersion;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 #[Layout('components.layouts.app')]
 class Editor extends Component
 {
+    #[Locked]
     public int $mapId;
 
     public string $title = '';
@@ -97,6 +99,7 @@ class Editor extends Component
     public function render(): View
     {
         $map = KnowledgeMap::query()->findOrFail($this->mapId);
+        Gate::authorize('view', $map);
         $latest = $map->latestVersion;
 
         return view('livewire.maps.editor', [

@@ -1,6 +1,6 @@
 import { precacheAndRoute, cleanupOutdatedCaches, createHandlerBoundToURL } from 'workbox-precaching';
 import { registerRoute, NavigationRoute, setCatchHandler } from 'workbox-routing';
-import { CacheFirst, NetworkFirst, StaleWhileRevalidate } from 'workbox-strategies';
+import { CacheFirst, NetworkFirst, NetworkOnly, StaleWhileRevalidate } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 
 self.addEventListener('message', (event) => {
@@ -20,6 +20,16 @@ self.addEventListener('message', (event) => {
  */
 precacheAndRoute(self.__WB_MANIFEST);
 cleanupOutdatedCaches();
+
+self.addEventListener('activate', (event) => {
+    event.waitUntil(
+        caches.keys().then((names) => Promise.all(
+            names
+                .filter((name) => name === 'awawa-documents' || name === 'awawa-documents-v2')
+                .map((name) => caches.delete(name)),
+        )),
+    );
+});
 
 registerRoute(
     new NavigationRoute(new NetworkFirst({
@@ -48,11 +58,10 @@ registerRoute(
 );
 
 registerRoute(
-    ({ url }) => url.pathname.startsWith('/storage/'),
-    new CacheFirst({
-        cacheName: 'awawa-documents',
-        plugins: [new ExpirationPlugin({ maxEntries: 80, maxAgeSeconds: 60 * 60 * 24 * 14 })],
-    }),
+    ({ url }) => url.pathname.includes('/tai-lieu/') && url.pathname.endsWith('/file'),
+    // Tài liệu qua Gate theo user: KHÔNG cache để tránh HS B đọc cache private của HS A
+    // trên cùng máy, và tránh giữ bản cũ sau khi đổi is_public / xóa file.
+    new NetworkOnly(),
 );
 
 let offlineHandler = null;

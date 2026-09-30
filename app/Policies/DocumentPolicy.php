@@ -30,6 +30,10 @@ class DocumentPolicy
             return true;
         }
 
+        if ($auth->is_active === false) {
+            return false;
+        }
+
         if ($auth->canAccessSubject($document->subject_id)) {
             return $auth->isTeacher() || $document->is_public;
         }

@@ -8,8 +8,10 @@ use App\Models\ExamQuestion;
 use App\Models\ExamSection;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -18,8 +20,10 @@ use Livewire\Component;
 #[Title('Kết quả')]
 class Result extends Component
 {
+    #[Locked]
     public int $examId;
 
+    #[Locked]
     public int $attemptId;
 
     /**
@@ -74,12 +78,24 @@ class Result extends Component
         $exam = Exam::query()->findOrFail($this->examId);
         $attempt = ExamAttempt::query()->findOrFail($this->attemptId);
 
+        Gate::authorize('view', $attempt);
+
+        abort_unless(
+            $attempt->exam_id === $exam->id && $attempt->student_id === auth()->id(),
+            403,
+            'Bài làm không thuộc về bạn.'
+        );
+
         $attempts = $this->attemptsFor($exam);
         $user = auth()->user();
 
-        Gate::authorize('view', $attempt);
+        $version = $exam->updated_at?->timestamp ?? 0;
 
-        $examQuestions = $exam->examQuestions()->with(['question.options', 'section'])->get();
+        $examQuestions = Cache::remember(
+            "result-questions:v1:{$exam->getKey()}:{$version}",
+            60,
+            fn (): Collection => $exam->examQuestions()->with(['question.options', 'section'])->get()
+        );
 
         return view('livewire.student.result', [
             'exam' => $exam,

@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\ApiKeysPageController;
 use App\Http\Controllers\Auth\GoogleController;
 use App\Http\Controllers\Auth\LogoutController;
+use App\Http\Controllers\DocumentFileController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\NotebookArtifactExportController;
 use App\Http\Controllers\PushSubscriptionController;
@@ -48,15 +49,15 @@ Route::get('/', HomeController::class)->name('home');
 | Khách (chưa đăng nhập)
 |--------------------------------------------------------------------------
 */
-Route::middleware('guest')->group(function () {
+Route::middleware(['guest', 'throttle:10,1'])->group(function () {
     Route::get('/login', Login::class)->name('login');
     Route::get('/register', Register::class)->name('register');
     Route::get('/forgot-password', ForgotPassword::class)->name('password.request');
     Route::get('/reset-password/{token}', ResetPassword::class)->name('password.reset');
 });
 
-Route::get('/auth/google', [GoogleController::class, 'redirect'])->name('auth.google');
-Route::get('/auth/google/callback', [GoogleController::class, 'callback'])->name('auth.google.callback');
+Route::get('/auth/google', [GoogleController::class, 'redirect'])->middleware('throttle:20,1')->name('auth.google');
+Route::get('/auth/google/callback', [GoogleController::class, 'callback'])->middleware('throttle:20,1')->name('auth.google.callback');
 
 Route::get('/so-do/xem/{token}', MapsShared::class)->name('maps.shared');
 
@@ -87,9 +88,10 @@ Route::middleware('auth')->group(function () {
     // Học sinh và giáo viên đều đọc tài liệu qua trang này để không bị lỗi
     // hiển thị Markdown thô.
     Route::get('/tai-lieu/{document}', DocumentShow::class)->name('documents.show');
+    Route::get('/tai-lieu/{document}/file', [DocumentFileController::class, 'show'])->name('documents.file');
 
-    Route::post('/push/subscribe', [PushSubscriptionController::class, 'store'])->name('push.subscribe');
-    Route::post('/push/unsubscribe', [PushSubscriptionController::class, 'destroy'])->name('push.unsubscribe');
+    Route::post('/push/subscribe', [PushSubscriptionController::class, 'store'])->middleware('throttle:30,1')->name('push.subscribe');
+    Route::post('/push/unsubscribe', [PushSubscriptionController::class, 'destroy'])->middleware('throttle:30,1')->name('push.unsubscribe');
 
     /*
     |----------------------------------------------------------------------

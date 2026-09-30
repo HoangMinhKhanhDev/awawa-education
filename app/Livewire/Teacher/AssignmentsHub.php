@@ -13,6 +13,7 @@ use App\Models\KnowledgeMap;
 use App\Models\Subject;
 use App\Services\Assignments\AssignmentManager;
 use App\Support\SubjectContext;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -149,8 +150,18 @@ class AssignmentsHub extends Component
             ->get();
 
         $progressAssignment = $this->progressId !== null
-            ? $this->assignmentQuery()->with('receipts.user')->find($this->progressId)
+            ? $this->assignmentQuery()->with(['assignable', 'receipts.user'])->find($this->progressId)
             : null;
+
+        if ($progressAssignment !== null && $progressAssignment->assignable !== null) {
+            try {
+                Gate::authorize('update', $progressAssignment->assignable);
+            } catch (AuthorizationException) {
+                $progressAssignment = null;
+            }
+        } elseif ($progressAssignment !== null) {
+            $progressAssignment = null;
+        }
 
         // Sắp xếp receipts một lần ở component, blade chỉ hiển thị.
         $progressReceipts = $progressAssignment !== null

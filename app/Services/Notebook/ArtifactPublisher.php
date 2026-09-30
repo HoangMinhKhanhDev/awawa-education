@@ -138,7 +138,7 @@ class ArtifactPublisher
             ? $this->flashcardsToMarkdown($artifact->payload['cards'] ?? [], $artifact->title)
             : (string) ($artifact->text_content ?? '');
 
-        Storage::disk('public')->put($path, $content);
+        Storage::disk('local')->put($path, $content);
 
         $document = Document::create([
             'subject_id' => $subjectId,

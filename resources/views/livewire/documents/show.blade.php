@@ -20,7 +20,7 @@
         </div>
 
         <div class="flex shrink-0 flex-wrap gap-1.5">
-            <a href="{{ $document->url() }}" download class="btn btn-outline px-3.5 py-2 text-xs">
+            <a href="{{ $document->fileUrl() }}" download class="btn btn-outline px-3.5 py-2 text-xs">
                 <x-icon name="file" class="h-4 w-4" />
                 Tải về
             </a>
@@ -56,7 +56,7 @@
                 <p class="text-sm text-ink-soft dark:text-slate-400">
                     Định dạng <span class="font-medium">{{ $document->mime ?: 'không rõ' }}</span> không hiển thị được trong trình duyệt.
                 </p>
-                <a href="{{ $document->url() }}" target="_blank" rel="noopener" class="btn btn-primary px-3.5 py-2 text-xs">
+                <a href="{{ $document->fileUrl() }}" target="_blank" rel="noopener" class="btn btn-primary px-3.5 py-2 text-xs">
                     Mở tệp gốc
                 </a>
             </div>

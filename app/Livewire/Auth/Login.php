@@ -18,7 +18,7 @@ class Login extends Component
 
     public string $password = '';
 
-    public bool $remember = true;
+    public bool $remember = false;
 
     /**
      * @return array<string, array<int, string>>

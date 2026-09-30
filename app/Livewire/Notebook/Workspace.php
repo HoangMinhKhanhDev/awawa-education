@@ -37,7 +37,7 @@ class Workspace extends Component
 
     public function render(): View
     {
-        $notebook = Notebook::query()->with('subject')->findOrFail($this->notebookId);
+        $notebook = $this->resolveNotebook(auth()->user(), $this->notebookId)->load('subject');
 
         return view('livewire.notebook.workspace', [
             'notebook' => $notebook,

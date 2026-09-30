@@ -38,10 +38,11 @@ class SuperAdminSeeder extends Seeder
             'name' => env('ADMIN_NAME', 'awawa Admin'),
             'email' => $email,
             'password' => $password,
+        ])->forceFill([
             'role' => Role::SuperAdmin,
             'must_change_password' => true,
             'email_verified_at' => now(),
-        ]);
+        ])->save();
 
         $this->command?->info("Đã tạo Super Admin: {$email} (bắt buộc đổi mật khẩu khi đăng nhập lần đầu).");
     }

@@ -214,6 +214,16 @@ class Index extends Component
                 $query->where('owner_id', $user->id)
                     ->orWhere('visibility', MapVisibility::Subject->value);
             });
+        } elseif (! $user->isSuperAdmin()) {
+            $currentSubjectId = $subject?->id ?? $user->subject_id;
+
+            $query->where(function ($query) use ($user, $currentSubjectId): void {
+                $query->where('owner_id', $user->id);
+
+                if ($currentSubjectId !== null) {
+                    $query->orWhere('subject_id', $currentSubjectId);
+                }
+            });
         }
 
         return view('livewire.maps.index', [

@@ -6,6 +6,7 @@ use App\Enums\Role;
 use App\Models\User;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 use Livewire\Attributes\Layout;
@@ -56,17 +57,30 @@ class Register extends Component
 
     public function register(): void
     {
+        $key = 'register:'.request()->ip();
+
+        if (RateLimiter::tooManyAttempts($key, 10)) {
+            $this->addError('email', 'Bạn đã tạo quá nhiều tài khoản. Vui lòng thử lại sau.');
+
+            return;
+        }
+
+        RateLimiter::hit($key, 60);
+
         $data = $this->validate();
 
         $user = User::create([
             'name' => $data['name'],
             'email' => mb_strtolower($data['email']),
             'password' => $data['password'],
-            'role' => Role::Student,
-            'last_login_at' => now(),
         ]);
 
-        Auth::login($user, remember: true);
+        $user->forceFill([
+            'role' => Role::Student,
+            'last_login_at' => now(),
+        ])->save();
+
+        Auth::login($user, remember: false);
         session()->regenerate();
 
         $this->redirect(route('dashboard'), navigate: true);

@@ -17,7 +17,9 @@ use App\Models\User;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -26,30 +28,39 @@ use Livewire\Component;
 #[Title('Thống kê')]
 class Stats extends Component
 {
+    public function mount(): void
+    {
+        Gate::authorize('viewAny', User::class);
+        abort_unless(auth()->user()?->isSuperAdmin(), 403);
+    }
+
     public function render(): View
     {
+        // 16 COUNT + 2 series mỗi lần mở trang: cache 5 phút, admin không cần realtime.
+        $counts = Cache::remember('admin-stats:v1:counts', 300, fn (): array => [
+            'teacher' => User::query()->where('role', Role::Teacher->value)->count(),
+            'student' => User::query()->where('role', Role::Student->value)->count(),
+            'subject' => Subject::query()->count(),
+            'question' => Question::query()->count(),
+            'exam' => Exam::query()->ofType(ExamType::Exam)->count(),
+            'assignment' => Exam::query()->ofType(ExamType::Assignment)->count(),
+            'attempt' => ExamAttempt::query()->count(),
+            'graded' => ExamAttempt::query()->where('status', AttemptStatus::Graded->value)->count(),
+            'document' => Document::query()->count(),
+            'map' => KnowledgeMap::query()->count(),
+            'api_key' => ApiKey::query()->count(),
+            'api_key_active' => ApiKey::query()->usable()->count(),
+            'ai_calls' => AiUsageLog::query()->where('is_success', true)->count(),
+            'ai_errors' => AiUsageLog::query()->where('is_success', false)->count(),
+            'ai_tokens' => (int) AiUsageLog::query()->sum('total_tokens'),
+            'ai_today' => AiUsageLog::query()->whereDate('created_at', today())->count(),
+        ]);
+
         return view('livewire.admin.stats', [
-            'counts' => [
-                'teacher' => User::query()->where('role', Role::Teacher->value)->count(),
-                'student' => User::query()->where('role', Role::Student->value)->count(),
-                'subject' => Subject::query()->count(),
-                'question' => Question::query()->count(),
-                'exam' => Exam::query()->ofType(ExamType::Exam)->count(),
-                'assignment' => Exam::query()->ofType(ExamType::Assignment)->count(),
-                'attempt' => ExamAttempt::query()->count(),
-                'graded' => ExamAttempt::query()->where('status', AttemptStatus::Graded->value)->count(),
-                'document' => Document::query()->count(),
-                'map' => KnowledgeMap::query()->count(),
-                'api_key' => ApiKey::query()->count(),
-                'api_key_active' => ApiKey::query()->usable()->count(),
-                'ai_calls' => AiUsageLog::query()->where('is_success', true)->count(),
-                'ai_errors' => AiUsageLog::query()->where('is_success', false)->count(),
-                'ai_tokens' => (int) AiUsageLog::query()->sum('total_tokens'),
-                'ai_today' => AiUsageLog::query()->whereDate('created_at', today())->count(),
-            ],
-            'attemptSeries' => $this->dailySeries(ExamAttempt::query()),
-            'aiSeries' => $this->dailySeries(AiUsageLog::query()),
-            'subjectAverages' => $this->subjectAverages(),
+            'counts' => $counts,
+            'attemptSeries' => Cache::remember('admin-stats:v1:attempt-series', 300, fn (): array => $this->dailySeries(ExamAttempt::query())),
+            'aiSeries' => Cache::remember('admin-stats:v1:ai-series', 300, fn (): array => $this->dailySeries(AiUsageLog::query())),
+            'subjectAverages' => Cache::remember('admin-stats:v1:subject-averages', 300, fn (): Collection => $this->subjectAverages()),
             'recentAiLogs' => AiUsageLog::query()->with(['user', 'subject'])->latest()->limit(8)->get(),
         ]);
     }

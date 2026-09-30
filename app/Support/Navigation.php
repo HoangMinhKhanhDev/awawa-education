@@ -13,11 +13,25 @@ use App\Models\User;
 class Navigation
 {
     /**
+     * @var array<string, array<int, array<string, mixed>>>
+     */
+    protected static array $memo = [];
+
+    public static function flushMemo(): void
+    {
+        self::$memo = [];
+    }
+
+    /**
      * @return array<int, array<string, mixed>>
      */
     public static function for(User $user): array
     {
-        return match (true) {
+        // Chỉ phụ thuộc vai trò + route hiện tại nên key gọn, không phình
+        // trong worker dài hạn (Octane/queue).
+        $key = ($user->role?->value ?? 'guest').'|'.(string) request()->route()?->getName();
+
+        return self::$memo[$key] ??= match (true) {
             $user->isSuperAdmin() => [
                 self::item('dashboard', 'Trang chủ', 'home', primary: true),
                 self::item('info', 'Thông tin', 'bell'),

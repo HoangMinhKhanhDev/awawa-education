@@ -8,9 +8,19 @@ use Livewire\Component;
 
 class Bell extends Component
 {
+    public static function forgetCache(int $userId): void
+    {
+        Cache::forget('bell-unread:'.$userId);
+        Cache::forget('bell-recent:'.$userId);
+    }
+
     public function markAllRead(): void
     {
         auth()->user()?->unreadNotifications->markAsRead();
+
+        if (auth()->id() !== null) {
+            self::forgetCache(auth()->id());
+        }
     }
 
     public function open(string $id): void
@@ -23,7 +33,17 @@ class Bell extends Component
 
         $notification->markAsRead();
 
-        $this->redirect($notification->data['url'] ?? route('notifications.index'), navigate: true);
+        if (auth()->id() !== null) {
+            self::forgetCache(auth()->id());
+        }
+
+        $url = $notification->data['url'] ?? route('notifications.index');
+
+        if (! is_string($url) || ! str_starts_with($url, '/')) {
+            $url = route('notifications.index');
+        }
+
+        $this->redirect($url, navigate: true);
     }
 
     public function render(): View
@@ -31,7 +51,7 @@ class Bell extends Component
         $user = auth()->user();
 
         // Layout render Bell 2 lần (desktop + mobile) mỗi trang. Cache count
-        // 30 giây để lần 2 không phải COUNT lại; recent giữ tươi theo request.
+        // và list 30 giây để lần 2 không query lại; xóa cache khi đọc xong.
         $unreadCount = $user
             ? Cache::remember(
                 'bell-unread:'.$user->id,
@@ -40,9 +60,17 @@ class Bell extends Component
             )
             : 0;
 
+        $recent = $user
+            ? Cache::remember(
+                'bell-recent:'.$user->id,
+                30,
+                fn () => $user->notifications()->limit(5)->get(),
+            )
+            : collect();
+
         return view('livewire.notifications.bell', [
             'unreadCount' => $unreadCount,
-            'recent' => $user->notifications()->limit(5)->get(),
+            'recent' => $recent,
         ]);
     }
 }

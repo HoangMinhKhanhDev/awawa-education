@@ -53,12 +53,15 @@ class Info extends Component
      */
     protected function leaderboard(): Collection
     {
+        $subjectId = app(SubjectContext::class)->id();
+
         $members = TeamMembership::query()
             ->active()
             ->with('student')
+            ->when($subjectId !== null, fn ($query) => $query->where('subject_id', $subjectId))
             ->get();
 
-        $abilities = app(StudentAbility::class)->rows()->keyBy('student_id');
+        $abilities = app(StudentAbility::class)->rows($subjectId)->keyBy('student_id');
 
         return $members
             ->map(function (TeamMembership $membership) use ($abilities): array {

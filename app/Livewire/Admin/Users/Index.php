@@ -174,8 +174,22 @@ class Index extends Component
             $user = User::query()->findOrFail($this->editingId);
             Gate::authorize('update', $user);
 
+            $privilegeChanged = $user->role->value !== $this->role
+                || $user->subject_id !== $subjectId
+                || $user->is_active !== $this->isActive;
+
+            if ($privilegeChanged) {
+                Gate::authorize('assignRole', $user);
+            }
+
             if ($user->id === auth()->id() && $this->role !== Role::SuperAdmin->value) {
                 $this->addError('role', 'Bạn không thể tự hạ quyền của chính mình.');
+
+                return;
+            }
+
+            if ($user->id === auth()->id() && ! $this->isActive) {
+                $this->addError('isActive', 'Bạn không thể tự khóa tài khoản của chính mình.');
 
                 return;
             }
@@ -183,6 +197,9 @@ class Index extends Component
             $user->fill([
                 'name' => $this->name,
                 'email' => mb_strtolower($this->email),
+            ]);
+
+            $user->forceFill([
                 'role' => $this->role,
                 'subject_id' => $subjectId,
                 'is_active' => $this->isActive,
@@ -196,18 +213,23 @@ class Index extends Component
 
             $user->save();
         } else {
+            Gate::authorize('create', User::class);
+
             $plainPassword = filled($this->password) ? $this->password : Str::password(12);
 
             $user = User::create([
                 'name' => $this->name,
                 'email' => mb_strtolower($this->email),
                 'password' => $plainPassword,
+            ]);
+
+            $user->forceFill([
                 'role' => $this->role,
                 'subject_id' => $subjectId,
                 'is_active' => $this->isActive,
                 'must_change_password' => true,
                 'email_verified_at' => now(),
-            ]);
+            ])->save();
 
             $this->generatedPassword = $plainPassword;
         }

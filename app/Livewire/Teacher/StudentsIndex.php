@@ -41,6 +41,8 @@ class StudentsIndex extends Component
 
     public function openCreate(): void
     {
+        Gate::authorize('manageStudents', User::class);
+
         $this->resetCreateForm();
         $this->showCreate = true;
     }
@@ -53,6 +55,8 @@ class StudentsIndex extends Component
 
     public function addStudent(int $userId): void
     {
+        Gate::authorize('manageStudents', User::class);
+
         $subjectId = app(SubjectContext::class)->id();
 
         if ($subjectId === null) {
@@ -88,6 +92,8 @@ class StudentsIndex extends Component
 
     public function removeStudent(int $userId): void
     {
+        Gate::authorize('manageStudents', User::class);
+
         $subjectId = app(SubjectContext::class)->id();
 
         TeamMembership::query()
@@ -101,6 +107,8 @@ class StudentsIndex extends Component
 
     public function createStudent(): void
     {
+        Gate::authorize('manageStudents', User::class);
+
         $this->validate([
             'newName' => ['required', 'string', 'min:2', 'max:120'],
             'newEmail' => ['required', 'email', 'max:180', Rule::unique(User::class, 'email')],
@@ -124,11 +132,14 @@ class StudentsIndex extends Component
             'name' => $this->newName,
             'email' => mb_strtolower($this->newEmail),
             'password' => $plainPassword,
+        ]);
+
+        $student->forceFill([
             'role' => Role::Student,
             'subject_id' => $subjectId,
             'must_change_password' => true,
             'email_verified_at' => now(),
-        ]);
+        ])->save();
 
         TeamMembership::create([
             'subject_id' => $subjectId,
@@ -186,7 +197,7 @@ class StudentsIndex extends Component
             'subject' => $subject,
             'members' => $members,
             'candidates' => $candidates,
-            'abilities' => app(StudentAbility::class)->rows()->keyBy('student_id'),
+            'abilities' => app(StudentAbility::class)->rows($subjectId)->keyBy('student_id'),
             'lastActive' => $this->lastActiveByStudent($memberIds),
         ]);
     }

@@ -13,6 +13,7 @@ use App\Support\SubjectContext;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Layout;
@@ -47,7 +48,7 @@ class ClassStats extends Component
             ]);
         }
 
-        $abilities = app(StudentAbility::class)->rows()->keyBy('student_id');
+        $abilities = app(StudentAbility::class)->rows($subject->id)->keyBy('student_id');
 
         $distribution = [
             ['label' => 'Giỏi (≥ 8)', 'count' => 0, 'color' => 'bg-success'],
@@ -57,7 +58,8 @@ class ClassStats extends Component
             ['label' => 'Chưa có bài', 'count' => 0, 'color' => 'bg-slate-300 dark:bg-slate-600'],
         ];
 
-        $memberIds = TeamMembership::query()->active()->pluck('student_id')->all();
+        $memberIds = TeamMembership::query()->active()->where('subject_id', $subject->id)->pluck('student_id')->all();
+        $withScores = $abilities->keyBy('student_id');
         $withScores = $abilities->keyBy('student_id');
 
         foreach ($memberIds as $studentId) {
@@ -76,24 +78,31 @@ class ClassStats extends Component
             }
         }
 
-        $examStats = $this->examStats();
+        $examStats = $this->examStats($subject->id);
         $completion = $this->assignmentCompletion($memberIds);
-        $daily = $this->dailySubmissions();
-        $trend = $this->weeklyTrend();
+        $daily = $this->dailySubmissions($subject->id);
+        $trend = $this->weeklyTrend($subject->id);
 
         $scored = $abilities->filter(fn (array $row): bool => $row['exams'] > 0);
 
         $members = TeamMembership::query()
             ->active()
+            ->where('subject_id', $subject->id)
             ->with('student')
             ->get(['id', 'student_id']);
 
         $attention = $this->attentionList($members, $abilities);
 
-        $violations = (int) ExamAttempt::query()
-            ->whereIn('status', [AttemptStatus::Submitted->value, AttemptStatus::Graded->value])
-            ->get(['anti_cheat'])
-            ->sum(fn (ExamAttempt $attempt): int => count($attempt->anti_cheat ?? []));
+        $violations = (int) Cache::remember(
+            'class-violations:v1:subject:'.$subject->id,
+            300,
+            fn (): int => (int) ExamAttempt::query()
+                ->where('subject_id', $subject->id)
+                ->whereIn('status', [AttemptStatus::Submitted->value, AttemptStatus::Graded->value])
+                ->select('anti_cheat')
+                ->get()
+                ->sum(fn (ExamAttempt $attempt): int => count($attempt->anti_cheat ?? []))
+        );
 
         return view('livewire.teacher.class-stats', [
             'subject' => $subject,
@@ -174,53 +183,56 @@ class ClassStats extends Component
      *
      * @return Collection<int, array{id: int, title: string, weight: float, average: float|null, best_average: float|null, attempts: int}>
      */
-    protected function examStats(): Collection
+    protected function examStats(int $subjectId): Collection
     {
-        $exams = Exam::query()->orderBy('created_at')->get(['id', 'title', 'settings']);
+        return Cache::remember('class-exam-stats:v1:subject:'.$subjectId, 120, function () use ($subjectId): Collection {
+            $exams = Exam::query()->where('subject_id', $subjectId)->orderBy('created_at')->get(['id', 'title', 'settings']);
 
-        if ($exams->isEmpty()) {
-            return collect();
-        }
+            if ($exams->isEmpty()) {
+                return collect();
+            }
 
-        $firsts = ExamAttempt::query()
-            ->where('status', AttemptStatus::Graded->value)
-            ->get(['exam_id', 'attempt_no', 'score', 'max_score'])
-            ->groupBy('exam_id')
-            ->map(function (Collection $rows): array {
-                $byStudent = $rows->groupBy('student_id');
+            $firsts = ExamAttempt::query()
+                ->where('subject_id', $subjectId)
+                ->where('status', AttemptStatus::Graded->value)
+                ->get(['exam_id', 'student_id', 'attempt_no', 'score', 'max_score'])
+                ->groupBy('exam_id')
+                ->map(function (Collection $rows): array {
+                    $byStudent = $rows->groupBy('student_id');
 
-                $pick = function (string $mode) use ($byStudent): Collection {
-                    return $byStudent->map(function (Collection $studentRows) use ($mode): ?float {
-                        $ordered = $studentRows->sortBy('attempt_no')->values();
-                        $attempt = $mode === 'first'
-                            ? $ordered->first()
-                            : $ordered->sortByDesc(fn ($row): float => (float) $row->max_score > 0
-                                ? (float) $row->score / (float) $row->max_score
-                                : -1)->first();
-                        $max = (float) $attempt->max_score;
+                    $pick = function (string $mode) use ($byStudent): Collection {
+                        return $byStudent->map(function (Collection $studentRows) use ($mode): ?float {
+                            $ordered = $studentRows->sortBy('attempt_no')->values();
+                            $attempt = $mode === 'first'
+                                ? $ordered->first()
+                                : $ordered->sortByDesc(fn ($row): float => (float) $row->max_score > 0
+                                    ? (float) $row->score / (float) $row->max_score
+                                    : -1)->first();
+                            $max = (float) $attempt->max_score;
 
-                        return $max > 0 ? round(((float) $attempt->score / $max) * 100, 2) : null;
-                    })->filter(fn (?float $value): bool => $value !== null);
-                };
+                            return $max > 0 ? round(((float) $attempt->score / $max) * 100, 2) : null;
+                        })->filter(fn (?float $value): bool => $value !== null);
+                    };
 
-                $first = $pick('first');
-                $best = $pick('best');
+                    $first = $pick('first');
+                    $best = $pick('best');
 
-                return [
-                    'average' => $first->isNotEmpty() ? round($first->avg(), 2) : null,
-                    'best_average' => $best->isNotEmpty() ? round($best->avg(), 2) : null,
-                    'attempts' => $rows->count(),
-                ];
-            });
+                    return [
+                        'average' => $first->isNotEmpty() ? round($first->avg(), 2) : null,
+                        'best_average' => $best->isNotEmpty() ? round($best->avg(), 2) : null,
+                        'attempts' => $rows->count(),
+                    ];
+                });
 
-        return $exams->map(fn (Exam $exam): array => [
-            'id' => $exam->id,
-            'title' => $exam->title,
-            'weight' => $exam->weight(),
-            'average' => $firsts->get($exam->id)['average'] ?? null,
-            'best_average' => $firsts->get($exam->id)['best_average'] ?? null,
-            'attempts' => $firsts->get($exam->id)['attempts'] ?? 0,
-        ]);
+            return $exams->map(fn (Exam $exam): array => [
+                'id' => $exam->id,
+                'title' => $exam->title,
+                'weight' => $exam->weight(),
+                'average' => $firsts->get($exam->id)['average'] ?? null,
+                'best_average' => $firsts->get($exam->id)['best_average'] ?? null,
+                'attempts' => $firsts->get($exam->id)['attempts'] ?? 0,
+            ]);
+        });
     }
 
     /**
@@ -229,9 +241,10 @@ class ClassStats extends Component
      *
      * @return Collection<int, array{label: string, average: float|null}>
      */
-    protected function weeklyTrend(): Collection
+    protected function weeklyTrend(int $subjectId): Collection
     {
         $firsts = ExamAttempt::query()
+            ->where('subject_id', $subjectId)
             ->where('status', AttemptStatus::Graded->value)
             ->whereNotNull('submitted_at')
             ->get(['student_id', 'exam_id', 'attempt_no', 'score', 'max_score', 'submitted_at'])
@@ -292,11 +305,12 @@ class ClassStats extends Component
      *
      * @return Collection<int, array{label: string, count: int}>
      */
-    protected function dailySubmissions(): Collection
+    protected function dailySubmissions(int $subjectId): Collection
     {
         $since = now()->subDays(13)->startOfDay();
 
         $counts = ExamAttempt::query()
+            ->where('subject_id', $subjectId)
             ->whereIn('status', [AttemptStatus::Submitted->value, AttemptStatus::Graded->value])
             ->whereNotNull('submitted_at')
             ->where('submitted_at', '>=', $since)

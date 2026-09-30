@@ -59,4 +59,46 @@ class ApiKeyTest extends TestCase
 
         $this->actingAs($teacher)->get(route('admin.api-keys'))->assertForbidden();
     }
+
+    public function test_legacy_production_key_still_verifies_and_auto_upgrades_to_hmac(): void
+    {
+        // Mô phỏng key production đã phát hành trước Phase 1 (SHA-256 trần).
+        $plain = 'awawa_'.str_repeat('a', 40);
+        $key = ApiKey::factory()->create([
+            'key_hash' => ApiKey::legacyHashKey($plain),
+            'hash_version' => 'legacy',
+        ]);
+
+        $this->assertTrue($key->isLegacyHash());
+
+        $found = ApiKey::findForPlaintext($plain);
+
+        $this->assertNotNull($found);
+        $this->assertSame($key->id, $found->id);
+        $this->assertSame(ApiKey::hashKey($plain), $found->fresh()->key_hash);
+        $this->assertFalse($found->fresh()->isLegacyHash());
+
+        // Lần sau verify thẳng HMAC.
+        $this->assertNotNull(ApiKey::findForPlaintext($plain));
+    }
+
+    public function test_admin_can_rotate_legacy_key_to_new_plaintext(): void
+    {
+        $admin = User::factory()->superAdmin()->create();
+        $this->actingAs($admin);
+
+        $key = ApiKey::factory()->create([
+            'key_hash' => ApiKey::legacyHashKey('awawa_'.str_repeat('b', 40)),
+            'hash_version' => 'legacy',
+        ]);
+
+        $component = Livewire::test(AdminApiKeys::class)->call('rotate', $key->id);
+
+        $plain = $component->get('generatedKey');
+
+        $this->assertIsString($plain);
+        $this->assertStringStartsWith('awawa_', $plain);
+        $this->assertFalse($key->fresh()->isLegacyHash());
+        $this->assertSame(ApiKey::hashKey($plain), $key->fresh()->key_hash);
+    }
 }

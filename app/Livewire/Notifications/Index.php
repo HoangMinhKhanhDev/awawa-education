@@ -18,6 +18,10 @@ class Index extends Component
     {
         auth()->user()?->unreadNotifications->markAsRead();
 
+        if (auth()->id() !== null) {
+            Bell::forgetCache(auth()->id());
+        }
+
         session()->flash('status', 'Đã đánh dấu tất cả là đã đọc.');
     }
 
@@ -31,7 +35,17 @@ class Index extends Component
 
         $notification->markAsRead();
 
-        $this->redirect($notification->data['url'] ?? route('notifications.index'), navigate: true);
+        if (auth()->id() !== null) {
+            Bell::forgetCache(auth()->id());
+        }
+
+        $url = $notification->data['url'] ?? route('notifications.index');
+
+        if (! is_string($url) || ! str_starts_with($url, '/')) {
+            $url = route('notifications.index');
+        }
+
+        $this->redirect($url, navigate: true);
     }
 
     public function render(): View

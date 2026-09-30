@@ -151,19 +151,22 @@ class AssignmentManager
             ->withoutSubjectScope()
             ->where('exam_id', $exam->getKey())
             ->finished()
+            ->distinct()
             ->pluck('student_id')
             ->map(fn ($id): int => (int) $id)
-            ->flip()
             ->all();
 
-        foreach ($assignment->receipts()->get() as $receipt) {
-            $shouldBeDone = isset($done[(int) $receipt->user_id]);
+        $now = now();
 
-            if ($shouldBeDone && ! $receipt->isCompleted()) {
-                $receipt->markCompleted();
-            } elseif (! $shouldBeDone && $receipt->isCompleted()) {
-                $receipt->forceFill(['completed_at' => null])->save();
-            }
+        // 3 UPDATE bulk thay vì save() từng receipt trong vòng lặp.
+        // Giữ nguyên ngữ nghĩa markCompleted(): xong thì đã nhận + đã mở.
+        if ($done !== []) {
+            $assignment->receipts()->whereIn('user_id', $done)->whereNull('completed_at')->update(['completed_at' => $now]);
+            $assignment->receipts()->whereIn('user_id', $done)->whereNull('delivered_at')->update(['delivered_at' => $now]);
+            $assignment->receipts()->whereIn('user_id', $done)->whereNull('opened_at')->update(['opened_at' => $now]);
+            $assignment->receipts()->whereNotIn('user_id', $done)->whereNotNull('completed_at')->update(['completed_at' => null]);
+        } else {
+            $assignment->receipts()->whereNotNull('completed_at')->update(['completed_at' => null]);
         }
     }
 

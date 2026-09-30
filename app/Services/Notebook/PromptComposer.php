@@ -49,7 +49,13 @@ class PromptComposer
             ->where('is_enabled', true)
             ->where('status', 'ready')
             ->when($sourceIds !== null, fn ($query) => $query->whereIn('id', $sourceIds))
-            ->with('chunks')
+            ->orderBy('order')
+            // Chỉ lấy cột dùng để dựng prompt + trích dẫn, khỏi hydrate full model.
+            ->select(['id', 'notebook_id', 'title', 'type', 'url'])
+            ->with(['chunks' => fn ($query) => $query
+                ->select(['id', 'source_id', 'position', 'content'])
+                ->orderBy('position'),
+            ])
             ->get();
 
         $terms = $this->searchTerms($question);

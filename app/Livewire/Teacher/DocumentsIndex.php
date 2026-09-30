@@ -61,7 +61,7 @@ class DocumentsIndex extends Component
             'title' => ['required', 'string', 'min:3', 'max:180'],
             'description' => ['nullable', 'string', 'max:2000'],
             'category' => ['nullable', 'string', 'max:60'],
-            'file' => ['required', 'file', 'max:20480', 'mimes:pdf,doc,docx,ppt,pptx,xls,xlsx,zip,rar,jpg,jpeg,png,webp'],
+            'file' => ['required', 'file', 'max:20480', 'mimes:pdf,doc,docx,ppt,pptx,xls,xlsx,jpg,jpeg,png,webp'],
         ];
     }
 
@@ -74,7 +74,7 @@ class DocumentsIndex extends Component
             'title.required' => 'Vui lòng nhập tiêu đề tài liệu.',
             'file.required' => 'Vui lòng chọn tệp.',
             'file.max' => 'Tệp tối đa 20MB.',
-            'file.mimes' => 'Định dạng tệp không được hỗ trợ.',
+            'file.mimes' => 'Định dạng tệp không được hỗ trợ (PDF, Office, ảnh).',
         ];
     }
 
@@ -85,7 +85,7 @@ class DocumentsIndex extends Component
         Gate::authorize('create', Document::class);
 
         $subjectId = app(SubjectContext::class)->id();
-        $path = $this->file->store("documents/{$subjectId}", 'public');
+        $path = $this->file->store("documents/{$subjectId}", 'local');
 
         Document::create([
             'subject_id' => $subjectId,
@@ -121,6 +121,7 @@ class DocumentsIndex extends Component
         $document = Document::query()->findOrFail($id);
         Gate::authorize('delete', $document);
 
+        Storage::disk('local')->delete($document->file_path);
         Storage::disk('public')->delete($document->file_path);
         $document->delete();
 

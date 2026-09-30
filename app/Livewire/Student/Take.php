@@ -16,7 +16,11 @@ use Carbon\Exceptions\InvalidFormatException;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
@@ -29,8 +33,10 @@ class Take extends Component
      */
     protected const ANTI_CHEAT_DEDUPE_SECONDS = 60;
 
+    #[Locked]
     public int $examId;
 
+    #[Locked]
     public int $attemptId;
 
     public string $expiresAtIso = '';
@@ -115,8 +121,10 @@ class Take extends Component
 
     protected function loadAnswers(): void
     {
+        $attempt = $this->resolveOwnAttempt();
+
         $stored = AttemptAnswer::query()
-            ->where('attempt_id', $this->attemptId)
+            ->where('attempt_id', $attempt->id)
             ->get()
             ->keyBy('question_id');
 
@@ -137,13 +145,106 @@ class Take extends Component
         }
     }
 
-    public function saveProgress(): void
+    /** Memo trong request: loadAnswers/saveProgress/render chạy liền nhau. */
+    protected ?Exam $memoExam = null;
+
+    /** @var Collection<int, ExamQuestion>|null */
+    protected ?Collection $memoQuestions = null;
+
+    protected function memoExam(): Exam
+    {
+        return $this->memoExam ??= Exam::query()->findOrFail($this->examId);
+    }
+
+    /**
+     * Toàn bộ câu hỏi của đề, cache 60s theo (đề, lần làm, phiên bản đề).
+     * Thứ tự trộn ổn định theo attempt nên cache được; giáo viên sửa đề
+     * (updated_at đổi) là key mới có hiệu lực ngay, key cũ tự hết hạn.
+     *
+     * @return Collection<int, ExamQuestion>
+     */
+    protected function memoQuestions(ExamAttempt $attempt): Collection
+    {
+        if ($this->memoQuestions !== null) {
+            return $this->memoQuestions;
+        }
+
+        $exam = $this->memoExam();
+
+        $version = $exam->updated_at?->timestamp ?? 0;
+
+        $examQuestions = Cache::remember(
+            "take-questions:v1:{$exam->getKey()}:{$attempt->getKey()}:{$version}",
+            60,
+            fn (): Collection => $exam->examQuestions()->with(['question.options', 'section'])->get()
+        );
+
+        if ($exam->shuffle_questions) {
+            $examQuestions = $examQuestions->sortBy(
+                fn ($item) => crc32($attempt->id.'-q-'.$item->question_id),
+            )->values();
+        }
+
+        return $this->memoQuestions = $examQuestions;
+    }
+
+    /**
+     * Attempt mà client gửi lên phải thuộc về chính học sinh đang đăng nhập
+     * và thuộc đúng đề đang mở. Mọi action/render đều đi qua đây để chặn IDOR
+     * (sửa attemptId trên DevTools để ghi đè bài của bạn khác).
+     */
+    protected function resolveOwnAttempt(): ExamAttempt
     {
         $attempt = ExamAttempt::query()->findOrFail($this->attemptId);
 
+        Gate::authorize('view', $attempt);
+
+        abort_unless(
+            $attempt->exam_id === $this->examId && $attempt->student_id === auth()->id(),
+            403,
+            'Bài làm không thuộc về bạn.'
+        );
+
+        return $attempt;
+    }
+
+    protected function ensureAttemptWritable(ExamAttempt $attempt, Exam $exam): bool
+    {
         if ($attempt->status !== AttemptStatus::InProgress) {
+            return false;
+        }
+
+        if ($attempt->isExpired()) {
+            return false;
+        }
+
+        if ($exam->ends_at !== null && $exam->ends_at->isPast()) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * @return array<int, true>
+     */
+    protected function allowedQuestionIds(Exam $exam): array
+    {
+        return $exam->examQuestions()->pluck('question_id')->map(fn ($id): int => (int) $id)->flip()->map(fn (): bool => true)->all();
+    }
+
+    public function saveProgress(): void
+    {
+        $attempt = $this->resolveOwnAttempt();
+        $exam = $this->memoExam();
+
+        abort_unless($attempt->exam_id === $exam->id && $exam->id === $this->examId, 403);
+
+        if (! $this->ensureAttemptWritable($attempt, $exam)) {
             return;
         }
+
+        $allowed = $this->allowedQuestionIds($exam);
 
         $stored = AttemptAnswer::query()
             ->where('attempt_id', $attempt->id)
@@ -154,8 +255,13 @@ class Take extends Component
 
         foreach ($this->answers as $questionId => $answer) {
             $questionId = (int) $questionId;
+
+            if (! isset($allowed[$questionId])) {
+                continue;
+            }
+
             $selected = ! empty($answer['selected']) ? [(int) $answer['selected']] : [];
-            $text = $answer['text'] !== '' ? $answer['text'] : null;
+            $text = isset($answer['text']) && $answer['text'] !== '' ? mb_substr((string) $answer['text'], 0, 20000) : null;
             $subs = $this->normalizeSubs($answer['subs'] ?? null);
 
             $existing = $stored->get($questionId);
@@ -232,14 +338,23 @@ class Take extends Component
      * Trên di động, blur/visibilitychange bắn liên tục khi bật bàn phím ảo, mở
      * picker native, chạm thanh địa chỉ... Vì vậy chỉ tính sự kiện đã đi qua
      * bộ lọc phía client (rời hẳn >= 2 giây) và bỏ qua event cùng loại lặp lại
-     * trong vòng một phút. Cố tình không skipRender: render() chỉ đọc attempt
-     * và câu hỏi, không truy vấn lại đề.
+     * trong vòng một phút. Bỏ re-render: chip cảnh báo cập nhật ở lần
+     * render kế tiếp (autosave/tương tác), khỏi tải lại toàn bộ đề mỗi ping.
      */
     public function logAntiCheat(string $type): void
     {
-        $attempt = ExamAttempt::query()->findOrFail($this->attemptId);
+        $this->skipRender();
 
-        if ($attempt->status !== AttemptStatus::InProgress) {
+        $type = mb_substr(trim($type), 0, 30);
+
+        validator(
+            ['type' => $type],
+            ['type' => ['required', 'string', Rule::in(['tab_hidden', 'blur', 'visibility', 'fullscreen_exit', 'copy', 'paste', 'window_blur'])]]
+        )->validate();
+
+        $attempt = $this->resolveOwnAttempt();
+
+        if ($attempt->status !== AttemptStatus::InProgress || $attempt->isExpired()) {
             return;
         }
 
@@ -283,9 +398,12 @@ class Take extends Component
 
     public function submit(): void
     {
-        $attempt = ExamAttempt::query()->findOrFail($this->attemptId);
+        $attempt = $this->resolveOwnAttempt();
+        $exam = $this->memoExam();
 
-        if ($attempt->status !== AttemptStatus::InProgress) {
+        abort_unless($attempt->exam_id === $exam->id && $exam->id === $this->examId, 403);
+
+        if (! $this->ensureAttemptWritable($attempt, $exam)) {
             $this->redirect(route('student.result', $attempt->exam_id), navigate: true);
 
             return;
@@ -307,16 +425,10 @@ class Take extends Component
 
     public function render(): View
     {
-        $exam = Exam::query()->findOrFail($this->examId);
-        $attempt = ExamAttempt::query()->findOrFail($this->attemptId);
+        $exam = $this->memoExam();
+        $attempt = $this->resolveOwnAttempt();
 
-        $examQuestions = $exam->examQuestions()->with(['question.options', 'section'])->get();
-
-        if ($exam->shuffle_questions) {
-            $examQuestions = $examQuestions->sortBy(
-                fn ($item) => crc32($attempt->id.'-q-'.$item->question_id),
-            )->values();
-        }
+        $examQuestions = $this->memoQuestions($attempt);
 
         return view('livewire.student.take', [
             'exam' => $exam,

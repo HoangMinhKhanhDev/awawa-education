@@ -5,9 +5,10 @@ namespace App\Notifications;
 use App\Models\ExamAttempt;
 use App\Notifications\Channels\WebPushChannel;
 use App\Support\WebPushSender;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Notification;
 
-class AttemptGradedNotification extends Notification
+class AttemptGradedNotification extends Notification implements ShouldQueue
 {
     public function __construct(
         public ExamAttempt $attempt,
@@ -20,7 +21,9 @@ class AttemptGradedNotification extends Notification
     {
         $channels = ['database'];
 
-        if (app(WebPushSender::class)->configured() && $notifiable->pushSubscriptions()->exists()) {
+        $hasPush = $notifiable->push_subscriptions_count ?? $notifiable->pushSubscriptions()->exists();
+
+        if (app(WebPushSender::class)->configured() && $hasPush) {
             $channels[] = WebPushChannel::class;
         }
 

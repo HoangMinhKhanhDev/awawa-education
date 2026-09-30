@@ -7,6 +7,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 /**
@@ -19,6 +20,7 @@ use Livewire\Component;
 #[Layout('components.layouts.app')]
 class Show extends Component
 {
+    #[Locked]
     public int $documentId;
 
     public function mount(Document $document): void
@@ -31,6 +33,8 @@ class Show extends Component
     public function render(): View
     {
         $document = Document::query()->with(['subject', 'creator'])->findOrFail($this->documentId);
+
+        Gate::authorize('read', $document);
 
         $raw = $document->isViewable() ? $document->readContent() : null;
 

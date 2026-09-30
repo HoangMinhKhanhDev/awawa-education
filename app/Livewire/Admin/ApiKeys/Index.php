@@ -115,6 +115,18 @@ class Index extends Component
         session()->flash('status', 'Đã thu hồi khóa.');
     }
 
+    public function rotate(int $id): void
+    {
+        $apiKey = ApiKey::query()->findOrFail($id);
+        Gate::authorize('update', $apiKey);
+
+        $plain = $apiKey->rotate();
+
+        $this->generatedKey = $plain;
+
+        session()->flash('status', "Đã xoay khóa \"{$apiKey->name}\" lên hash mới. Khóa cũ mất hiệu lực ngay — hãy sao chép khóa mới ngay bây giờ.");
+    }
+
     public function delete(int $id): void
     {
         $apiKey = ApiKey::query()->findOrFail($id);
@@ -139,13 +151,7 @@ class Index extends Component
      */
     protected function defaultScopes(): array
     {
-        $scopes = [];
-
-        foreach (ApiScope::cases() as $scope) {
-            $scopes[$scope->value] = true;
-        }
-
-        return $scopes;
+        return [ApiScope::ProfileRead->value => true];
     }
 
     public function render(): View

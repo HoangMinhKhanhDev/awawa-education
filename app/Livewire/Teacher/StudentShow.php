@@ -14,6 +14,7 @@ use App\Support\SubjectContext;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
@@ -21,6 +22,7 @@ use Livewire\Component;
 #[Title('Hồ sơ học tập')]
 class StudentShow extends Component
 {
+    #[Locked]
     public int $studentId;
 
     public function mount(User $student): void
@@ -42,7 +44,17 @@ class StudentShow extends Component
     {
         $student = User::query()->findOrFail($this->studentId);
 
-        $abilities = app(StudentAbility::class)->rows()->keyBy('student_id');
+        Gate::authorize('manageStudents', User::class);
+
+        abort_unless($student->role === Role::Student, 404);
+        abort_unless($student->subject_id !== null && $student->subject_id === app(SubjectContext::class)->id(), 404);
+        abort_unless(TeamMembership::query()
+            ->where('student_id', $student->id)
+            ->where('subject_id', $student->subject_id)
+            ->where('status', MembershipStatus::Active->value)
+            ->exists(), 404);
+
+        $abilities = app(StudentAbility::class)->rows($student->subject_id)->keyBy('student_id');
         $ability = $abilities->get($student->id);
 
         $attempts = ExamAttempt::query()
@@ -65,6 +77,7 @@ class StudentShow extends Component
         if ($ability !== null) {
             $ordered = TeamMembership::query()
                 ->active()
+                ->where('subject_id', $student->subject_id)
                 ->pluck('student_id')
                 ->map(fn (int $id): float => (float) ($abilities->get($id)['average'] ?? 0.0))
                 ->sortDesc()

@@ -26,6 +26,7 @@ class DocumentTest extends TestCase
         parent::setUp();
 
         Storage::fake('public');
+        Storage::fake('local');
 
         $this->subject = Subject::factory()->create();
         $this->teacher = User::factory()->teacher($this->subject)->create();
@@ -49,16 +50,17 @@ class DocumentTest extends TestCase
 
         $this->assertSame($this->subject->id, $document->subject_id);
         $this->assertSame('chuyen-de-1.pdf', $document->original_name);
-        Storage::disk('public')->assertExists($document->file_path);
+        Storage::disk('local')->assertExists($document->file_path);
     }
 
     public function test_deleting_document_removes_file(): void
     {
         $document = Document::factory()->create(['subject_id' => $this->subject->id]);
-        Storage::disk('public')->put($document->file_path, 'nội dung');
+        Storage::disk('local')->put($document->file_path, 'nội dung');
 
         Livewire::test(DocumentsIndex::class)->call('delete', $document->id);
 
+        Storage::disk('local')->assertMissing($document->file_path);
         Storage::disk('public')->assertMissing($document->file_path);
         $this->assertDatabaseMissing('documents', ['id' => $document->id]);
     }
