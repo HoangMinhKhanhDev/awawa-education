@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\SafeCache;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
@@ -36,7 +37,7 @@ class NotebookSetting extends Model
             return static::$memo[$key] ?? $default;
         }
 
-        $value = Cache::remember('notebook-setting:v1:'.$key, 300, function () use ($key): ?string {
+        $value = SafeCache::remember('notebook-setting:v2:'.$key, 300, function () use ($key): ?string {
             $row = static::query()->where('key', $key)->first();
 
             if ($row === null || $row->value === null) {
@@ -70,7 +71,7 @@ class NotebookSetting extends Model
         );
 
         unset(static::$memo[$key]);
-        Cache::forget('notebook-setting:v1:'.$key);
+        Cache::forget('notebook-setting:v2:'.$key);
     }
 
     public static function getBool(string $key, bool $default = false): bool
@@ -92,7 +93,7 @@ class NotebookSetting extends Model
         static::query()->where('key', $key)->delete();
 
         unset(static::$memo[$key]);
-        Cache::forget('notebook-setting:v1:'.$key);
+        Cache::forget('notebook-setting:v2:'.$key);
     }
 
     public static function flushMemo(): void

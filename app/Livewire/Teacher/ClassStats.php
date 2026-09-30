@@ -14,7 +14,6 @@ use App\Support\SubjectContext;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Layout;
@@ -94,7 +93,7 @@ class ClassStats extends Component
 
         $attention = $this->attentionList($members, $abilities);
 
-        $violations = (int) Cache::remember(
+        $violations = (int) SafeCache::remember(
             'class-violations:v1:subject:'.$subject->id,
             300,
             fn (): int => (int) ExamAttempt::query()

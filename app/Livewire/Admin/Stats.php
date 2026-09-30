@@ -14,10 +14,9 @@ use App\Models\KnowledgeMap;
 use App\Models\Question;
 use App\Models\Subject;
 use App\Models\User;
+use App\Support\SafeCache;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Layout;
@@ -37,7 +36,9 @@ class Stats extends Component
     public function render(): View
     {
         // 16 COUNT + 2 series mỗi lần mở trang: cache 5 phút, admin không cần realtime.
-        $counts = Cache::remember('admin-stats:v1:counts', 300, fn (): array => [
+        // Tất cả cache ở đây lưu mảng thô, không lưu Collection: giá trị cache
+        // phải sống sót qua các lần deploy. Xem `App\Support\SafeCache`.
+        $counts = SafeCache::remember('admin-stats:v2:counts', 300, fn (): array => [
             'teacher' => User::query()->where('role', Role::Teacher->value)->count(),
             'student' => User::query()->where('role', Role::Student->value)->count(),
             'subject' => Subject::query()->count(),
@@ -58,9 +59,9 @@ class Stats extends Component
 
         return view('livewire.admin.stats', [
             'counts' => $counts,
-            'attemptSeries' => Cache::remember('admin-stats:v1:attempt-series', 300, fn (): array => $this->dailySeries(ExamAttempt::query())),
-            'aiSeries' => Cache::remember('admin-stats:v1:ai-series', 300, fn (): array => $this->dailySeries(AiUsageLog::query())),
-            'subjectAverages' => Cache::remember('admin-stats:v1:subject-averages', 300, fn (): Collection => $this->subjectAverages()),
+            'attemptSeries' => SafeCache::remember('admin-stats:v2:attempt-series', 300, fn (): array => $this->dailySeries(ExamAttempt::query())),
+            'aiSeries' => SafeCache::remember('admin-stats:v2:ai-series', 300, fn (): array => $this->dailySeries(AiUsageLog::query())),
+            'subjectAverages' => SafeCache::remember('admin-stats:v2:subject-averages', 300, fn (): array => $this->subjectAverages()),
             'recentAiLogs' => AiUsageLog::query()->with(['user', 'subject'])->latest()->limit(8)->get(),
         ]);
     }
@@ -91,9 +92,9 @@ class Stats extends Component
     }
 
     /**
-     * @return Collection<int, array{name: string, average: float, attempts: int}>
+     * @return array<int, array{name: string, average: float, attempts: int}>
      */
-    protected function subjectAverages(): Collection
+    protected function subjectAverages(): array
     {
         // Chỉ bài đã chấm xong, chuẩn hoá % để đề thang điểm khác nhau
         // vẫn so được với nhau.
@@ -113,6 +114,7 @@ class Stats extends Component
                 'attempts' => (int) $row->attempts,
             ])
             ->sortByDesc('average')
-            ->values();
+            ->values()
+            ->all();
     }
 }

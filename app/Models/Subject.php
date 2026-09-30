@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\Role;
 use App\Enums\SubjectFeature as FeatureEnum;
+use App\Support\SafeCache;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -68,7 +69,7 @@ class Subject extends Model
      */
     public function enabledFeatureKeys(): array
     {
-        return Cache::remember($this->featureCacheKey(), now()->addMinutes(15), function (): array {
+        return SafeCache::remember($this->featureCacheKey(), now()->addMinutes(15), function (): array {
             return $this->features()
                 ->where('is_enabled', true)
                 ->pluck('feature')

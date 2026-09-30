@@ -396,7 +396,8 @@ class Index extends Component
         }
 
         if ($this->isDefault) {
-            $this->makeDefault($provider);
+            // `makeDefault()` nhận id, không nhận model.
+            $this->makeDefault($provider->getKey());
         }
 
         $this->showForm = false;

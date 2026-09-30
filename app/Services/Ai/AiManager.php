@@ -5,6 +5,7 @@ namespace App\Services\Ai;
 use App\Enums\AiPurpose;
 use App\Models\AiProvider;
 use App\Models\AiUsageLog;
+use App\Support\SafeCache;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -144,7 +145,7 @@ class AiManager
             Cache::forget($cacheKey);
         }
 
-        $models = Cache::remember($cacheKey, now()->addMinutes(15), fn (): array => $this->client->models(
+        $models = SafeCache::remember($cacheKey, now()->addMinutes(15), fn (): array => $this->client->models(
             $candidate['base_url'],
             $candidate['api_key'],
             $timeout,

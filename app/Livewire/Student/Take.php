@@ -12,11 +12,11 @@ use App\Models\ExamQuestion;
 use App\Models\ExamSection;
 use App\Services\Assignments\AssignmentManager;
 use App\Services\GradingService;
+use App\Support\SafeCache;
 use Carbon\Exceptions\InvalidFormatException;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Layout;
@@ -173,7 +173,10 @@ class Take extends Component
 
         $version = $exam->updated_at?->timestamp ?? 0;
 
-        $examQuestions = Cache::remember(
+        // Vẫn cache Collection Eloquent vì view cần model đầy đủ, nhưng bọc
+        // SafeCache: cache cũ ghi bởi class đã đổi sẽ được bỏ thay vì làm vỡ
+        // trang làm bài.
+        $examQuestions = SafeCache::remember(
             "take-questions:v1:{$exam->getKey()}:{$attempt->getKey()}:{$version}",
             60,
             fn (): Collection => $exam->examQuestions()->with(['question.options', 'section'])->get()

@@ -6,9 +6,9 @@ use App\Models\Exam;
 use App\Models\ExamAttempt;
 use App\Models\ExamQuestion;
 use App\Models\ExamSection;
+use App\Support\SafeCache;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
@@ -91,7 +91,8 @@ class Result extends Component
 
         $version = $exam->updated_at?->timestamp ?? 0;
 
-        $examQuestions = Cache::remember(
+        // SafeCache: cache cũ ghi bởi class đã đổi sẽ bị bỏ thay vì làm vỡ trang.
+        $examQuestions = SafeCache::remember(
             "result-questions:v1:{$exam->getKey()}:{$version}",
             60,
             fn (): Collection => $exam->examQuestions()->with(['question.options', 'section'])->get()

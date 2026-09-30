@@ -16,10 +16,10 @@ use App\Models\TeamMembership;
 use App\Models\User;
 use App\Services\Assignments\AssignmentManager;
 use App\Services\StudentAbility;
+use App\Support\SafeCache;
 use App\Support\SubjectContext;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -77,7 +77,7 @@ class Dashboard extends Component
         return view('livewire.dashboard', [
             'user' => $user,
             'currentSubject' => $context->subject(),
-            'roleCounts' => $user->isSuperAdmin() ? Cache::remember(
+            'roleCounts' => $user->isSuperAdmin() ? SafeCache::remember(
                 'dashboard-roles',
                 60,
                 fn (): array => [
@@ -412,7 +412,7 @@ class Dashboard extends Component
         // cùng môn dùng chung, hết 1 phút mới đếm lại.
         $subjectId = app(SubjectContext::class)->id();
 
-        return Cache::remember(
+        return SafeCache::remember(
             'dashboard-teacher:'.$subjectId,
             60,
             fn (): array => [
