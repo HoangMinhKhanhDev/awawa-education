@@ -111,7 +111,7 @@
                         aria-label="Mở menu" aria-controls="mobile-drawer" aria-expanded="false">
                         <x-icon name="menu" class="h-[22px] w-[22px]" />
                     </button>
-                    <a href="{{ route('dashboard') }}" wire:navigate.hover
+                    <a href="{{ route('dashboard') }}" wire:navigate.hover class="flex items-center">
                         <x-logo class="h-8 w-8" text-class="text-base" />
                     </a>
                 </div>
