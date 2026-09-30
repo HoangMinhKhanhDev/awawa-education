@@ -60,17 +60,28 @@ class GradingService
             return;
         }
 
+        $pivot = $pivotPoints?->get($answer->question_id);
+
+        // Đề cũ có thể để trống điểm từng câu thì giữ điểm gốc ngân hàng.
+        $points = $pivot !== null ? (float) $pivot : (float) $question->points;
+
+        if ($question->type === QuestionType::TrueFalseCluster) {
+            $awarded = $this->gradeTrueFalseCluster($answer, $points);
+
+            $answer->forceFill([
+                'is_correct' => $points > 0 && $awarded >= $points,
+                'awarded_points' => $awarded,
+            ])->save();
+
+            return;
+        }
+
         $isCorrect = match ($question->type) {
             QuestionType::MultipleChoice => $this->gradeMultipleChoice($answer),
             QuestionType::TrueFalse => $this->gradeTrueFalse($answer),
             QuestionType::FillBlank => $this->gradeFillBlank($answer),
             default => false,
         };
-
-        $pivot = $pivotPoints?->get($answer->question_id);
-
-        // Đề cũ có thể để trống điểm từng câu thì giữ điểm gốc ngân hàng.
-        $points = $pivot !== null ? (float) $pivot : (float) $question->points;
 
         $answer->forceFill([
             'is_correct' => $isCorrect,
@@ -114,6 +125,48 @@ class GradingService
         $given = QuestionType::normalizeTruthy((string) $answer->answer_text);
 
         return $expected !== null && $expected === $given;
+    }
+
+    /**
+     * Chấm chùm đúng/sai chuẩn BGD theo số mệnh đề đúng: 0–1 đúng được 0,
+     * 2 đúng được 1/4, 3 đúng được 1/2, cả 4 đúng được trọn điểm chùm.
+     * Mệnh đề bỏ trống tính là sai. Chùm không đủ 4 mệnh đề thì 0 điểm.
+     */
+    protected function gradeTrueFalseCluster(AttemptAnswer $answer, float $points): float
+    {
+        $expected = $answer->question->options
+            ->sortBy('order')
+            ->values()
+            ->map(fn ($option): bool => (bool) $option->is_correct);
+
+        if ($expected->count() !== 4) {
+            return 0.0;
+        }
+
+        $given = collect($answer->sub_answers ?? [])->take(4)->values();
+
+        $correct = 0;
+
+        foreach ($expected->all() as $index => $truth) {
+            $choice = QuestionType::normalizeTruthy((string) ($given->get($index) ?? ''));
+
+            if ($choice === null) {
+                continue;
+            }
+
+            if (($choice === QuestionType::TRUE) === $truth) {
+                $correct++;
+            }
+        }
+
+        $factor = match ($correct) {
+            4 => 1.0,
+            3 => 0.5,
+            2 => 0.25,
+            default => 0.0,
+        };
+
+        return round($points * $factor, 2);
     }
 
     protected function normalize(string $value): string

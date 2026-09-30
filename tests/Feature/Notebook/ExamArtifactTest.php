@@ -280,7 +280,9 @@ class ExamArtifactTest extends TestCase
                 $body['messages'] ?? []
             ));
 
-            return str_contains($prompt, 'chùm đúng 4 câu');
+            return str_contains($prompt, 'true_false_cluster')
+                && str_contains($prompt, '4 mệnh đề')
+                && str_contains($prompt, 'không sinh câu true_false rời rạc');
         });
     }
 

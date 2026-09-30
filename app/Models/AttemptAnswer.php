@@ -18,6 +18,7 @@ class AttemptAnswer extends Model
         'question_id',
         'selected_option_ids',
         'answer_text',
+        'sub_answers',
         'is_correct',
         'awarded_points',
         'feedback',
@@ -30,6 +31,7 @@ class AttemptAnswer extends Model
     {
         return [
             'selected_option_ids' => 'array',
+            'sub_answers' => 'array',
             'is_correct' => 'boolean',
             'awarded_points' => 'decimal:2',
         ];

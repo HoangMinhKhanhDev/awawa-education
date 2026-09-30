@@ -65,6 +65,9 @@
                                     @foreach ($question->options as $option)
                                         <li class="flex items-center gap-2 text-sm {{ $option->is_correct ? 'font-medium text-success' : 'text-ink-soft dark:text-slate-400' }}">
                                             <span class="h-1.5 w-1.5 shrink-0 rounded-full {{ $option->is_correct ? 'bg-success' : 'bg-rule-strong dark:bg-night-700' }}"></span>
+                                            @if ($question->type === \App\Enums\QuestionType::TrueFalseCluster)
+                                                <span class="tnum font-semibold">{{ chr(97 + $loop->index) }})</span>
+                                            @endif
                                             {{ $option->content }}
                                         </li>
                                     @endforeach
@@ -138,8 +141,8 @@
                     </div>
 
                     <div>
-                        <label class="label" for="f-content">Nội dung câu hỏi</label>
-                        <textarea id="f-content" rows="3" class="input" wire:model="content" placeholder="Nhập nội dung"></textarea>
+                        <label class="label" for="f-content">{{ $type === 'true_false_cluster' ? 'Đoạn ngữ cảnh chung' : 'Nội dung câu hỏi' }}</label>
+                        <textarea id="f-content" rows="3" class="input" wire:model="content" placeholder="{{ $type === 'true_false_cluster' ? 'Dán đoạn thông tin chung cho cả 4 mệnh đề…' : 'Nhập nội dung' }}"></textarea>
                         @error('content') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
                     </div>
 
@@ -170,6 +173,25 @@
                             </div>
                                 @error('options') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
                             </div>
+                        </div>
+                    @elseif ($type === 'true_false_cluster')
+                        <div>
+                            <p class="label mb-2">4 mệnh đề — bấm nút để đánh dấu Đúng, chấm theo nấc BGD (2 đúng 0.25 · 3 đúng 0.5 · 4 đúng trọn điểm)</p>
+                            <div class="space-y-2">
+                                @foreach ([0, 1, 2, 3] as $index)
+                                    @php $option = $options[$index] ?? ['content' => '', 'is_correct' => false]; @endphp
+                                    <div class="flex items-center gap-2" wire:key="cluster-{{ $index }}">
+                                        <span class="tnum w-5 shrink-0 text-sm font-semibold text-ink-faint dark:text-slate-500">{{ chr(97 + $index) }})</span>
+                                        <input type="text" class="input" wire:model="options.{{ $index }}.content" placeholder="Mệnh đề {{ chr(97 + $index) }}" aria-label="Mệnh đề {{ chr(97 + $index) }}">
+                                        <button type="button" wire:click="markTruth({{ $index }})"
+                                            class="shrink-0 rounded-[10px] border px-2.5 py-2 text-xs font-semibold transition-colors {{ ! empty($option['is_correct']) ? 'border-success bg-success text-white' : 'border-rule-strong text-ink-faint hover:bg-paper-2 dark:border-night-700 dark:text-slate-400' }}"
+                                            title="Đánh dấu mệnh đề này Đúng">
+                                            {{ ! empty($option['is_correct']) ? 'Đúng' : 'Sai' }}
+                                        </button>
+                                    </div>
+                                @endforeach
+                            </div>
+                            @error('options') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
                         </div>
                     @elseif ($type === 'true_false')
                         <div>

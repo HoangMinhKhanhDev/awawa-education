@@ -107,7 +107,7 @@ class StudentExamFlowTest extends TestCase
     /**
      * @return array{0: Exam, 1: ExamSection, 2: array<int, Question>}
      */
-    private function makeTrueFalseCluster(): array
+    private function makeSectionedTrueFalseExam(): array
     {
         $exam = Exam::factory()->create([
             'subject_id' => $this->subject->id,
@@ -147,9 +147,9 @@ class StudentExamFlowTest extends TestCase
         return [$exam, $section, $questions];
     }
 
-    public function test_take_shows_the_shared_passage_before_its_cluster(): void
+    public function test_take_shows_the_section_passage_before_its_questions(): void
     {
-        [$exam] = $this->makeTrueFalseCluster();
+        [$exam] = $this->makeSectionedTrueFalseExam();
         $student = $this->member($this->subject);
 
         $this->actingAs($student);
@@ -160,9 +160,9 @@ class StudentExamFlowTest extends TestCase
             ->assertSee('Rừng là lá phổi xanh của Trái Đất.');
     }
 
-    public function test_true_false_cluster_scores_each_statement_independently(): void
+    public function test_true_false_section_scores_each_statement_independently(): void
     {
-        [$exam, , $questions] = $this->makeTrueFalseCluster();
+        [$exam, , $questions] = $this->makeSectionedTrueFalseExam();
         $student = $this->member($this->subject);
 
         $this->actingAs($student);
@@ -187,7 +187,7 @@ class StudentExamFlowTest extends TestCase
 
     public function test_result_shows_the_shared_passage(): void
     {
-        [$exam, , $questions] = $this->makeTrueFalseCluster();
+        [$exam, , $questions] = $this->makeSectionedTrueFalseExam();
         $student = $this->member($this->subject);
 
         $this->actingAs($student);

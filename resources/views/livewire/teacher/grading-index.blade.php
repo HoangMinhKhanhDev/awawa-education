@@ -119,11 +119,29 @@
                             <div class="flex flex-wrap items-center gap-2">
                                 <span class="chip chip-neutral">{{ $question?->type->label() }}</span>
                                 <span class="tnum text-xs text-ink-faint dark:text-slate-500">tối đa {{ (float) $question?->points }} điểm</span>
-                                @if ($question?->type !== \App\Enums\QuestionType::Essay)
+                                @if ($question?->type === \App\Enums\QuestionType::TrueFalseCluster)
+                                    @php
+                                        $clusterSubs = array_values((array) ($answer->sub_answers ?? []));
+                                        $clusterCorrect = 0;
+                                        foreach ($question->options->sortBy('order')->values() as $clusterIndex => $clusterOption) {
+                                            $clusterGiven = \App\Enums\QuestionType::normalizeTruthy((string) ($clusterSubs[$clusterIndex] ?? ''));
+                                            if ($clusterGiven !== null && ($clusterGiven === \App\Enums\QuestionType::TRUE) === (bool) $clusterOption->is_correct) {
+                                                $clusterCorrect++;
+                                            }
+                                        }
+                                    @endphp
+                                    <span class="chip {{ $answer->is_correct ? 'chip-success' : ($clusterCorrect >= 2 ? 'chip-brand' : 'chip-signal') }}">
+                                        Đúng {{ $clusterCorrect }}/4 · {{ (float) $answer->awarded_points }}/{{ (float) $question?->points }} điểm
+                                    </span>
+                                @elseif ($question?->type !== \App\Enums\QuestionType::Essay)
                                     <span class="chip {{ $answer->is_correct ? 'chip-success' : 'chip-signal' }}">{{ $answer->is_correct ? 'Đúng' : 'Sai' }}</span>
                                 @endif
                             </div>
-                            <p class="mt-2 text-sm leading-relaxed text-ink dark:text-slate-100">{{ $question?->content }}</p>
+                            @if ($question?->type === \App\Enums\QuestionType::TrueFalseCluster)
+                                <div class="notebook-markdown mt-2 text-sm leading-relaxed text-ink dark:text-slate-100">{!! \Illuminate\Support\Str::markdown((string) $question->content, ['html_input' => 'strip', 'allow_unsafe_links' => false]) !!}</div>
+                            @else
+                                <p class="mt-2 text-sm leading-relaxed text-ink dark:text-slate-100">{{ $question?->content }}</p>
+                            @endif
 
                             <div class="mt-2.5 rounded-[10px] border border-rule bg-paper-2 p-3 dark:border-night-700 dark:bg-night-900/40">
                                 <p class="text-xs font-medium text-ink-faint dark:text-slate-500">Bài làm</p>
@@ -144,6 +162,23 @@
                                             — đáp án: {{ $question->type->trueFalseLabel($question->answer) }}
                                         </span>
                                     </p>
+                                @elseif ($question?->type === \App\Enums\QuestionType::TrueFalseCluster)
+                                    <ul class="mt-1.5 space-y-1">
+                                        @foreach ($question->options->sortBy('order')->values() as $clusterIndex => $clusterOption)
+                                            @php
+                                                $clusterGiven = \App\Enums\QuestionType::normalizeTruthy((string) ($clusterSubs[$clusterIndex] ?? ''));
+                                                $clusterOk = $clusterGiven !== null && ($clusterGiven === \App\Enums\QuestionType::TRUE) === (bool) $clusterOption->is_correct;
+                                            @endphp
+                                            <li class="text-sm {{ $clusterOk ? 'text-success dark:text-emerald-300' : 'text-signal dark:text-red-300' }}">
+                                                <span class="tnum font-semibold">{{ chr(97 + $clusterIndex) }})</span>
+                                                {{ $clusterOption->content }}
+                                                <span class="text-xs">
+                                                    — học sinh: <span class="font-medium">{{ $clusterGiven === null ? '(bỏ trống)' : ($clusterGiven === \App\Enums\QuestionType::TRUE ? 'Đúng' : 'Sai') }}</span>
+                                                    (đáp án: {{ $clusterOption->is_correct ? 'Đúng' : 'Sai' }})
+                                                </span>
+                                            </li>
+                                        @endforeach
+                                    </ul>
                                 @else
                                     <p class="mt-1 whitespace-pre-line text-sm leading-relaxed text-ink dark:text-slate-200">{{ $answer->answer_text ?: '(bỏ trống)' }}</p>
                                 @endif

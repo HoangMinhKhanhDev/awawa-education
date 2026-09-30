@@ -131,7 +131,11 @@
                         {{ $questionNo }}
                     </span>
                     <div class="min-w-0 flex-1">
-                        <p class="whitespace-pre-line leading-relaxed text-ink dark:text-slate-100">{{ $question->content }}</p>
+                        @if ($question->type === \App\Enums\QuestionType::TrueFalseCluster)
+                            <div class="notebook-markdown leading-relaxed text-ink dark:text-slate-100">{!! \Illuminate\Support\Str::markdown((string) $question->content, ['html_input' => 'strip', 'allow_unsafe_links' => false]) !!}</div>
+                        @else
+                            <p class="whitespace-pre-line leading-relaxed text-ink dark:text-slate-100">{{ $question->content }}</p>
+                        @endif
 
                         @if ($question->type === \App\Enums\QuestionType::MultipleChoice)
                             <ul class="mt-3 space-y-1.5">
@@ -147,6 +151,38 @@
                                     </li>
                                 @endforeach
                             </ul>
+                        @elseif ($question->type === \App\Enums\QuestionType::TrueFalseCluster)
+                            @php
+                                $subs = array_values((array) ($answer?->sub_answers ?? []));
+                                $clusterCorrect = 0;
+                                foreach ($question->options as $subIndex => $sub) {
+                                    if (\App\Enums\QuestionType::normalizeTruthy((string) ($subs[$subIndex] ?? '')) !== null
+                                        && (\App\Enums\QuestionType::normalizeTruthy((string) ($subs[$subIndex] ?? '')) === \App\Enums\QuestionType::TRUE) === (bool) $sub->is_correct) {
+                                        $clusterCorrect++;
+                                    }
+                                }
+                            @endphp
+                            <ul class="mt-3 space-y-1.5">
+                                @foreach ($question->options as $subIndex => $sub)
+                                    @php
+                                        $given = \App\Enums\QuestionType::normalizeTruthy((string) ($subs[$subIndex] ?? ''));
+                                        $expectedTrue = (bool) $sub->is_correct;
+                                        $subOk = $given !== null && ($given === \App\Enums\QuestionType::TRUE) === $expectedTrue;
+                                    @endphp
+                                    <li class="flex items-center gap-2 rounded-[10px] border px-3.5 py-2.5 text-sm
+                                        {{ $subOk ? 'border-success/30 bg-success-soft dark:bg-success/10' : 'border-rule dark:border-night-700' }}">
+                                        <span class="tnum w-6 shrink-0 font-semibold text-ink-faint dark:text-slate-500">{{ chr(97 + $subIndex) }})</span>
+                                        <span class="min-w-0 flex-1 text-ink dark:text-slate-200">{{ $sub->content }}</span>
+                                        <span class="tnum shrink-0 text-xs {{ $subOk ? 'font-medium text-success dark:text-emerald-300' : 'text-signal dark:text-red-300' }}">
+                                            {{ $given === null ? 'bỏ trống' : ($given === \App\Enums\QuestionType::TRUE ? 'Đúng' : 'Sai') }}{{ $subOk ? '' : ' (đáp án: '.($expectedTrue ? 'Đúng' : 'Sai').')' }}
+                                        </span>
+                                    </li>
+                                @endforeach
+                            </ul>
+                            <p class="mt-2 text-sm text-ink-soft dark:text-slate-400">
+                                Đúng {{ $clusterCorrect }}/4 mệnh đề
+                                <span class="tnum text-xs text-ink-faint dark:text-slate-500">— nấc điểm: 0 · 0.25 · 0.5 · 1.0 ({{ (float) ($examQuestion->points ?? $question->points) }} điểm)</span>
+                            </p>
                         @else
                             <div class="mt-3 rounded-[10px] border border-rule bg-paper-2 p-3.5 dark:border-night-700 dark:bg-night-900/40">
                                 <p class="text-xs font-medium text-ink-faint dark:text-slate-500">
@@ -174,6 +210,8 @@
                         <div class="mt-3 flex flex-wrap items-center gap-2">
                             @if ($pending)
                                 <span class="chip chip-warning">Chờ chấm</span>
+                            @elseif ($question->type === \App\Enums\QuestionType::TrueFalseCluster)
+                                <span class="chip {{ $clusterCorrect === 4 ? 'chip-success' : ($clusterCorrect >= 2 ? 'chip-brand' : 'chip-signal') }}">Đúng {{ $clusterCorrect }}/4</span>
                             @else
                                 <span class="chip {{ $answer?->is_correct ? 'chip-success' : 'chip-signal' }}">{{ $answer?->is_correct ? 'Đúng' : 'Sai' }}</span>
                             @endif

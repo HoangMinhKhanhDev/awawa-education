@@ -118,32 +118,63 @@
             <div class="panel">
                 <div class="flex items-center justify-between border-b border-rule px-5 py-3 dark:border-night-700">
                     <h2 class="text-[15px] font-semibold text-ink dark:text-white">Câu hỏi trong {{ mb_strtolower($exam->type->label()) }}</h2>
-                    <span class="tnum text-sm text-ink-faint dark:text-slate-500">{{ $examQuestions->count() }} câu</span>
+                    <div class="flex items-center gap-2.5">
+                        <span class="tnum text-sm text-ink-faint dark:text-slate-500">{{ $examQuestions->count() }} câu</span>
+                        <button type="button" wire:click="openClusterForm({{ (int) $pickSectionId }})" class="btn btn-outline px-3 py-1.5 text-xs">+ Cụm Đúng/Sai</button>
+                    </div>
                 </div>
 
+                @php
+                    $groupedQuestions = $examQuestions->groupBy(fn ($eq) => $eq->exam_section_id !== null ? (string) $eq->exam_section_id : 'none');
+                    $questionNo = 0;
+                @endphp
+
                 <div class="divide-y divide-rule dark:divide-night-700">
-                    @forelse ($examQuestions as $index => $examQuestion)
-                        <div class="flex items-start gap-3 px-5 py-3.5" wire:key="eq-{{ $examQuestion->id }}">
-                            <span class="tnum mt-0.5 w-5 shrink-0 text-sm font-semibold text-ink-faint dark:text-slate-500">{{ $index + 1 }}</span>
-                            <div class="min-w-0 flex-1">
-                                <p class="line-clamp-2 text-sm leading-relaxed text-ink dark:text-slate-200">{{ $examQuestion->question?->content }}</p>
-                                <p class="mt-1 flex flex-wrap items-center gap-x-2.5 text-xs text-ink-faint dark:text-slate-500">
-                                    <span>{{ $examQuestion->question?->type->label() }}</span>
-                                    @if ($examQuestion->section)<span>{{ $examQuestion->section->title }}</span>@endif
-                                </p>
+                    @forelse ($sections as $section)
+                        @php $sectionItems = $groupedQuestions->get((string) $section->id, collect()); @endphp
+                        <div wire:key="group-{{ $section->id }}">
+                            <div class="flex flex-wrap items-center gap-2 bg-paper-2/60 px-5 py-2.5 dark:bg-white/[0.03]">
+                                <p class="min-w-0 flex-1 text-sm font-semibold text-ink dark:text-white">{{ $section->title }}</p>
+                                <span class="tnum text-xs text-ink-faint dark:text-slate-500">{{ $sectionItems->count() }} câu</span>
+                                <button type="button" wire:click="openClusterForm({{ $section->id }})" class="btn btn-outline px-2.5 py-1.5 text-xs">+ Cụm Đúng/Sai</button>
                             </div>
-                            <div class="flex shrink-0 items-center gap-1">
-                                <input type="number" step="0.25" min="0" class="input w-16 px-2 py-1 text-xs tnum"
-                                    value="{{ (float) ($examQuestion->points ?? $examQuestion->question?->points) }}"
-                                    wire:change="setQuestionPoints({{ $examQuestion->id }}, $event.target.value)" title="Điểm">
-                                <button type="button" wire:click="moveQuestion({{ $examQuestion->id }}, 'up')" class="rounded-[10px] px-1.5 py-1 text-ink-faint hover:bg-paper-2 dark:hover:bg-white/5" title="Lên">↑</button>
-                                <button type="button" wire:click="moveQuestion({{ $examQuestion->id }}, 'down')" class="rounded-[10px] px-1.5 py-1 text-ink-faint hover:bg-paper-2 dark:hover:bg-white/5" title="Xuống">↓</button>
-                                <button type="button" wire:click="removeQuestion({{ $examQuestion->id }})" class="rounded-[10px] px-1.5 py-1 text-signal hover:bg-signal-soft dark:hover:bg-red-500/10" title="Gỡ">✕</button>
+                            <div class="px-5 pt-1">
+                                <textarea rows="1" class="input text-xs" wire:model.blur="sectionInstructions.{{ $section->id }}"
+                                    placeholder="Hướng dẫn làm phần, VD: Phần II — đọc đoạn và xác định đúng/sai các nhận định." aria-label="Hướng dẫn {{ $section->title }}"></textarea>
                             </div>
+                            @if ($sectionItems->isEmpty())
+                                <p class="empty px-5 pb-4">Chưa có câu hỏi trong phần này.</p>
+                            @else
+                                <div class="mt-1 divide-y divide-rule border-t border-rule dark:divide-night-700 dark:border-night-700">
+                                    @foreach ($sectionItems as $examQuestion)
+                                        @php $questionNo++; @endphp
+                                        @include('livewire.teacher.assessment-builder-question', ['examQuestion' => $examQuestion, 'questionNo' => $questionNo])
+                                    @endforeach
+                                </div>
+                            @endif
                         </div>
                     @empty
-                        <p class="empty">Chưa có câu hỏi. Chọn từ ngân hàng ở cột bên phải.</p>
+                        {{-- Không có phần nào — câu lẻ (nếu có) nằm ở khối "Không xếp phần" bên dưới. --}}
                     @endforelse
+
+                    @php $orphanItems = $groupedQuestions->get('none', collect()); @endphp
+                    @if ($orphanItems->isNotEmpty())
+                        <div wire:key="group-none">
+                            <div class="bg-paper-2/60 px-5 py-2.5 dark:bg-white/[0.03]">
+                                <p class="text-sm font-semibold text-ink dark:text-white">Không xếp phần</p>
+                            </div>
+                            <div class="divide-y divide-rule dark:divide-night-700">
+                                @foreach ($orphanItems as $examQuestion)
+                                    @php $questionNo++; @endphp
+                                    @include('livewire.teacher.assessment-builder-question', ['examQuestion' => $examQuestion, 'questionNo' => $questionNo])
+                                @endforeach
+                            </div>
+                        </div>
+                    @endif
+
+                    @if ($examQuestions->isEmpty())
+                        <p class="empty">Chưa có câu hỏi. Chọn từ ngân hàng ở cột bên phải hoặc tạo cụm Đúng/Sai.</p>
+                    @endif
                 </div>
             </div>
         </div>
@@ -212,4 +243,97 @@
             </div>
         </div>
     </div>
+
+    @if ($showClusterForm)
+        <div class="fixed inset-0 z-50 flex items-end justify-center bg-night-900/60 p-0 sm:items-center sm:p-4"
+            x-data x-on:keydown.escape.window="$wire.closeClusterForm()">
+            <div class="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-[14px] bg-white p-6 sm:rounded-[14px] dark:bg-night-800" @click.stop>
+                <div class="mb-5 flex items-center justify-between">
+                    <div>
+                        <h2 class="text-lg font-semibold text-ink dark:text-white">{{ $clusterExamQuestionId !== null ? 'Sửa cụm Đúng/Sai' : 'Tạo cụm Đúng/Sai' }}</h2>
+                        <p class="mt-0.5 text-xs text-ink-faint dark:text-slate-500">Một cụm = đoạn ngữ cảnh chung + 4 mệnh đề a)–d), chấm theo nấc BGD.</p>
+                    </div>
+                    <button type="button" wire:click="closeClusterForm" class="rounded-[10px] p-1.5 text-ink-faint hover:bg-paper-2 dark:hover:bg-white/5" aria-label="Đóng">
+                        <x-icon name="x" class="h-5 w-5" />
+                    </button>
+                </div>
+
+                <form wire:submit="saveCluster" class="space-y-4">
+                    <div class="grid gap-4 sm:grid-cols-3">
+                        <div class="sm:col-span-2">
+                            <label class="label" for="bc-section">Xếp vào phần</label>
+                            <select id="bc-section" class="input" wire:model="clusterSectionId">
+                                <option value="0">Không xếp phần</option>
+                                @foreach ($sections as $section)
+                                    <option value="{{ $section->id }}">{{ $section->title }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div>
+                            <label class="label" for="bc-points">Điểm</label>
+                            <input id="bc-points" type="number" step="0.25" min="0.25" class="input tnum" wire:model="clusterPoints">
+                            @error('clusterPoints') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="label" for="bc-content">Đoạn ngữ cảnh chung</label>
+                        <textarea id="bc-content" rows="3" class="input" wire:model="clusterContent"
+                            placeholder="Dán đoạn thông tin, bảng số liệu… dùng chung cho cả 4 mệnh đề (hỗ trợ Markdown)."></textarea>
+                        @error('clusterContent') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
+                    </div>
+
+                    <div>
+                        <p class="label mb-2">4 mệnh đề — bấm nút để đánh dấu Đúng (2 đúng ¼ · 3 đúng ½ · 4 đúng trọn điểm)</p>
+                        <div class="space-y-2">
+                            @foreach ($clusterStatements as $index => $statement)
+                                <div class="flex items-center gap-2" wire:key="bc-statement-{{ $index }}">
+                                    <span class="tnum w-5 shrink-0 text-sm font-semibold text-ink-faint dark:text-slate-500">{{ chr(97 + $index) }})</span>
+                                    <input type="text" class="input" wire:model="clusterStatements.{{ $index }}.content"
+                                        placeholder="Mệnh đề {{ chr(97 + $index) }}" aria-label="Mệnh đề {{ chr(97 + $index) }}">
+                                    <button type="button" wire:click="toggleClusterTruth({{ $index }})"
+                                        class="shrink-0 rounded-[10px] border px-2.5 py-2 text-xs font-semibold transition-colors {{ $statement['is_correct'] ? 'border-success bg-success text-white' : 'border-rule-strong text-ink-faint hover:bg-paper-2 dark:border-night-700 dark:text-slate-400' }}"
+                                        title="Đánh dấu mệnh đề này Đúng">
+                                        {{ $statement['is_correct'] ? 'Đúng' : 'Sai' }}
+                                    </button>
+                                </div>
+                                @error('clusterStatements.'.$index.'.content')
+                                    <p class="ml-7 mt-1 text-[13px] text-signal dark:text-red-400">{{ $message }}</p>
+                                @enderror
+                            @endforeach
+                        </div>
+                        @error('clusterStatements') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
+                    </div>
+
+                    <div class="grid gap-4 sm:grid-cols-3">
+                        <div>
+                            <label class="label" for="bc-difficulty">Độ khó</label>
+                            <select id="bc-difficulty" class="input" wire:model="clusterDifficulty">
+                                <option value="easy">Dễ</option>
+                                <option value="medium">Trung bình</option>
+                                <option value="hard">Khó</option>
+                            </select>
+                        </div>
+                        <div class="sm:col-span-2">
+                            <label class="label" for="bc-topic">Chủ đề</label>
+                            <input id="bc-topic" type="text" class="input" wire:model="clusterTopic" placeholder="VD: Hàm số">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="label" for="bc-explanation">Giải thích / đáp án gợi ý</label>
+                        <textarea id="bc-explanation" rows="2" class="input" wire:model="clusterExplanation"></textarea>
+                    </div>
+
+                    <div class="flex justify-end gap-2 pt-1">
+                        <button type="button" wire:click="closeClusterForm" class="btn btn-ghost">Hủy</button>
+                        <button type="submit" class="btn btn-primary" wire:loading.attr="disabled" wire:target="saveCluster">
+                            <span wire:loading.remove wire:target="saveCluster">Lưu cụm</span>
+                            <span wire:loading wire:target="saveCluster">Đang lưu…</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    @endif
 </div>

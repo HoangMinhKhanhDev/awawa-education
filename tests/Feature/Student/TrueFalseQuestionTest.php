@@ -264,4 +264,148 @@ class TrueFalseQuestionTest extends TestCase
             AttemptAnswer::query()->firstOrFail()->answer_text,
         );
     }
+
+    /**
+     * @return array{0: Exam, 1: Question}
+     */
+    private function trueFalseCluster(array $truths = [true, true, false, false]): array
+    {
+        $exam = Exam::factory()->create([
+            'subject_id' => $this->subject->id,
+            'type' => ExamType::Exam,
+            'status' => ExamStatus::Published,
+            'total_points' => 1,
+        ]);
+
+        $question = Question::factory()->create([
+            'subject_id' => $this->subject->id,
+            'type' => QuestionType::TrueFalseCluster,
+            'content' => 'Rừng là lá phổi xanh của Trái Đất.',
+            'points' => 1,
+        ]);
+
+        foreach ($truths as $index => $truth) {
+            $question->options()->create([
+                'content' => 'Mệnh đề '.chr(97 + $index),
+                'is_correct' => $truth,
+                'order' => $index,
+            ]);
+        }
+
+        ExamQuestion::create(['exam_id' => $exam->id, 'question_id' => $question->id, 'order' => 0, 'points' => 1]);
+
+        return [$exam, $question];
+    }
+
+    /**
+     * @param  array<int, string|null>  $subs
+     */
+    private function gradeCluster(Exam $exam, Question $question, User $student, array $subs): float
+    {
+        $attempt = ExamAttempt::create([
+            'subject_id' => $this->subject->id,
+            'exam_id' => $exam->id,
+            'student_id' => $student->id,
+            'status' => AttemptStatus::InProgress,
+            'started_at' => now(),
+            'max_score' => 1,
+            'attempt_no' => ExamAttempt::query()->where('exam_id', $exam->id)->where('student_id', $student->id)->count() + 1,
+        ]);
+
+        AttemptAnswer::create([
+            'attempt_id' => $attempt->id,
+            'question_id' => $question->id,
+            'sub_answers' => $subs,
+        ]);
+
+        app(GradingService::class)->gradeAttempt($attempt);
+
+        return (float) $attempt->fresh()->score;
+    }
+
+    public function test_cluster_follows_the_bgd_partial_scoring_table(): void
+    {
+        [$exam, $question] = $this->trueFalseCluster();
+        $student = $this->member();
+
+        // Đáp án đúng: true, true, false, false.
+        $this->assertSame(1.0, $this->gradeCluster($exam, $question, $student, ['true', 'true', 'false', 'false']));
+        $this->assertSame(0.5, $this->gradeCluster($exam, $question, $student, ['true', 'true', 'false', 'true']));
+        $this->assertSame(0.25, $this->gradeCluster($exam, $question, $student, ['true', 'true', 'true', 'true']));
+        $this->assertSame(0.0, $this->gradeCluster($exam, $question, $student, ['true', 'false', 'true', 'true']));
+        $this->assertSame(0.0, $this->gradeCluster($exam, $question, $student, ['false', 'false', 'true', 'true']));
+
+        // Bỏ trống 1 mệnh đề tính là sai: đúng 3/4 vẫn 0.5.
+        $this->assertSame(0.5, $this->gradeCluster($exam, $question, $student, ['true', 'true', 'false', null]));
+    }
+
+    public function test_student_answers_a_cluster_through_take_and_sees_it_in_result(): void
+    {
+        [$exam, $question] = $this->trueFalseCluster();
+        $student = $this->member();
+
+        $this->actingAs($student);
+        app(SubjectContext::class)->set($this->subject->id);
+
+        $component = Livewire::test(Take::class, ['exam' => $exam])
+            ->assertSee('Rừng là lá phổi xanh')
+            ->assertSee('Mệnh đề a');
+
+        foreach (['true', 'true', 'false', 'false'] as $index => $value) {
+            $component->set('answers.'.$question->id.'.subs.'.$index, $value);
+        }
+
+        $component->call('submit')->assertRedirect(route('student.result', $exam));
+
+        $this->assertSame(1.0, (float) ExamAttempt::query()->firstOrFail()->score);
+
+        Livewire::test(Result::class, ['exam' => $exam])
+            ->assertOk()
+            ->assertSee('Rừng là lá phổi xanh')
+            ->assertSee('Đúng 4/4 mệnh đề');
+    }
+
+    public function test_teacher_can_create_a_cluster_manually(): void
+    {
+        $teacher = User::factory()->teacher($this->subject)->create();
+        $this->actingAs($teacher);
+        app(SubjectContext::class)->set($this->subject->id);
+
+        $component = Livewire::test(QuestionsIndex::class)
+            ->call('openCreate')
+            ->set('type', QuestionType::TrueFalseCluster->value)
+            ->set('content', 'Đoạn ngữ cảnh chung.')
+            ->set('points', 1);
+
+        foreach (['Mệnh đề a', 'Mệnh đề b', 'Mệnh đề c', 'Mệnh đề d'] as $index => $content) {
+            $component->set('options.'.$index.'.content', $content);
+        }
+
+        $component->call('markTruth', 0)->call('markTruth', 1)->call('save')->assertHasNoErrors();
+
+        $question = Question::query()->firstOrFail();
+
+        $this->assertSame(QuestionType::TrueFalseCluster, $question->type);
+        $this->assertSame(
+            [true, true, false, false],
+            $question->options()->orderBy('order')->pluck('is_correct')->map(fn ($value): bool => (bool) $value)->all(),
+        );
+    }
+
+    public function test_cluster_requires_exactly_four_statements(): void
+    {
+        $teacher = User::factory()->teacher($this->subject)->create();
+        $this->actingAs($teacher);
+        app(SubjectContext::class)->set($this->subject->id);
+
+        Livewire::test(QuestionsIndex::class)
+            ->call('openCreate')
+            ->set('type', QuestionType::TrueFalseCluster->value)
+            ->set('content', 'Đoạn ngữ cảnh chung.')
+            ->set('options.0.content', 'Chỉ một mệnh đề')
+            ->call('save')
+            ->assertHasErrors(['options']);
+
+        $this->assertDatabaseCount('questions', 0);
+    }
 }

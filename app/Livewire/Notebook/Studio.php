@@ -3,6 +3,7 @@
 namespace App\Livewire\Notebook;
 
 use App\Enums\ArtifactType;
+use App\Enums\QuestionType;
 use App\Enums\SubjectFeature;
 use App\Jobs\GenerateArtifact;
 use App\Models\Exam;
@@ -13,9 +14,12 @@ use App\Services\Ai\AiManager;
 use App\Services\Notebook\ArtifactGenerator;
 use App\Services\Notebook\ArtifactPublisher;
 use App\Support\BackgroundProcess;
+use App\Support\TrueFalseClusterMerger;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
 
@@ -371,6 +375,7 @@ class Studio extends Component
     {
         $this->guard();
         $artifact = $this->notebook()->artifacts()->findOrFail($id);
+        $this->convertLegacyTrueFalse($artifact);
         $this->previewId = $artifact->id;
         $this->draftTitle = $artifact->title;
         $this->draftText = (string) $artifact->text_content;
@@ -455,6 +460,20 @@ class Studio extends Component
     }
 
     /**
+     * Bản nháp cũ lưu từng câu đúng/sai rời rạc: gom thành chùm 4 mệnh đề
+     * ngay khi mở để giáo viên thấy và sửa đúng dạng BGD.
+     */
+    protected function convertLegacyTrueFalse(NotebookArtifact $artifact): void
+    {
+        $payload = $artifact->payload ?? [];
+        $converted = TrueFalseClusterMerger::convertPayload($payload);
+
+        if ($converted !== $payload) {
+            $artifact->update(['payload' => $converted]);
+        }
+    }
+
+    /**
      * @return array<string, mixed>
      */
     protected function prepareDraftPayload(NotebookArtifact $artifact): array
@@ -462,19 +481,51 @@ class Studio extends Component
         $payload = $artifact->payload ?? [];
 
         foreach ($payload['items'] ?? [] as &$item) {
-            $item['included'] ??= true;
+            if (is_array($item)) {
+                $this->prepareDraftQuestion($item);
+            }
         }
         unset($item);
 
         foreach ($payload['sections'] ?? [] as &$section) {
+            if (! is_array($section)) {
+                continue;
+            }
+
             foreach ($section['questions'] ?? [] as &$question) {
-                $question['included'] ??= true;
+                if (is_array($question)) {
+                    $this->prepareDraftQuestion($question);
+                }
             }
             unset($question);
         }
         unset($section);
 
         return $payload;
+    }
+
+    /**
+     * Chuẩn bị một câu cho editor: cờ "đưa vào" và đúng 4 dòng mệnh đề cho
+     * chùm đúng/sai (dữ liệu cũ có thể thiếu, editor luôn mở đủ 4 dòng).
+     */
+    protected function prepareDraftQuestion(array &$question): void
+    {
+        $question['included'] ??= true;
+
+        if (($question['type'] ?? null) !== QuestionType::TrueFalseCluster->value) {
+            return;
+        }
+
+        $options = array_slice(array_values(array_filter((array) ($question['options'] ?? []), 'is_array')), 0, 4);
+
+        while (count($options) < 4) {
+            $options[] = ['content' => '', 'is_correct' => false];
+        }
+
+        $question['options'] = array_map(fn (array $option): array => [
+            'content' => (string) ($option['content'] ?? ''),
+            'is_correct' => (bool) ($option['is_correct'] ?? false),
+        ], $options);
     }
 
     /**
@@ -487,7 +538,7 @@ class Studio extends Component
                 'draftPayload.items' => ['required', 'array', 'min:1', 'max:30'],
                 'draftPayload.items.*' => ['array'],
                 'draftPayload.items.*.included' => ['nullable', 'boolean'],
-                'draftPayload.items.*.type' => ['required', 'in:multiple_choice,fill_blank,essay'],
+                'draftPayload.items.*.type' => ['required', 'in:multiple_choice,true_false,true_false_cluster,fill_blank,essay'],
                 'draftPayload.items.*.content' => ['required', 'string', 'max:5000'],
                 'draftPayload.items.*.answer' => ['nullable', 'string', 'max:5000'],
                 'draftPayload.items.*.explanation' => ['nullable', 'string', 'max:5000'],
@@ -514,7 +565,7 @@ class Studio extends Component
                 'draftPayload.sections.*.questions.*' => ['array'],
                 'draftPayload.sections.*.questions.*.included' => ['nullable', 'boolean'],
                 'draftPayload.sections.*.questions.*.content' => ['required', 'string', 'max:5000'],
-                'draftPayload.sections.*.questions.*.type' => ['required', 'in:multiple_choice,fill_blank,essay'],
+                'draftPayload.sections.*.questions.*.type' => ['required', 'in:multiple_choice,true_false,true_false_cluster,fill_blank,essay'],
                 'draftPayload.sections.*.questions.*.answer' => ['nullable', 'string', 'max:5000'],
                 'draftPayload.sections.*.questions.*.explanation' => ['nullable', 'string', 'max:5000'],
                 'draftPayload.sections.*.questions.*.difficulty' => ['required', 'in:easy,medium,hard'],
@@ -542,8 +593,43 @@ class Studio extends Component
         };
 
         $this->validate($rules);
+        $this->assertClusterStatements($this->draftPayload);
 
         return $this->normalizeDraftPayload($type, $this->draftPayload);
+    }
+
+    /**
+     * Chùm đúng/sai thiếu mệnh đề sẽ chấm 0 cho cả lớp, chặn ngay khi lưu
+     * nháp thay vì để tới lúc đề tới tay học sinh.
+     */
+    protected function assertClusterStatements(array $payload): void
+    {
+        $questions = array_values(array_filter((array) ($payload['items'] ?? []), 'is_array'));
+
+        foreach ((array) ($payload['sections'] ?? []) as $section) {
+            foreach ((array) (is_array($section) ? ($section['questions'] ?? []) : []) as $question) {
+                if (is_array($question)) {
+                    $questions[] = $question;
+                }
+            }
+        }
+
+        foreach ($questions as $question) {
+            if (($question['type'] ?? null) !== QuestionType::TrueFalseCluster->value) {
+                continue;
+            }
+
+            $statements = array_filter(
+                (array) ($question['options'] ?? []),
+                fn ($option): bool => is_array($option) && filled($option['content'] ?? null),
+            );
+
+            if (count($statements) !== 4) {
+                throw ValidationException::withMessages([
+                    'draftPayload' => 'Chùm đúng/sai “'.Str::limit(trim((string) ($question['content'] ?? '')), 60, '…').'” cần đúng 4 mệnh đề có nội dung.',
+                ]);
+            }
+        }
     }
 
     /**
@@ -560,7 +646,7 @@ class Studio extends Component
                 'content' => trim((string) ($option['content'] ?? '')),
                 'is_correct' => (bool) ($option['is_correct'] ?? false),
             ], array_filter((array) ($item['options'] ?? []), fn (array $option): bool => filled($option['content'] ?? null)))),
-            'answer' => trim((string) ($item['answer'] ?? '')),
+            'answer' => ($item['type'] ?? '') === QuestionType::TrueFalseCluster->value ? '' : trim((string) ($item['answer'] ?? '')),
             'explanation' => trim((string) ($item['explanation'] ?? '')),
             'difficulty' => (string) $item['difficulty'],
             'points' => (float) $item['points'],

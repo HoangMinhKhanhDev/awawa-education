@@ -1,5 +1,9 @@
 @php
-    $answered = collect($answers)->filter(fn ($a) => ! empty($a['selected']) || filled($a['text'] ?? null))->count();
+    // Chùm đúng/sai trả lời qua "subs": chọn ít nhất một mệnh đề cũng tính
+    // là câu đã trả lời, nếu không ô tiến độ sẽ luôn thiếu phần này.
+    $answered = collect($answers)->filter(fn ($a) => ! empty($a['selected'])
+        || filled($a['text'] ?? null)
+        || collect($a['subs'] ?? [])->filter()->isNotEmpty())->count();
     $total = $questionGroups->sum(fn ($group) => $group['items']->count());
     $percent = $total > 0 ? (int) round($answered / $total * 100) : 0;
     $questionNo = 0;
@@ -101,7 +105,9 @@
                             <span class="chip chip-neutral">{{ $question->type->label() }}</span>
                             <span class="tnum text-xs text-ink-faint dark:text-slate-500">{{ (float) ($examQuestion->points ?? $question->points) }} điểm</span>
                         </div>
-                        <p class="exam-protected mt-2 whitespace-pre-line leading-relaxed text-ink dark:text-slate-100">{{ $question->content }}</p>
+                        @unless ($question->type === \App\Enums\QuestionType::TrueFalseCluster)
+                            <p class="exam-protected mt-2 whitespace-pre-line leading-relaxed text-ink dark:text-slate-100">{{ $question->content }}</p>
+                        @endunless
 
                         @if ($question->type === \App\Enums\QuestionType::MultipleChoice)
                             <div class="mt-3 space-y-2">
@@ -115,6 +121,31 @@
                                     </label>
                                 @endforeach
                             </div>
+                        @elseif ($question->type === \App\Enums\QuestionType::TrueFalseCluster)
+                            <div class="exam-protected notebook-markdown mt-2 leading-relaxed text-ink dark:text-slate-100">{!! \Illuminate\Support\Str::markdown((string) $question->content, ['html_input' => 'strip', 'allow_unsafe_links' => false]) !!}</div>
+                            <div class="mt-3 space-y-2">
+                                @foreach ($question->options as $subIndex => $sub)
+                                    <div class="flex flex-wrap items-center gap-2 rounded-[10px] border border-rule px-3.5 py-2.5 text-sm dark:border-night-700"
+                                        wire:key="cluster-{{ $question->id }}-{{ $subIndex }}">
+                                        <span class="tnum w-6 shrink-0 font-semibold text-ink-faint dark:text-slate-500">{{ chr(97 + $subIndex) }})</span>
+                                        <span class="exam-protected min-w-0 flex-1 text-ink dark:text-slate-200">{{ $sub->content }}</span>
+                                        <span class="flex shrink-0 gap-1.5">
+                                            @foreach (['true' => 'Đúng', 'false' => 'Sai'] as $tfValue => $tfLabel)
+                                                <label class="flex cursor-pointer items-center gap-1.5 rounded-[8px] border border-rule px-2.5 py-1.5 text-xs transition-colors hover:bg-paper-2 has-[input:checked]:border-brand-500 has-[input:checked]:bg-brand-50 dark:border-night-700 dark:hover:bg-white/5 dark:has-[input:checked]:border-brand-400 dark:has-[input:checked]:bg-brand-500/10">
+                                                    <input type="radio" name="cluster-{{ $question->id }}-{{ $subIndex }}" value="{{ $tfValue }}"
+                                                        wire:model="answers.{{ $question->id }}.subs.{{ $subIndex }}"
+                                                        class="h-3.5 w-3.5 border-rule-strong text-brand-600 focus:ring-brand-500 dark:border-night-700">
+                                                    <span class="text-ink dark:text-slate-200">{{ $tfLabel }}</span>
+                                                </label>
+                                            @endforeach
+                                        </span>
+                                    </div>
+                                @endforeach
+                            </div>
+                            <p class="mt-2 text-xs text-ink-faint dark:text-slate-500">
+                                Đã chọn {{ collect($answers[$question->id]['subs'] ?? [])->filter()->count() }}/4 mệnh đề
+                                — chấm theo nấc: 2 đúng ¼ · 3 đúng ½ · 4 đúng trọn điểm.
+                            </p>
                         @elseif ($question->type === \App\Enums\QuestionType::TrueFalse)
                             <div class="mt-3 grid gap-2 sm:grid-cols-2">
                                 @foreach ($question->type->trueFalseChoices() as $tfValue => $tfLabel)

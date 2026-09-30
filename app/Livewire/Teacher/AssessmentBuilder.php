@@ -2,13 +2,16 @@
 
 namespace App\Livewire\Teacher;
 
+use App\Enums\Difficulty;
 use App\Enums\ExamStatus;
 use App\Enums\ExamType;
+use App\Enums\QuestionType;
 use App\Enums\SubjectFeature;
 use App\Models\Exam;
 use App\Models\ExamQuestion;
 use App\Models\ExamSection;
 use App\Models\Question;
+use App\Models\QuestionOption;
 use App\Services\NotificationDispatcher;
 use App\Support\SubjectContext;
 use Illuminate\Contracts\View\View;
@@ -47,6 +50,36 @@ class AssessmentBuilder extends Component
      * @var array<int|string, string>
      */
     public array $sectionTitles = [];
+
+    /**
+     * Hướng dẫn từng phần (cũng là ngữ cảnh chung của cụm Đúng/Sai cũ).
+     *
+     * @var array<int|string, string>
+     */
+    public array $sectionInstructions = [];
+
+    public bool $showClusterForm = false;
+
+    public ?int $clusterExamQuestionId = null;
+
+    public ?int $clusterQuestionId = null;
+
+    public int $clusterSectionId = 0;
+
+    public string $clusterContent = '';
+
+    public string $clusterExplanation = '';
+
+    public string $clusterTopic = '';
+
+    public string $clusterDifficulty = 'medium';
+
+    public float $clusterPoints = 1;
+
+    /**
+     * @var array<int, array{content: string, is_correct: bool}>
+     */
+    public array $clusterStatements = [];
 
     public string $questionSearch = '';
 
@@ -102,7 +135,12 @@ class AssessmentBuilder extends Component
 
     protected function loadSections(): void
     {
-        $this->sectionTitles = $this->exam()->sections->pluck('title', 'id')->all();
+        $sections = $this->exam()->sections()->get();
+
+        $this->sectionTitles = $sections->pluck('title', 'id')->all();
+        $this->sectionInstructions = $sections
+            ->mapWithKeys(fn (ExamSection $section): array => [$section->id => (string) $section->instructions])
+            ->all();
     }
 
     public function saveMeta(): void
@@ -156,6 +194,19 @@ class AssessmentBuilder extends Component
                 ->where('exam_id', $exam->id)
                 ->whereKey($id)
                 ->update(['title' => trim((string) $title) ?: 'Phần']);
+        }
+    }
+
+    public function updatedSectionInstructions(): void
+    {
+        $exam = $this->exam();
+        Gate::authorize('update', $exam);
+
+        foreach ($this->sectionInstructions as $id => $instructions) {
+            ExamSection::query()
+                ->where('exam_id', $exam->id)
+                ->whereKey($id)
+                ->update(['instructions' => trim((string) $instructions) ?: null]);
         }
     }
 
@@ -329,6 +380,182 @@ class AssessmentBuilder extends Component
         session()->flash('status', 'Đã cập nhật trạng thái.');
     }
 
+    /**
+     * Mở form tạo cụm Đúng/Sai mới, xếp sẵn vào phần được chọn.
+     */
+    public function openClusterForm(int $sectionId): void
+    {
+        Gate::authorize('update', $this->exam());
+
+        $this->resetClusterForm();
+        $this->clusterSectionId = $this->exam()->sections()->whereKey($sectionId)->exists() ? $sectionId : 0;
+        $this->showClusterForm = true;
+    }
+
+    /**
+     * Mở form sửa một cụm Đúng/Sai đã có trong đề.
+     */
+    public function editCluster(int $examQuestionId): void
+    {
+        $exam = $this->exam();
+        Gate::authorize('update', $exam);
+
+        $examQuestion = $exam->examQuestions()->with('question.options')->findOrFail($examQuestionId);
+        $question = $examQuestion->question;
+
+        if ($question === null || $question->type !== QuestionType::TrueFalseCluster) {
+            return;
+        }
+
+        $this->resetClusterForm();
+        $this->clusterExamQuestionId = $examQuestion->id;
+        $this->clusterQuestionId = $question->id;
+        $this->clusterSectionId = (int) ($examQuestion->exam_section_id ?? 0);
+        $this->clusterContent = $question->content;
+        $this->clusterExplanation = (string) $question->explanation;
+        $this->clusterTopic = (string) $question->topic;
+        $this->clusterDifficulty = $question->difficulty->value;
+        $this->clusterPoints = (float) ($examQuestion->points ?? $question->points);
+        $this->clusterStatements = $this->padClusterStatements(
+            $question->options->sortBy('order')->values()->map(fn (QuestionOption $option): array => [
+                'content' => $option->content,
+                'is_correct' => (bool) $option->is_correct,
+            ])->all(),
+        );
+        $this->showClusterForm = true;
+    }
+
+    public function closeClusterForm(): void
+    {
+        $this->showClusterForm = false;
+        $this->resetClusterForm();
+    }
+
+    public function toggleClusterTruth(int $index): void
+    {
+        if (! isset($this->clusterStatements[$index])) {
+            return;
+        }
+
+        $this->clusterStatements[$index]['is_correct'] = ! $this->clusterStatements[$index]['is_correct'];
+    }
+
+    public function saveCluster(): void
+    {
+        $exam = $this->exam();
+        Gate::authorize('update', $exam);
+
+        $this->validate([
+            'clusterContent' => ['required', 'string', 'max:5000'],
+            'clusterDifficulty' => ['required', 'in:easy,medium,hard'],
+            'clusterPoints' => ['required', 'numeric', 'min:0.25', 'max:100'],
+            'clusterStatements' => ['required', 'array', 'size:4'],
+            'clusterStatements.*.content' => ['required', 'string', 'max:1000'],
+            'clusterStatements.*.is_correct' => ['required', 'boolean'],
+            'clusterExplanation' => ['nullable', 'string', 'max:5000'],
+            'clusterTopic' => ['nullable', 'string', 'max:120'],
+        ], [
+            'clusterContent.required' => 'Nhập đoạn ngữ cảnh chung cho cả 4 mệnh đề.',
+            'clusterStatements.size' => 'Chùm đúng/sai chuẩn BGD cần đúng 4 mệnh đề.',
+            'clusterStatements.*.content.required' => 'Ghi đủ nội dung cả 4 mệnh đề.',
+        ]);
+
+        $sectionId = $exam->sections()->whereKey($this->clusterSectionId)->exists()
+            ? $this->clusterSectionId
+            : null;
+
+        $attributes = [
+            'type' => QuestionType::TrueFalseCluster,
+            'content' => trim($this->clusterContent),
+            'answer' => null,
+            'explanation' => trim($this->clusterExplanation) ?: null,
+            'difficulty' => Difficulty::from($this->clusterDifficulty),
+            'points' => $this->clusterPoints,
+            'topic' => trim($this->clusterTopic) ?: null,
+            'is_active' => true,
+        ];
+
+        if ($this->clusterQuestionId !== null) {
+            $question = Question::query()->findOrFail($this->clusterQuestionId);
+            Gate::authorize('update', $question);
+            $question->update($attributes);
+        } else {
+            Gate::authorize('create', Question::class);
+
+            $question = Question::create($attributes + [
+                'subject_id' => app(SubjectContext::class)->id() ?? auth()->user()?->subject_id,
+                'created_by' => auth()->id(),
+            ]);
+        }
+
+        $question->options()->delete();
+
+        foreach ($this->clusterStatements as $index => $statement) {
+            $question->options()->create([
+                'content' => trim((string) $statement['content']),
+                'is_correct' => (bool) ($statement['is_correct'] ?? false),
+                'order' => $index,
+            ]);
+        }
+
+        if ($this->clusterExamQuestionId !== null) {
+            ExamQuestion::query()
+                ->where('exam_id', $exam->id)
+                ->whereKey($this->clusterExamQuestionId)
+                ->update([
+                    'exam_section_id' => $sectionId,
+                    'points' => $this->clusterPoints,
+                ]);
+        } else {
+            $exam->examQuestions()->create([
+                'question_id' => $question->id,
+                'exam_section_id' => $sectionId,
+                'order' => (int) $exam->examQuestions()->max('order') + 1,
+                'points' => $this->clusterPoints,
+            ]);
+        }
+
+        $exam->refreshTotalPoints();
+
+        $this->closeClusterForm();
+
+        session()->flash('status', 'Đã lưu cụm Đúng/Sai.');
+    }
+
+    protected function resetClusterForm(): void
+    {
+        $this->clusterExamQuestionId = null;
+        $this->clusterQuestionId = null;
+        $this->clusterSectionId = 0;
+        $this->clusterContent = '';
+        $this->clusterExplanation = '';
+        $this->clusterTopic = '';
+        $this->clusterDifficulty = Difficulty::Medium->value;
+        $this->clusterPoints = 1;
+        $this->clusterStatements = $this->padClusterStatements([]);
+        $this->resetErrorBag();
+    }
+
+    /**
+     * Editor luôn mở đúng 4 dòng mệnh đề: dữ liệu cũ có thể thiếu hoặc thừa.
+     *
+     * @param  array<int, mixed>  $statements
+     * @return array<int, array{content: string, is_correct: bool}>
+     */
+    protected function padClusterStatements(array $statements): array
+    {
+        $statements = array_slice(array_values(array_filter($statements, 'is_array')), 0, 4);
+
+        while (count($statements) < 4) {
+            $statements[] = ['content' => '', 'is_correct' => false];
+        }
+
+        return array_map(fn (array $statement): array => [
+            'content' => (string) ($statement['content'] ?? ''),
+            'is_correct' => (bool) ($statement['is_correct'] ?? false),
+        ], $statements);
+    }
+
     public function render(): View
     {
         $exam = $this->exam();
@@ -336,7 +563,7 @@ class AssessmentBuilder extends Component
         return view('livewire.teacher.assessment-builder', [
             'exam' => $exam,
             'sections' => $exam->sections()->get(),
-            'examQuestions' => $exam->examQuestions()->with(['question', 'section'])->get(),
+            'examQuestions' => $exam->examQuestions()->with(['question.options', 'section'])->get(),
             'bankQuestions' => Question::query()
                 ->active()
                 ->when($this->questionSearch !== '', fn ($query) => $query->where('content', 'like', '%'.$this->questionSearch.'%'))

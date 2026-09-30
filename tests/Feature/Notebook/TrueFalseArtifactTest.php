@@ -5,6 +5,7 @@ namespace Tests\Feature\Notebook;
 use App\Enums\ArtifactType;
 use App\Enums\QuestionType;
 use App\Models\AiProvider;
+use App\Models\Exam;
 use App\Models\Notebook;
 use App\Models\NotebookArtifact;
 use App\Models\Question;
@@ -226,5 +227,76 @@ class TrueFalseArtifactTest extends TestCase
         $this->assertSame(QuestionType::TRUE, $question->answer);
         $this->assertSame(0, $question->options()->count());
         $this->assertSame('Vũ trụ', $question->topic);
+    }
+
+    public function test_publisher_converts_a_legacy_true_false_section_into_a_cluster(): void
+    {
+        $subject = Subject::factory()->create();
+        $notebook = Notebook::factory()->create(['subject_id' => $subject->id]);
+
+        $artifact = NotebookArtifact::create([
+            'notebook_id' => $notebook->id,
+            'subject_id' => $subject->id,
+            'user_id' => $notebook->owner_id,
+            'type' => ArtifactType::Exam->value,
+            'title' => 'Đề đúng sai cũ',
+            'status' => 'draft',
+            'payload' => [
+                'settings' => ['duration_minutes' => 45],
+                'sections' => [[
+                    'title' => 'Phần II',
+                    'instructions' => 'Đoạn: Sản lượng tăng đều qua các năm.',
+                    'questions' => [
+                        $this->legacyTrueFalse(QuestionType::TRUE, 'Sản lượng tăng đều'),
+                        $this->legacyTrueFalse(QuestionType::FALSE, 'Xuất khẩu giảm'),
+                        $this->legacyTrueFalse(QuestionType::TRUE, 'Giá cả ổn định'),
+                        $this->legacyTrueFalse(QuestionType::FALSE, 'Nhập khẩu tăng'),
+                    ],
+                ]],
+            ],
+        ]);
+
+        app(ArtifactPublisher::class)->publish($artifact, true);
+
+        $question = Question::query()->where('type', QuestionType::TrueFalseCluster->value)->firstOrFail();
+
+        $this->assertSame(0, Question::query()->where('type', QuestionType::TrueFalse->value)->count());
+        $this->assertSame('Đoạn: Sản lượng tăng đều qua các năm.', $question->content);
+        $this->assertSame(
+            ['Sản lượng tăng đều', 'Xuất khẩu giảm', 'Giá cả ổn định', 'Nhập khẩu tăng'],
+            $question->options()->orderBy('order')->pluck('content')->all(),
+        );
+        $this->assertSame(
+            [true, false, true, false],
+            $question->options()->orderBy('order')->get()
+                ->map(fn ($option): bool => (bool) $option->is_correct)->all(),
+        );
+
+        $exam = Exam::query()->firstOrFail();
+        $examSection = $exam->sections()->firstOrFail();
+
+        $this->assertSame('', (string) $examSection->instructions, 'Ngữ cảnh đã chuyển vào từng chùm');
+        $this->assertSame($examSection->id, $exam->examQuestions()->firstOrFail()->exam_section_id);
+        $this->assertEquals(1.0, (float) $exam->fresh()->total_points);
+    }
+
+    /**
+     * Câu đúng/sai lẻ theo dạng bản nháp trước khi có chuẩn chùm BGD.
+     *
+     * @return array<string, mixed>
+     */
+    private function legacyTrueFalse(string $answer, string $content): array
+    {
+        return [
+            'type' => QuestionType::TrueFalse->value,
+            'content' => $content,
+            'options' => [],
+            'answer' => $answer,
+            'explanation' => '',
+            'difficulty' => 'easy',
+            'points' => 0.25,
+            'topic' => '',
+            'included' => true,
+        ];
     }
 }

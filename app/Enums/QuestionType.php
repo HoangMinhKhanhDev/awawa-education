@@ -8,6 +8,13 @@ enum QuestionType: string
 
     case TrueFalse = 'true_false';
 
+    /**
+     * Chùm đúng/sai chuẩn BGD: một đoạn ngữ cảnh chung + đúng 4 mệnh đề a–d,
+     * chấm theo nấc (2 đúng 0.25, 3 đúng 0.5, 4 đúng 1.0 nhân điểm chùm).
+     * Bốn mệnh đề lưu như 4 option, `is_correct` là đáp án từng mệnh đề.
+     */
+    case TrueFalseCluster = 'true_false_cluster';
+
     case Essay = 'essay';
 
     case FillBlank = 'fill_blank';
@@ -22,6 +29,7 @@ enum QuestionType: string
         return match ($this) {
             self::MultipleChoice => 'Trắc nghiệm',
             self::TrueFalse => 'Đúng / sai',
+            self::TrueFalseCluster => 'Chùm Đúng / sai (BGD)',
             self::Essay => 'Tự luận',
             self::FillBlank => 'Điền khuyết',
         };
@@ -29,7 +37,7 @@ enum QuestionType: string
 
     public function hasOptions(): bool
     {
-        return $this === self::MultipleChoice;
+        return $this === self::MultipleChoice || $this === self::TrueFalseCluster;
     }
 
     /**

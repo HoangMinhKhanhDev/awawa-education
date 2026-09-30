@@ -4,11 +4,13 @@ namespace Tests\Feature\Teacher;
 
 use App\Enums\ExamStatus;
 use App\Enums\ExamType;
+use App\Enums\QuestionType;
 use App\Livewire\Teacher\AssessmentBuilder;
 use App\Livewire\Teacher\AssignmentsIndex;
 use App\Livewire\Teacher\ExamsIndex;
 use App\Models\Exam;
 use App\Models\Question;
+use App\Models\QuestionOption;
 use App\Models\Subject;
 use App\Models\User;
 use App\Support\SubjectContext;
@@ -169,5 +171,104 @@ class ExamBuilderTest extends TestCase
         $foreign = Exam::factory()->create(['subject_id' => $otherSubject->id, 'type' => ExamType::Exam]);
 
         Livewire::test(AssessmentBuilder::class, ['exam' => $foreign])->assertForbidden();
+    }
+
+    public function test_teacher_can_create_true_false_cluster_in_builder(): void
+    {
+        $exam = Exam::factory()->create(['subject_id' => $this->subject->id, 'type' => ExamType::Exam]);
+
+        $component = Livewire::test(AssessmentBuilder::class, ['exam' => $exam])
+            ->set('newSectionTitle', 'Phần II. Đúng/Sai')
+            ->call('addSection');
+
+        $section = $exam->sections()->firstOrFail();
+
+        $component
+            ->call('openClusterForm', $section->id)
+            ->set('clusterContent', 'Theo bảng số liệu bên dưới.')
+            ->set('clusterStatements', [
+                ['content' => 'Nông sản tăng liên tục', 'is_correct' => true],
+                ['content' => 'Xuất khẩu giảm sút', 'is_correct' => false],
+                ['content' => 'Giá cả ổn định', 'is_correct' => true],
+                ['content' => 'Nhập khẩu giảm', 'is_correct' => false],
+            ])
+            ->set('clusterPoints', 1)
+            ->call('saveCluster')
+            ->assertHasNoErrors()
+            ->assertSet('showClusterForm', false);
+
+        $question = Question::query()->where('type', QuestionType::TrueFalseCluster->value)->firstOrFail();
+
+        $this->assertSame('Theo bảng số liệu bên dưới.', $question->content);
+        $this->assertSame(
+            [true, false, true, false],
+            $question->options()->orderBy('order')->get()
+                ->map(fn (QuestionOption $option): bool => (bool) $option->is_correct)->all(),
+        );
+
+        $examQuestion = $exam->examQuestions()->firstOrFail();
+
+        $this->assertSame($section->id, $examQuestion->exam_section_id);
+        $this->assertEquals(1.0, (float) $examQuestion->points);
+        $this->assertEquals(1.0, (float) $exam->fresh()->total_points);
+    }
+
+    public function test_cluster_save_rejects_a_missing_statement(): void
+    {
+        $exam = Exam::factory()->create(['subject_id' => $this->subject->id, 'type' => ExamType::Exam]);
+
+        Livewire::test(AssessmentBuilder::class, ['exam' => $exam])
+            ->call('openClusterForm', 0)
+            ->set('clusterContent', 'Ngữ cảnh chung.')
+            ->set('clusterStatements', [
+                ['content' => 'Mệnh đề a', 'is_correct' => true],
+                ['content' => 'Mệnh đề b', 'is_correct' => false],
+                ['content' => '', 'is_correct' => false],
+                ['content' => 'Mệnh đề d', 'is_correct' => true],
+            ])
+            ->call('saveCluster')
+            ->assertHasErrors(['clusterStatements.2.content']);
+
+        $this->assertSame(0, Question::query()->where('type', QuestionType::TrueFalseCluster->value)->count());
+        $this->assertSame(0, $exam->examQuestions()->count());
+    }
+
+    public function test_teacher_can_edit_an_existing_cluster_without_creating_a_duplicate(): void
+    {
+        $exam = Exam::factory()->create(['subject_id' => $this->subject->id, 'type' => ExamType::Exam]);
+
+        $component = Livewire::test(AssessmentBuilder::class, ['exam' => $exam])
+            ->call('openClusterForm', 0)
+            ->set('clusterContent', 'Ngữ cảnh gốc.')
+            ->set('clusterStatements', [
+                ['content' => 'Mệnh đề a', 'is_correct' => true],
+                ['content' => 'Mệnh đề b', 'is_correct' => false],
+                ['content' => 'Mệnh đề c', 'is_correct' => true],
+                ['content' => 'Mệnh đề d', 'is_correct' => false],
+            ])
+            ->set('clusterPoints', 1)
+            ->call('saveCluster')
+            ->assertHasNoErrors();
+
+        $examQuestion = $exam->examQuestions()->firstOrFail();
+
+        $component
+            ->call('editCluster', $examQuestion->id)
+            ->assertSet('clusterExamQuestionId', $examQuestion->id)
+            ->assertSet('clusterContent', 'Ngữ cảnh gốc.')
+            ->set('clusterContent', 'Ngữ cảnh đã sửa.')
+            ->set('clusterPoints', 2)
+            ->set('clusterStatements.0.content', 'Mệnh đề a mới')
+            ->call('saveCluster')
+            ->assertHasNoErrors();
+
+        $this->assertSame(1, Question::query()->where('type', QuestionType::TrueFalseCluster->value)->count());
+
+        $question = $exam->examQuestions()->firstOrFail()->question;
+
+        $this->assertSame('Ngữ cảnh đã sửa.', $question->content);
+        $this->assertSame('Mệnh đề a mới', $question->options()->orderBy('order')->first()->content);
+        $this->assertEquals(2.0, (float) $exam->examQuestions()->firstOrFail()->points);
+        $this->assertEquals(2.0, (float) $exam->fresh()->total_points);
     }
 }

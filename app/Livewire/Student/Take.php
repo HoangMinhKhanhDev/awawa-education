@@ -4,6 +4,7 @@ namespace App\Livewire\Student;
 
 use App\Enums\AttemptStatus;
 use App\Enums\ExamStatus;
+use App\Enums\QuestionType;
 use App\Models\AttemptAnswer;
 use App\Models\Exam;
 use App\Models\ExamAttempt;
@@ -122,9 +123,16 @@ class Take extends Component
         foreach ($stored as $questionId => $answer) {
             $selected = $answer->selected_option_ids[0] ?? null;
 
+            $subs = [];
+
+            foreach ((array) ($answer->sub_answers ?? []) as $value) {
+                $subs[] = QuestionType::normalizeTruthy((string) ($value ?? ''));
+            }
+
             $this->answers[$questionId] = [
                 'selected' => $selected !== null ? (int) $selected : null,
                 'text' => (string) $answer->answer_text,
+                'subs' => $subs,
             ];
         }
     }
@@ -139,7 +147,7 @@ class Take extends Component
 
         $stored = AttemptAnswer::query()
             ->where('attempt_id', $attempt->id)
-            ->get(['question_id', 'selected_option_ids', 'answer_text'])
+            ->get(['question_id', 'selected_option_ids', 'answer_text', 'sub_answers'])
             ->keyBy('question_id');
 
         $changed = [];
@@ -148,6 +156,7 @@ class Take extends Component
             $questionId = (int) $questionId;
             $selected = ! empty($answer['selected']) ? [(int) $answer['selected']] : [];
             $text = $answer['text'] !== '' ? $answer['text'] : null;
+            $subs = $this->normalizeSubs($answer['subs'] ?? null);
 
             $existing = $stored->get($questionId);
 
@@ -155,11 +164,16 @@ class Take extends Component
             // N câu UPDATE rác trên điện thoại.
             if ($existing !== null
                 && $existing->selected_option_ids === $selected
-                && $existing->answer_text === $text) {
+                && $existing->answer_text === $text
+                && ($existing->sub_answers ?? []) === ($subs ?? [])) {
                 continue;
             }
 
-            $changed[$questionId] = ['selected_option_ids' => $selected, 'answer_text' => $text];
+            $changed[$questionId] = [
+                'selected_option_ids' => $selected,
+                'answer_text' => $text,
+                'sub_answers' => $subs,
+            ];
         }
 
         if ($changed === []) {
@@ -178,12 +192,38 @@ class Take extends Component
                 'question_id' => $questionId,
                 'selected_option_ids' => json_encode($values['selected_option_ids']),
                 'answer_text' => $values['answer_text'],
+                'sub_answers' => $values['sub_answers'] === null ? null : json_encode($values['sub_answers']),
                 'updated_at' => $now,
                 'created_at' => $now,
             ];
         }
 
-        AttemptAnswer::query()->upsert($rows, ['attempt_id', 'question_id'], ['selected_option_ids', 'answer_text', 'updated_at']);
+        AttemptAnswer::query()->upsert($rows, ['attempt_id', 'question_id'], ['selected_option_ids', 'answer_text', 'sub_answers', 'updated_at']);
+    }
+
+    /**
+     * Chuẩn hoá đáp án 4 mệnh đề a–d về mảng 4 giá trị true/false/null.
+     * Không có mệnh đề nào được chọn thì trả về null để cột gọn nhẹ.
+     *
+     * @return array<int, string|null>|null
+     */
+    protected function normalizeSubs(mixed $subs): ?array
+    {
+        if (! is_array($subs)) {
+            return null;
+        }
+
+        $out = [];
+
+        foreach (array_slice(array_values($subs), 0, 4) as $value) {
+            $out[] = QuestionType::normalizeTruthy((string) ($value ?? ''));
+        }
+
+        if (array_filter($out, fn ($value): bool => $value !== null) === []) {
+            return null;
+        }
+
+        return $out;
     }
 
     /**

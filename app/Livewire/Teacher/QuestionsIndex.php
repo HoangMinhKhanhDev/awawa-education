@@ -85,11 +85,38 @@ class QuestionsIndex extends Component
     public function updatedType(): void
     {
         $this->resetErrorBag(['answer', 'options']);
-        $this->options = $this->blankOptions();
 
-        $this->answer = QuestionType::from($this->type) === QuestionType::TrueFalse
+        $type = QuestionType::from($this->type);
+
+        $this->options = $type === QuestionType::TrueFalseCluster
+            ? $this->blankClusterOptions()
+            : $this->blankOptions();
+
+        $this->answer = $type === QuestionType::TrueFalse
             ? QuestionType::FALSE
             : '';
+    }
+
+    /**
+     * Bốn mệnh đề a–d trống cho chùm đúng/sai chuẩn BGD.
+     *
+     * @return array<int, array{content: string, is_correct: bool}>
+     */
+    protected function blankClusterOptions(): array
+    {
+        return array_fill(0, 4, ['content' => '', 'is_correct' => false]);
+    }
+
+    /**
+     * Bật/tắt Đúng cho từng mệnh đề độc lập (khác trắc nghiệm chỉ một đáp án).
+     */
+    public function markTruth(int $index): void
+    {
+        if (! isset($this->options[$index])) {
+            return;
+        }
+
+        $this->options[$index]['is_correct'] = ! $this->options[$index]['is_correct'];
     }
 
     public function openCreate(): void
@@ -210,6 +237,16 @@ class QuestionsIndex extends Component
             }
         }
 
+        if ($type === QuestionType::TrueFalseCluster) {
+            $normalized = $this->normalizedOptions();
+
+            if (count($normalized) !== 4) {
+                $this->addError('options', 'Chùm đúng/sai chuẩn BGD cần đúng 4 mệnh đề, ghi đủ nội dung cả 4.');
+
+                return;
+            }
+        }
+
         if ($type === QuestionType::FillBlank && blank($this->answer)) {
             $this->addError('answer', 'Vui lòng nhập đáp án cho câu hỏi điền khuyết.');
 
@@ -252,7 +289,7 @@ class QuestionsIndex extends Component
 
         $question->options()->delete();
 
-        if ($type === QuestionType::MultipleChoice) {
+        if ($type === QuestionType::MultipleChoice || $type === QuestionType::TrueFalseCluster) {
             foreach ($this->normalizedOptions() as $index => $option) {
                 $question->options()->create([
                     'content' => $option['content'],

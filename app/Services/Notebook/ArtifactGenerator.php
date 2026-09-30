@@ -8,6 +8,7 @@ use App\Enums\Difficulty;
 use App\Enums\QuestionType;
 use App\Models\Notebook;
 use App\Services\Ai\AiManager;
+use App\Support\TrueFalseClusterMerger;
 use Illuminate\Support\Str;
 use RuntimeException;
 
@@ -508,7 +509,7 @@ class ArtifactGenerator
                 .' Độ khó chung: '.$this->difficultyLabel((string) ($params['difficulty'] ?? 'medium')).'.'
                 ."\n- Phần phải có \"title\" (VD: PHẦN I) và \"instructions\" (hướng dẫn làm phần, VD: Chọn một đáp án đúng nhất)."
                 ."\n- Câu trắc nghiệm: đúng 4 lựa chọn và đúng 1 đáp án có is_correct=true; đảo vị trí đáp án đúng ngẫu nhiên, không dồn về lựa chọn đầu. Câu tự luận/điền khuyết không có lựa chọn."
-                ."\n- Câu đúng/sai: gom thành chùm đúng 4 câu trong một phần riêng, đoạn thông tin chung đặt ở \"instructions\" của phần để cả 4 câu cùng nhận định; mỗi câu chỉ ghi \"true\" hoặc \"false\", cấm ghi chữ cái."
+                ."\n- Câu đúng/sai: mỗi câu là MỘT chùm chuẩn BGD — một object type \"true_false_cluster\" gồm \"content\" là đoạn ngữ cảnh chung (số liệu/tình huống), \"options\" đúng 4 mệnh đề a)–d) nối tiếp, mỗi mệnh đề {\"content\":\"...\",\"is_correct\":true|false} (true = mệnh đề Đúng, false = mệnh đề Sai), \"answer\" để trống. Mỗi chùm khoảng 2 mệnh đề Đúng và 2 mệnh đề Sai, độ khó tăng dần từ a) đến d); không sinh câu true_false rời rạc."
                 ."\n- Mỗi câu cần \"difficulty\" và \"explanation\" ngắn gọn.";
         }
 
@@ -537,14 +538,14 @@ class ArtifactGenerator
     protected function schemaHint(ArtifactType $type): string
     {
         return match ($type) {
-            ArtifactType::Questions => 'Một mảng JSON các câu hỏi. Mỗi câu: {"type":"multiple_choice|true_false|fill_blank|essay","content":"...","options":[{"content":"...","is_correct":true}],"answer":"...","explanation":"...","difficulty":"easy|medium|hard","points":1,"topic":"..."}. '
+            ArtifactType::Questions => 'Một mảng JSON các câu hỏi. Mỗi câu: {"type":"multiple_choice|true_false_cluster|fill_blank|essay","content":"...","options":[{"content":"...","is_correct":true}],"answer":"...","explanation":"...","difficulty":"easy|medium|hard","points":1,"topic":"..."}. '
                 .'Với multiple_choice cần đúng 4 lựa chọn và đúng 1 đáp án is_correct=true; vị trí đáp án đúng phải ngẫu nhiên (lúc A, lúc B, C, D), cấm luôn đặt ở lựa chọn đầu tiên; trường "answer" của trắc nghiệm để trống. '
-                .'Với true_false: tuyệt đối không có "options", "answer" chỉ được là "true" (đúng) hoặc "false" (sai), cấm ghi chữ cái như "A"/"B"; nội dung câu phải là một mệnh đề có thể đúng hoặc sai. '
+                .'Với true_false_cluster (đúng/sai): mỗi câu hỏi là MỘT chùm 4 mệnh đề — "content" là đoạn ngữ cảnh chung, "options" đúng 4 mệnh đề a)–d), mỗi mệnh đề {"content":"...","is_correct":true|false} trong đó is_correct=true là mệnh đề Đúng và false là mệnh đề Sai (giá trị JSON "true" hay "false"), khoảng 2 Đúng 2 Sai, độ khó tăng dần từ a) đến d), trường "answer" để trống; không sinh câu true_false rời rạc. '
                 .'Chỉ trả về JSON, không kèm chữ nào khác.',
             ArtifactType::Exam => 'Một object JSON: {"title":"...","description":"...","sections":[{"title":"PHẦN I","instructions":"...","questions":[<câu hỏi như trên>]}]}. '
-                .'Câu hỏi trong đề dùng đúng cấu trúc: {"type":"multiple_choice|true_false|fill_blank|essay","content":"...","options":[{"content":"...","is_correct":true}],"answer":"...","explanation":"...","difficulty":"easy|medium|hard","points":1,"topic":"..."}. '
+                .'Câu hỏi trong đề dùng đúng cấu trúc: {"type":"multiple_choice|true_false_cluster|fill_blank|essay","content":"...","options":[{"content":"...","is_correct":true}],"answer":"...","explanation":"...","difficulty":"easy|medium|hard","points":1,"topic":"..."}. '
                 .'Với multiple_choice cần đúng 4 lựa chọn và đúng 1 đáp án is_correct=true; vị trí đáp án đúng phải ngẫu nhiên (lúc A, lúc B, C, D), cấm luôn đặt ở lựa chọn đầu tiên; trường "answer" của trắc nghiệm để trống. '
-                .'Với true_false: gom thành chùm đúng 4 câu trong một phần riêng, "instructions" của phần là đoạn thông tin chung để cả 4 câu cùng nhận định; mỗi câu là một mệnh đề với "answer" chỉ được là "true" (đúng) hoặc "false" (sai), tuyệt đối không có "options", cấm ghi chữ cái như "A"/"B". '
+                .'Với true_false_cluster (đúng/sai): mỗi câu là MỘT chùm chuẩn BGD — "content" là đoạn ngữ cảnh chung, "options" đúng 4 mệnh đề a)–d) nối tiếp, mỗi mệnh đề {"content":"...","is_correct":true|false} (true = Đúng, false = Sai, giá trị JSON "true"/"false"), khoảng 2 Đúng 2 Sai, trường "answer" để trống; không sinh câu true_false rời rạc. '
                 .'Chỉ trả về JSON, không kèm chữ nào khác.',
             ArtifactType::Flashcards => 'Một mảng JSON: [{"front":"câu hỏi/khái niệm","back":"trả lời ngắn"}]. 8–15 thẻ. Chỉ trả về JSON.',
             ArtifactType::MindMap => 'Một object JSON cây sơ đồ tư duy: {"title":"chủ đề trung tâm","nodes":[{"id":"n1","label":"...","parent":null},{"id":"n2","label":"...","parent":"n1"}]}. '
@@ -586,7 +587,7 @@ class ArtifactGenerator
     {
         return match ($value) {
             'multiple_choice' => 'trắc nghiệm',
-            'true_false' => 'đúng/sai',
+            'true_false' => 'đúng/sai (mỗi câu là một chùm 4 mệnh đề chuẩn BGD)',
             'fill_blank' => 'điền khuyết',
             'essay' => 'tự luận',
             default => 'trộn lẫn',
@@ -836,7 +837,7 @@ class ArtifactGenerator
     protected function normalize(ArtifactType $type, array $decoded, array $params): array
     {
         return match ($type) {
-            ArtifactType::Questions => ['items' => $this->normalizeQuestions($this->listFrom($decoded), $params)],
+            ArtifactType::Questions => ['items' => TrueFalseClusterMerger::merge($this->normalizeQuestions($this->listFrom($decoded), $params))],
             ArtifactType::Exam => $this->normalizeExam($decoded, $params),
             ArtifactType::Flashcards => ['cards' => $this->normalizeCards($this->listFrom($decoded))],
             ArtifactType::MindMap => $this->normalizeMindMap($decoded),
@@ -919,8 +920,8 @@ class ArtifactGenerator
 
             $options = [];
 
-            // Chỉ câu trắc nghiệm mới có lựa chọn; AI hay kèm "options" rỗng vào câu
-            // tự luận hoặc đúng/sai.
+            // Chỉ câu trắc nghiệm và chùm đúng/sai mới có lựa chọn; AI hay
+            // kèm "options" rỗng vào câu tự luận.
             if ($type === QuestionType::MultipleChoice) {
                 foreach (array_slice((array) ($item['options'] ?? []), 0, 6) as $option) {
                     if (blank($option['content'] ?? null)) {
@@ -944,11 +945,35 @@ class ArtifactGenerator
                 }
             }
 
+            if ($type === QuestionType::TrueFalseCluster) {
+                foreach (array_slice((array) ($item['options'] ?? []), 0, 4) as $option) {
+                    if (blank($option['content'] ?? null)) {
+                        continue;
+                    }
+
+                    $options[] = [
+                        'content' => CitationStripper::clean((string) $option['content']),
+                        'is_correct' => QuestionType::normalizeTruthy((string) ($option['is_correct'] ?? '')) === QuestionType::TRUE,
+                    ];
+                }
+
+                // Chùm thiếu mệnh đề thì bỏ hẳn: chấm theo nấc chỉ đúng khi đủ
+                // 4, giữ chùm cụt nghĩa là mọi học sinh âm thầm được 0 điểm.
+                if (count($options) !== 4) {
+                    continue;
+                }
+            }
+
             $answer = CitationStripper::clean((string) ($item['answer'] ?? ''));
 
             if ($type === QuestionType::TrueFalse) {
                 $answer = QuestionType::normalizeTruthy($answer) ?? $this->truthyFromOptions($item) ?? QuestionType::FALSE;
                 $options = [];
+            }
+
+            if ($type === QuestionType::TrueFalseCluster) {
+                // Đáp án từng mệnh đề nằm ở is_correct của từng option.
+                $answer = '';
             }
 
             if ($type === QuestionType::MultipleChoice) {
@@ -1011,20 +1036,27 @@ class ArtifactGenerator
                 continue;
             }
 
-            $questions = $this->normalizeQuestions($this->listFrom(['questions' => $section['questions'] ?? $section]), $params, $perSection);
+            $questions = $this->normalizeQuestions($this->listFrom(['questions' => $section['questions'] ?? $section]), $params);
 
             if ($questions === []) {
                 continue;
             }
 
+            $instructions = CitationStripper::clean((string) ($section['instructions'] ?? ''));
+
+            // Câu đúng/sai lẻ (AI trả lệch schema) gom thành chùm 4 mệnh đề,
+            // lấy instructions của phần làm ngữ cảnh chung; gom xong mới cắt
+            // về số câu mỗi phần để không mất mệnh đề giữa chừng.
+            $questions = array_slice(TrueFalseClusterMerger::merge($questions, $instructions), 0, $perSection);
+
             $out[] = [
                 'title' => CitationStripper::clean((string) ($section['title'] ?? 'Phần')),
-                'instructions' => CitationStripper::clean((string) ($section['instructions'] ?? '')),
+                'instructions' => $instructions,
                 'questions' => array_map(function (array $question) use ($pointsPerQuestion): array {
                     $question['points'] = $pointsPerQuestion;
 
                     return $this->normalizeAnswers($question);
-                }, array_slice($questions, 0, $perSection)),
+                }, $questions),
             ];
         }
 
@@ -1109,6 +1141,13 @@ class ArtifactGenerator
      */
     protected function normalizeAnswers(array $question): array
     {
+        if ($question['type'] === QuestionType::TrueFalseCluster->value) {
+            // Chùm đúng/sai: đáp án nằm ở is_correct từng mệnh đề.
+            $question['answer'] = '';
+
+            return $question;
+        }
+
         if ($question['type'] !== QuestionType::MultipleChoice->value) {
             $question['options'] = [];
 

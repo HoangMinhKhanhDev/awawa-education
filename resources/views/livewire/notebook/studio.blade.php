@@ -105,6 +105,9 @@
                                     <input id="st-points" type="number" step="0.25" min="0.25" class="input tnum" wire:model="points">
                                 </div>
                             </div>
+                            @if ($questionType === 'true_false')
+                                <p class="text-[11px] leading-relaxed text-ink-faint dark:text-slate-500">Mỗi câu là một chùm chuẩn BGD: đoạn ngữ cảnh chung + 4 mệnh đề a)–d) kèm đáp án Đúng/Sai.</p>
+                            @endif
                         @elseif ($activeType === \App\Enums\ArtifactType::Exam->value)
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
@@ -426,21 +429,33 @@
                                                 Đưa vào ngân hàng
                                             </label>
                                         </div>
-                                        <textarea rows="2" class="input" wire:model="draftPayload.items.{{ $index }}.content" aria-label="Nội dung câu {{ $index + 1 }}"></textarea>
+                                        @php $isClusterDraft = ($item['type'] ?? '') === 'true_false_cluster'; @endphp
+                                        <textarea rows="2" class="input" wire:model="draftPayload.items.{{ $index }}.content" aria-label="Nội dung câu {{ $index + 1 }}" placeholder="{{ $isClusterDraft ? 'Đoạn ngữ cảnh chung cho cả 4 mệnh đề…' : '' }}"></textarea>
                                         <div class="mt-2 grid gap-2 sm:grid-cols-2">
                                             <select class="input py-2 text-xs" wire:model="draftPayload.items.{{ $index }}.type" aria-label="Dạng câu hỏi">
-                                                <option value="multiple_choice">Trắc nghiệm</option><option value="fill_blank">Điền khuyết</option><option value="essay">Tự luận</option>
+                                                <option value="multiple_choice">Trắc nghiệm</option><option value="true_false_cluster">Chùm Đúng/Sai (BGD)</option><option value="true_false">Đúng/Sai (lẻ, cũ)</option><option value="fill_blank">Điền khuyết</option><option value="essay">Tự luận</option>
                                             </select>
                                             <input type="number" min="0" max="100" step="0.25" class="input py-2 text-xs" wire:model="draftPayload.items.{{ $index }}.points" aria-label="Điểm câu hỏi">
                                         </div>
+                                        @if ($isClusterDraft)
+                                            <p class="mt-2 text-[11px] text-ink-faint dark:text-slate-500">Bấm ô trước mệnh đề để đánh dấu Đúng (chấm theo nấc: 2 đúng ¼ · 3 đúng ½ · 4 đúng trọn điểm).</p>
+                                        @endif
                                         @foreach ($item['options'] ?? [] as $optionIndex => $option)
                                             <div class="mt-2 flex items-center gap-2" wire:key="edit-option-{{ $index }}-{{ $optionIndex }}">
-                                                <input type="checkbox" wire:model="draftPayload.items.{{ $index }}.options.{{ $optionIndex }}.is_correct" class="h-4 w-4 rounded border-rule-strong text-brand-600 focus:ring-brand-500" aria-label="Đáp án đúng">
-                                                <input type="text" class="input py-2 text-xs" wire:model="draftPayload.items.{{ $index }}.options.{{ $optionIndex }}.content" aria-label="Lựa chọn {{ $optionIndex + 1 }}">
+                                                @if ($isClusterDraft)
+                                                    <span class="tnum w-5 shrink-0 text-xs font-semibold text-ink-faint dark:text-slate-500">{{ chr(97 + $optionIndex) }})</span>
+                                                @endif
+                                                <input type="checkbox" wire:model="draftPayload.items.{{ $index }}.options.{{ $optionIndex }}.is_correct" class="h-4 w-4 rounded border-rule-strong text-brand-600 focus:ring-brand-500" aria-label="{{ $isClusterDraft ? 'Mệnh đề Đúng' : 'Đáp án đúng' }}">
+                                                <input type="text" class="input py-2 text-xs" wire:model="draftPayload.items.{{ $index }}.options.{{ $optionIndex }}.content" aria-label="{{ $isClusterDraft ? 'Mệnh đề' : 'Lựa chọn' }} {{ $optionIndex + 1 }}">
+                                                @if ($isClusterDraft)
+                                                    <span class="w-9 shrink-0 text-center text-[11px] font-semibold {{ ! empty($option['is_correct']) ? 'text-success' : 'text-ink-faint dark:text-slate-500' }}">{{ ! empty($option['is_correct']) ? 'Đúng' : 'Sai' }}</span>
+                                                @endif
                                             </div>
                                         @endforeach
                                         <div class="mt-2 grid gap-2 sm:grid-cols-2">
-                                            <input type="text" class="input py-2 text-xs" wire:model="draftPayload.items.{{ $index }}.answer" placeholder="Đáp án / lời giải ngắn">
+                                            @unless ($isClusterDraft)
+                                                <input type="text" class="input py-2 text-xs" wire:model="draftPayload.items.{{ $index }}.answer" placeholder="Đáp án / lời giải ngắn">
+                                            @endunless
                                             <select class="input py-2 text-xs" wire:model="draftPayload.items.{{ $index }}.difficulty" aria-label="Độ khó">
                                                 <option value="easy">Dễ</option>
                                                 <option value="medium">Trung bình</option>
@@ -486,10 +501,12 @@
                                                     <span>Câu {{ $questionIndex + 1 }} · {{ $question['points'] ?? 1 }} điểm</span>
                                                     <span class="flex items-center gap-1.5"><input type="checkbox" wire:model="draftPayload.sections.{{ $sectionIndex }}.questions.{{ $questionIndex }}.included" class="h-4 w-4 rounded border-rule-strong text-brand-600"> Giữ câu</span>
                                                 </label>
-                                                <textarea rows="2" class="input" wire:model="draftPayload.sections.{{ $sectionIndex }}.questions.{{ $questionIndex }}.content"></textarea>
+                                                <textarea rows="2" class="input" wire:model="draftPayload.sections.{{ $sectionIndex }}.questions.{{ $questionIndex }}.content" placeholder="{{ ($question['type'] ?? '') === 'true_false_cluster' ? 'Đoạn ngữ cảnh chung cho cả 4 mệnh đề…' : '' }}"></textarea>
                                                 <div class="mt-2 grid gap-2 sm:grid-cols-3">
                                                     <select class="input py-2 text-xs" wire:model="draftPayload.sections.{{ $sectionIndex }}.questions.{{ $questionIndex }}.type" aria-label="Dạng câu hỏi">
                                                         <option value="multiple_choice">Trắc nghiệm</option>
+                                                        <option value="true_false_cluster">Chùm Đúng/Sai (BGD)</option>
+                                                        <option value="true_false">Đúng/Sai (lẻ, cũ)</option>
                                                         <option value="fill_blank">Điền khuyết</option>
                                                         <option value="essay">Tự luận</option>
                                                     </select>
@@ -518,7 +535,24 @@
                                                             class="btn btn-ghost px-2 py-1 text-[11px]">+ Thêm lựa chọn</button>
                                                     </div>
                                                 @endif
-                                                <input type="text" class="input mt-2 py-2 text-xs" wire:model="draftPayload.sections.{{ $sectionIndex }}.questions.{{ $questionIndex }}.answer" placeholder="Đáp án / lời giải ngắn">
+                                                @if (($question['type'] ?? '') === 'true_false_cluster')
+                                                    <p class="mt-2 text-[11px] text-ink-faint dark:text-slate-500">4 mệnh đề a)–d) — bấm ô để đánh dấu mệnh đề Đúng (chấm theo nấc: 2 đúng ¼ · 3 đúng ½ · 4 đúng trọn điểm).</p>
+                                                    <div class="mt-1.5 space-y-1.5">
+                                                        @foreach ($question['options'] ?? [] as $optionIndex => $option)
+                                                            <div class="flex items-center gap-2" wire:key="edit-exam-cluster-{{ $sectionIndex }}-{{ $questionIndex }}-{{ $optionIndex }}">
+                                                                <span class="tnum w-5 shrink-0 text-xs font-semibold text-ink-faint dark:text-slate-500">{{ chr(97 + $optionIndex) }})</span>
+                                                                <input type="checkbox" wire:model="draftPayload.sections.{{ $sectionIndex }}.questions.{{ $questionIndex }}.options.{{ $optionIndex }}.is_correct"
+                                                                    class="h-4 w-4 rounded border-rule-strong text-brand-600 focus:ring-brand-500" aria-label="Mệnh đề Đúng">
+                                                                <input type="text" class="input py-2 text-xs" wire:model="draftPayload.sections.{{ $sectionIndex }}.questions.{{ $questionIndex }}.options.{{ $optionIndex }}.content"
+                                                                    placeholder="Mệnh đề {{ chr(97 + $optionIndex) }}">
+                                                                <span class="w-9 shrink-0 text-center text-[11px] font-semibold {{ ! empty($option['is_correct']) ? 'text-success' : 'text-ink-faint dark:text-slate-500' }}">{{ ! empty($option['is_correct']) ? 'Đúng' : 'Sai' }}</span>
+                                                            </div>
+                                                        @endforeach
+                                                    </div>
+                                                @endif
+                                                @unless (($question['type'] ?? '') === 'true_false_cluster')
+                                                    <input type="text" class="input mt-2 py-2 text-xs" wire:model="draftPayload.sections.{{ $sectionIndex }}.questions.{{ $questionIndex }}.answer" placeholder="Đáp án / lời giải ngắn">
+                                                @endunless
                                             </div>
                                         @endforeach
                                     </section>
@@ -565,12 +599,27 @@
                     @if ($previewType === \App\Enums\ArtifactType::Questions)
                         @foreach ($preview->payload['items'] ?? [] as $index => $item)
                             <div class="rounded-[10px] border border-rule p-3 dark:border-night-700">
-                                <p class="text-sm text-ink dark:text-slate-100">{{ $index + 1 }}. {{ $item['content'] }}</p>
-                                @foreach ($item['options'] ?? [] as $option)
-                                    <p class="mt-1 text-sm {{ ! empty($option['is_correct']) ? 'font-medium text-success' : 'text-ink-soft dark:text-slate-400' }}">— {{ $option['content'] }}</p>
-                                @endforeach
-                                @if (! empty($item['answer']))
-                                    <p class="mt-1 text-xs text-ink-soft dark:text-slate-400">Đáp án: {{ $item['answer'] }}</p>
+                                @if (($item['type'] ?? '') === \App\Enums\QuestionType::TrueFalseCluster->value)
+                                    @if (filled($item['content'] ?? null))
+                                        <div class="notebook-markdown text-sm leading-relaxed text-ink dark:text-slate-100">{!! \Illuminate\Support\Str::markdown((string) $item['content'], ['html_input' => 'strip', 'allow_unsafe_links' => false]) !!}</div>
+                                    @endif
+                                    <ul class="mt-2 space-y-1">
+                                        @foreach ($item['options'] ?? [] as $optionIndex => $option)
+                                            <li class="flex items-center gap-2 text-sm {{ ! empty($option['is_correct']) ? 'font-medium text-success' : 'text-ink-soft dark:text-slate-400' }}">
+                                                <span class="tnum font-semibold">{{ chr(97 + $optionIndex) }})</span>
+                                                <span class="min-w-0 flex-1">{{ $option['content'] }}</span>
+                                                <span class="text-xs">{{ ! empty($option['is_correct']) ? 'Đúng' : 'Sai' }}</span>
+                                            </li>
+                                        @endforeach
+                                    </ul>
+                                @else
+                                    <p class="text-sm text-ink dark:text-slate-100">{{ $index + 1 }}. {{ $item['content'] }}</p>
+                                    @foreach ($item['options'] ?? [] as $option)
+                                        <p class="mt-1 text-sm {{ ! empty($option['is_correct']) ? 'font-medium text-success' : 'text-ink-soft dark:text-slate-400' }}">— {{ $option['content'] }}</p>
+                                    @endforeach
+                                    @if (! empty($item['answer']))
+                                        <p class="mt-1 text-xs text-ink-soft dark:text-slate-400">Đáp án: {{ $item['answer'] }}</p>
+                                    @endif
                                 @endif
                             </div>
                         @endforeach
@@ -582,6 +631,7 @@
                             $examIncludedPoints = 0.0;
                             $examIncludedCount = 0;
                             $examTrueFalse = \App\Enums\QuestionType::TrueFalse;
+                            $examTrueFalseCluster = \App\Enums\QuestionType::TrueFalseCluster;
                             foreach (($preview->payload['sections'] ?? []) as $examSection) {
                                 foreach (($examSection['questions'] ?? []) as $examQuestion) {
                                     if (($examQuestion['included'] ?? true) === false) {
@@ -589,7 +639,15 @@
                                     }
                                     $examIncludedCount++;
                                     $examIncludedPoints += (float) ($examQuestion['points'] ?? 0);
-                                    if (($examQuestion['type'] ?? '') === $examTrueFalse->value) {
+                                    if (($examQuestion['type'] ?? '') === $examTrueFalseCluster->value) {
+                                        // Bảng đáp án chùm: a)Đ b)Đ c)S d)S — dạng chữ compact
+                                        // như giáo viên vẫn ghi trên giấy.
+                                        $clusterKeys = [];
+                                        foreach (array_values((array) ($examQuestion['options'] ?? [])) as $clusterIndex => $clusterOption) {
+                                            $clusterKeys[] = chr(97 + $clusterIndex).')'.((bool) ($clusterOption['is_correct'] ?? false) ? 'Đ' : 'S');
+                                        }
+                                        $examAnswers[] = implode(' ', $clusterKeys);
+                                    } elseif (($examQuestion['type'] ?? '') === $examTrueFalse->value) {
                                         $examAnswers[] = $examTrueFalse->trueFalseLabel($examQuestion['answer'] ?? null);
                                     } else {
                                         $examAnswers[] = trim(($examQuestion['answer'] ?? '') !== '' ? (string) $examQuestion['answer'] : collect($examQuestion['options'] ?? [])->firstWhere('is_correct')['content'] ?? '');
@@ -628,12 +686,32 @@
                                         <div class="mt-2 {{ ($item['included'] ?? true) === false ? 'opacity-50' : '' }}">
                                             <p class="text-sm text-ink dark:text-slate-100">
                                                 <span class="tnum font-semibold">Câu {{ $examQuestionNo }}.</span>
-                                                {{ $item['content'] }}
+                                                @unless (($item['type'] ?? '') === \App\Enums\QuestionType::TrueFalseCluster->value)
+                                                    {{ $item['content'] }}
+                                                @endunless
                                                 <span class="tnum text-xs text-ink-faint dark:text-slate-500">({{ rtrim(rtrim(number_format((float) ($item['points'] ?? 0), 2, ',', '.'), '0'), ',') }} điểm)</span>
                                                 @if (($item['included'] ?? true) === false)
                                                     <span class="ml-1 text-xs text-signal dark:text-red-400">(không dùng)</span>
                                                 @endif
                                             </p>
+                                            @if (($item['type'] ?? '') === \App\Enums\QuestionType::TrueFalseCluster->value)
+                                                @if (filled($item['content'] ?? null))
+                                                    <div class="notebook-markdown mt-1 text-sm leading-relaxed text-ink dark:text-slate-100">{!! \Illuminate\Support\Str::markdown((string) $item['content'], ['html_input' => 'strip', 'allow_unsafe_links' => false]) !!}</div>
+                                                @endif
+                                                <ul class="mt-1.5 space-y-0.5">
+                                                    @foreach ($item['options'] ?? [] as $optionIndex => $option)
+                                                        <li class="flex items-start gap-2 text-sm text-ink-soft dark:text-slate-300"
+                                                            :class="{{ ($option['is_correct'] ?? false) ? 'true' : 'false' }} && showAnswers ? 'font-semibold text-success' : ''">
+                                                            <span class="tnum w-4 shrink-0">{{ chr(97 + $optionIndex) }})</span>
+                                                            <span class="min-w-0 flex-1">{{ $option['content'] }}</span>
+                                                            <span x-show="{{ ($option['is_correct'] ?? false) ? 'true' : 'false' }} && showAnswers" x-cloak
+                                                                class="text-xs font-normal text-success">(Đúng)</span>
+                                                            <span x-show="{{ ($option['is_correct'] ?? false) ? 'false' : 'true' }} && showAnswers" x-cloak
+                                                                class="text-xs font-normal text-signal">(Sai)</span>
+                                                        </li>
+                                                    @endforeach
+                                                </ul>
+                                            @endif
                                             @if (($item['type'] ?? '') === 'multiple_choice')
                                                 <ul class="mt-1 space-y-0.5">
                                                     @foreach ($item['options'] ?? [] as $optionIndex => $option)

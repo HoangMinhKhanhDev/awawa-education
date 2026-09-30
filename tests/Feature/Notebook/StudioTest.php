@@ -624,6 +624,52 @@ class StudioTest extends TestCase
             ->assertSee('Chưa có');
     }
 
+    public function test_opening_a_legacy_true_false_artifact_converts_it_to_a_cluster(): void
+    {
+        $loose = fn (string $answer, string $content): array => [
+            'type' => 'true_false',
+            'content' => $content,
+            'options' => [],
+            'answer' => $answer,
+            'explanation' => '',
+            'difficulty' => 'easy',
+            'points' => 0.25,
+            'topic' => '',
+            'included' => true,
+        ];
+
+        $artifact = NotebookArtifact::create([
+            'notebook_id' => $this->notebook->id,
+            'subject_id' => $this->subject->id,
+            'user_id' => $this->teacher->id,
+            'type' => ArtifactType::Exam->value,
+            'title' => 'Đề cũ',
+            'status' => 'draft',
+            'payload' => [
+                'sections' => [[
+                    'title' => 'Phần II',
+                    'instructions' => 'Đoạn: Dân số tăng đều.',
+                    'questions' => [
+                        $loose('true', 'Dân số tăng đều'),
+                        $loose('false', 'Tỷ lệ sinh giảm'),
+                        $loose('true', 'Đời sống cải thiện'),
+                        $loose('false', 'Di cư giảm'),
+                    ],
+                ]],
+            ],
+        ]);
+
+        Livewire::test(Studio::class, ['notebookId' => $this->notebook->id])
+            ->call('openPreview', $artifact->id);
+
+        $section = $artifact->fresh()->payload['sections'][0];
+
+        $this->assertCount(1, $section['questions']);
+        $this->assertSame('true_false_cluster', $section['questions'][0]['type']);
+        $this->assertSame('Đoạn: Dân số tăng đều.', $section['questions'][0]['content']);
+        $this->assertSame('', $section['instructions'], 'Không hiển thị lại ngữ cảnh sau khi gom');
+    }
+
     private function createArtifact(ArtifactType $type, string $title): NotebookArtifact
     {
         return NotebookArtifact::create([

@@ -17,6 +17,7 @@ use App\Models\NotebookArtifact;
 use App\Models\Question;
 use App\Services\NotificationDispatcher;
 use App\Support\MindMapTree;
+use App\Support\TrueFalseClusterMerger;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -27,6 +28,15 @@ class ArtifactPublisher
 {
     public function publish(NotebookArtifact $artifact, bool $isPublic = true, bool $deliverExam = false): void
     {
+        // Bản nháp cũ lưu từng câu đúng/sai rời rạc: gom thành chùm 4 mệnh đề
+        // trước khi tạo dữ liệu thật, để đề mới luôn đúng chuẩn BGD.
+        $payload = $artifact->payload ?? [];
+        $converted = TrueFalseClusterMerger::convertPayload($payload);
+
+        if ($converted !== $payload) {
+            $artifact->update(['payload' => $converted]);
+        }
+
         $subjectId = $artifact->subject_id;
         $userId = $artifact->user_id ?? auth()->id();
         $type = ArtifactType::from($artifact->type);
@@ -223,6 +233,27 @@ class ArtifactPublisher
                 $question->options()->create([
                     'content' => (string) $option['content'],
                     'is_correct' => (bool) ($option['is_correct'] ?? false),
+                    'order' => $index,
+                ]);
+            }
+        }
+
+        if ($type === QuestionType::TrueFalseCluster) {
+            $statements = array_values(array_filter(
+                (array) ($item['options'] ?? []),
+                fn (array $option): bool => filled($option['content'] ?? null),
+            ));
+
+            // Chùm thiếu mệnh đề sẽ chấm 0 cho mọi học sinh (GradingService),
+            // chặn ngay tại đây thay vì xuất bản một câu hỏng.
+            if (count($statements) !== 4) {
+                throw new \RuntimeException('Chùm đúng/sai “'.Str::limit((string) ($item['content'] ?? ''), 60, '…').'” cần đúng 4 mệnh đề có nội dung.');
+            }
+
+            foreach ($statements as $index => $option) {
+                $question->options()->create([
+                    'content' => (string) $option['content'],
+                    'is_correct' => QuestionType::normalizeTruthy((string) ($option['is_correct'] ?? '')) === QuestionType::TRUE,
                     'order' => $index,
                 ]);
             }
