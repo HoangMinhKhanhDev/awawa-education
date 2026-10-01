@@ -244,10 +244,10 @@ class Studio extends Component
      *
      * Bốn tầng theo thứ tự ưu tiên, xem `BackgroundProcess`:
      *   1. tiến trình con nếu hosting cho phép `proc_open`;
-     *   2. hàng chờ cron — tầng chạy được thật trên shared hosting và là tầng
-     *      duy nhất thử lại được lỗi hạ tầng cũng như giữ được việc khi giáo viên
-     *      đóng tab;
-     *   3. gửi response trước rồi soạn nốt nếu chạy FastCGI;
+     *   2. gửi response trước rồi soạn nốt nếu chạy FastCGI — tầng nhanh nhất
+     *      trên shared hosting vì bắt đầu ngay, không chờ cron;
+     *   3. hàng chờ cron — chậm hơn một nhịp cron nhưng sống được trên mọi SAPI
+     *      và là tầng duy nhất thử lại được lỗi hạ tầng;
      *   4. chạy ngay trong request — tab hiện spinner suốt lúc soạn nhưng chạy
      *      được trên mọi SAPI, kể cả CGI không có FastCGI.
      *
@@ -273,21 +273,8 @@ class Studio extends Component
             return;
         }
 
-        // Tầng 2: hàng chờ. Hostinger chặn `proc_open` nên đây là tầng chạy được
-        // thật trên production: worker cron thử lại được lỗi mạng, máy chủ lỗi
-        // hay lần bị giới hạn lượt gọi, thay vì bắt giáo viên bấm "Tạo lại".
-        $payload['_generation_runner'] = 'queue';
-        $artifact->update(['payload' => $payload]);
-
-        if ($this->queueGeneration($artifact)) {
-            $this->generating = true;
-            $this->error = null;
-
-            return;
-        }
-
-        // Tầng 3: gửi response trước rồi soạn nốt. Chỉ dùng được khi hàng chờ
-        // hỏng, còn FastCGI thì không: mất luôn phần thử lại.
+        // Tầng 2: gửi response trước rồi soạn nốt. Giáo viên thấy màn "đang soạn"
+        // gần như tức thì, đây là đường chạy chính khi hosting chặn proc_open.
         if ($backgroundProcess->defer(function () use ($artifact): void {
             @set_time_limit(0);
             @ini_set('memory_limit', (string) config('awawa.notebook.generation_memory', '1024M'));
@@ -297,6 +284,19 @@ class Studio extends Component
             $payload['_generation_runner'] = 'respond';
             $artifact->update(['payload' => $payload]);
 
+            $this->generating = true;
+            $this->error = null;
+
+            return;
+        }
+
+        // Tầng 3: hàng chờ. Chậm hơn một nhịp cron nhưng chạy được cả khi không
+        // có FastCGI, và là tầng duy nhất thử lại được lỗi mạng, máy chủ lỗi
+        // hay lần bị giới hạn lượt gọi, thay vì bắt giáo viên bấm "Tạo lại".
+        $payload['_generation_runner'] = 'queue';
+        $artifact->update(['payload' => $payload]);
+
+        if ($this->queueGeneration($artifact)) {
             $this->generating = true;
             $this->error = null;
 
@@ -354,6 +354,17 @@ class Studio extends Component
             ]);
 
             return false;
+        }
+
+        // Mốc để trừ với `_claimed_at` ra số giây chờ cron. Chỉ ghi khi artefact
+        // còn đang soạn: worker xong rất nhanh thì không chạm `updated_at` của
+        // bản đã xong (kẻo kích hoạt lại thông báo "Đã soạn xong").
+        $fresh = NotebookArtifact::query()->find($artifact->id);
+
+        if ($fresh !== null && $fresh->isGenerating()) {
+            $payload = $fresh->payload ?? [];
+            $payload['_dispatched_at'] = now()->toIso8601String();
+            $fresh->update(['payload' => $payload]);
         }
 
         return true;

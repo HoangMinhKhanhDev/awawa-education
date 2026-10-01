@@ -120,6 +120,10 @@ class GenerateArtifact implements ShouldBeUnique, ShouldQueue
         }
 
         $this->markClaimed($artifact);
+        $this->recordTimeline('claimed', [
+            'via' => $this->job !== null ? 'queue' : 'direct',
+            'attempt' => $this->job !== null ? $this->job->attempts() : 1,
+        ]);
 
         $data = null;
         $attempt = 0;
@@ -161,6 +165,16 @@ class GenerateArtifact implements ShouldBeUnique, ShouldQueue
 
         $payload = is_array($data['payload']) ? $data['payload'] : [];
         $payload['_generation'] = $params;
+
+        $previous = NotebookArtifact::query()->find($this->artifactId)?->payload ?? [];
+        $timeline = is_array($previous['_timeline'] ?? null) ? $previous['_timeline'] : [];
+        $timeline[] = ['at' => now()->toIso8601String(), 'event' => 'finished', 'tokens' => $data['tokens'] ?? 0];
+        $payload['_timeline'] = array_slice($timeline, -10);
+
+        if (isset($previous['_dispatched_at'])) {
+            $payload['_dispatched_at'] = $previous['_dispatched_at'];
+        }
+
         unset($payload['_error'], $payload['_generation_runner'], $payload['_progress'], $payload['_claimed_at'], $payload['_rescued_at']);
 
         $artifact->update([
@@ -262,6 +276,30 @@ class GenerateArtifact implements ShouldBeUnique, ShouldQueue
     }
 
     /**
+     * Ghi mốc thời gian vào payload để lần sau soạn chậm thì đọc số liệu thay
+     * vì đoán: dispatched (lúc xếp hàng) → claimed (người nhận việc) →
+     * finished/failed. Giữ tối đa 10 mốc để payload không phình. Chỉ ghi khi
+     * artefact còn đang soạn, để không chạm `updated_at` của bản đã xong.
+     *
+     * @param  array<string, mixed>  $extra
+     */
+    protected function recordTimeline(string $event, array $extra = []): void
+    {
+        $artifact = NotebookArtifact::query()->find($this->artifactId);
+
+        if ($artifact === null || ! $artifact->isGenerating()) {
+            return;
+        }
+
+        $payload = $artifact->payload ?? [];
+        $timeline = is_array($payload['_timeline'] ?? null) ? $payload['_timeline'] : [];
+        $timeline[] = array_merge(['at' => now()->toIso8601String(), 'event' => $event], $extra);
+        $payload['_timeline'] = array_slice($timeline, -10);
+
+        $artifact->update(['payload' => $payload]);
+    }
+
+    /**
      * Đóng dấu một lần soạn thất bại, giữ nguyên thông tin tham số để giáo viên
      * bấm "Tạo lại" là chạy lại đúng cấu hình cũ.
      */
@@ -276,6 +314,14 @@ class GenerateArtifact implements ShouldBeUnique, ShouldQueue
         $payload = $artifact->payload ?? [];
         $payload['_error'] = Str::limit($reason, 500, '');
         unset($payload['_generation_runner'], $payload['_progress']);
+
+        $timeline = is_array($payload['_timeline'] ?? null) ? $payload['_timeline'] : [];
+        $timeline[] = [
+            'at' => now()->toIso8601String(),
+            'event' => 'failed',
+            'reason' => Str::limit($reason, 120, ''),
+        ];
+        $payload['_timeline'] = array_slice($timeline, -10);
 
         $artifact->update([
             'status' => NotebookArtifact::STATUS_FAILED,

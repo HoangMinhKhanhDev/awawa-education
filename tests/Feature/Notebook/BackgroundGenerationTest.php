@@ -135,7 +135,7 @@ class BackgroundGenerationTest extends TestCase
      * đời. Xếp hàng để được thử lại thật, và sống được cả khi giáo viên đóng tab
      * ngay sau khi bấm "Tạo".
      */
-    public function test_generation_is_queued_when_the_host_blocks_child_processes(): void
+    public function test_generation_is_queued_when_neither_child_processes_nor_fastcgi_exist(): void
     {
         Queue::fake();
         Http::preventStrayRequests();
@@ -144,6 +144,7 @@ class BackgroundGenerationTest extends TestCase
         $this->mock(BackgroundProcess::class, function ($mock): void {
             $mock->shouldReceive('phpBinary')->andReturn('/usr/bin/php');
             $mock->shouldReceive('start')->once()->andReturnFalse();
+            $mock->shouldReceive('defer')->once()->andReturnFalse();
         });
 
         $this->studio()
@@ -162,6 +163,58 @@ class BackgroundGenerationTest extends TestCase
 
         // AI chỉ chạy ở worker, không chạy trong web request.
         Http::assertNothingSent();
+    }
+
+    /**
+     * Hosting shared điển hình (chặn proc_open, có FastCGI): defer chạy ngay sau
+     * response nên không chờ nhịp cron, hàng chờ không bao giờ được chạm tới.
+     */
+    public function test_defer_runs_before_the_queue_on_typical_shared_hosting(): void
+    {
+        Queue::fake();
+        $this->fakeDocumentText('Nội dung soạn ngay sau response.');
+
+        $this->mock(BackgroundProcess::class, function ($mock): void {
+            $mock->shouldReceive('phpBinary')->andReturn('/usr/bin/php');
+            $mock->shouldReceive('start')->once()->andReturnFalse();
+            $mock->shouldReceive('defer')->once()->andReturnUsing(function (callable $work): bool {
+                $work();
+
+                return true;
+            });
+        });
+
+        $this->studio()
+            ->call('generate')
+            ->assertSet('generating', true)
+            ->assertSet('error', null);
+
+        $artifact = NotebookArtifact::query()->firstOrFail();
+
+        $this->assertSame('draft', $artifact->status);
+        $this->assertSame('respond', $artifact->payload['_generation_runner']);
+        $this->assertSame('Nội dung soạn ngay sau response.', $artifact->text_content);
+
+        Queue::assertNothingPushed();
+    }
+
+    /**
+     * Mỗi lần soạn ghi lại mốc claimed/finished để lần sau chậm thì đọc số liệu
+     * thay vì đoán.
+     */
+    public function test_generation_records_a_timeline_in_the_payload(): void
+    {
+        $this->fakeDocumentText('Nội dung có timeline.');
+
+        $this->studio()->call('generate');
+        $this->runBackgroundWork();
+
+        $artifact = NotebookArtifact::query()->firstOrFail();
+        $timeline = $artifact->payload['_timeline'] ?? null;
+
+        $this->assertIsArray($timeline);
+        $this->assertSame(['claimed', 'finished'], array_column($timeline, 'event'));
+        $this->assertNotEmpty($timeline[0]['at']);
     }
 
     /**
@@ -415,6 +468,7 @@ class BackgroundGenerationTest extends TestCase
         $this->mock(BackgroundProcess::class, function ($mock): void {
             $mock->shouldReceive('phpBinary')->andReturn('/usr/bin/php');
             $mock->shouldReceive('start')->andReturnFalse();
+            $mock->shouldReceive('defer')->andReturnFalse();
         });
 
         $this->studio()->call('generate');
@@ -588,6 +642,7 @@ class BackgroundGenerationTest extends TestCase
         $this->mock(BackgroundProcess::class, function ($mock): void {
             $mock->shouldReceive('phpBinary')->andReturn('/usr/bin/php');
             $mock->shouldReceive('start')->once()->andReturnFalse();
+            $mock->shouldReceive('defer')->andReturnFalse();
         });
 
         $this->studio()->call('generate');
@@ -615,6 +670,7 @@ class BackgroundGenerationTest extends TestCase
         $this->mock(BackgroundProcess::class, function ($mock): void {
             $mock->shouldReceive('phpBinary')->andReturn('/usr/bin/php');
             $mock->shouldReceive('start')->once()->andReturnFalse();
+            $mock->shouldReceive('defer')->andReturnFalse();
         });
 
         $this->studio()->call('generate');
