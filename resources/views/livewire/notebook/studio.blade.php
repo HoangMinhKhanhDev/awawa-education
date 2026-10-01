@@ -7,7 +7,7 @@
     <div class="flex h-12 shrink-0 items-center justify-between gap-2 px-4">
         @if ($view === 'type' && $activeTypeEnum)
             <button type="button" wire:click="backToBrowse"
-                class="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-ink transition-colors hover:text-brand-700 dark:text-white dark:hover:text-brand-300">
+                class="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-ink transition-colors hover:text-brand-700 focus-visible:outline-2 focus-visible:outline-brand-600 dark:text-white dark:hover:text-brand-300">
                 <x-icon name="arrow-left" class="h-4 w-4 shrink-0" />
                 <span class="truncate">Soạn bài</span>
                 <x-icon name="chevron-right" class="h-3.5 w-3.5 shrink-0 text-ink-faint" />
@@ -16,11 +16,6 @@
         @else
             <h2 class="text-sm font-semibold text-ink dark:text-white">Soạn bài</h2>
         @endif
-
-        <div class="flex shrink-0 items-center gap-2">
-            <a href="{{ route('studio.ai.activity') }}" class="text-xs font-medium text-ink-faint hover:text-brand-700 dark:text-slate-500 dark:hover:text-brand-300">Hoạt động AI</a>
-            <span class="tnum text-xs text-ink-faint dark:text-slate-500">{{ $typeCounts->get('all', 0) }}</span>
-        </div>
     </div>
 
     <div class="min-h-0 flex-1 overflow-y-auto">
@@ -84,7 +79,7 @@
                                 </div>
                                 <div>
                                     <label class="label" for="st-qt">Dạng</label>
-                                    <select id="st-qt" class="input" wire:model="questionType">
+                                    <select id="st-qt" class="input" wire:model="questionType" title="Đúng/sai soạn thành chùm chuẩn BGD: đoạn ngữ cảnh chung + 4 mệnh đề a)–d).">
                                         <option value="mixed">Trộn lẫn</option>
                                         <option value="multiple_choice">Trắc nghiệm</option>
                                         <option value="true_false">Đúng / sai</option>
@@ -92,22 +87,27 @@
                                         <option value="essay">Tự luận</option>
                                     </select>
                                 </div>
-                                <div>
-                                    <label class="label" for="st-diff">Độ khó</label>
-                                    <select id="st-diff" class="input" wire:model="difficulty">
-                                        <option value="easy">Dễ</option>
-                                        <option value="medium">Trung bình</option>
-                                        <option value="hard">Khó</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label class="label" for="st-points">Điểm/câu</label>
-                                    <input id="st-points" type="number" step="0.25" min="0.25" class="input tnum" wire:model="points">
-                                </div>
                             </div>
-                            @if ($questionType === 'true_false')
-                                <p class="text-[11px] leading-relaxed text-ink-faint dark:text-slate-500">Mỗi câu là một chùm chuẩn BGD: đoạn ngữ cảnh chung + 4 mệnh đề a)–d) kèm đáp án Đúng/Sai.</p>
-                            @endif
+                            <details class="rounded-[10px] border border-rule px-2.5 py-1.5 dark:border-night-700">
+                                <summary class="cursor-pointer list-none text-xs text-ink-faint hover:text-ink dark:text-slate-500 dark:hover:text-white">Nâng cao: độ khó, điểm</summary>
+                                <div class="grid grid-cols-2 gap-3 pb-2 pt-2">
+                                    <div>
+                                        <label class="label" for="st-diff">Độ khó</label>
+                                        <select id="st-diff" class="input" wire:model="difficulty">
+                                            <option value="easy">Dễ</option>
+                                            <option value="medium">Trung bình</option>
+                                            <option value="hard">Khó</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="label" for="st-points">Điểm/câu</label>
+                                        <input id="st-points" type="number" step="0.25" min="0.25" class="input tnum" wire:model="points">
+                                    </div>
+                                </div>
+                                @if ($questionType === 'true_false')
+                                    <p class="pb-2 text-[11px] leading-relaxed text-ink-faint dark:text-slate-500">Mỗi câu là một chùm chuẩn BGD: đoạn ngữ cảnh chung + 4 mệnh đề a)–d) kèm đáp án Đúng/Sai.</p>
+                                @endif
+                            </details>
                         @elseif ($activeType === \App\Enums\ArtifactType::Exam->value)
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
@@ -116,15 +116,7 @@
                                 </div>
                                 <div>
                                     <label class="label" for="st-exam-count">Câu mỗi phần</label>
-                                    <input id="st-exam-count" type="number" min="1" max="50" class="input tnum" wire:model="examQuestionsPerSection">
-                                </div>
-                                <div>
-                                    <label class="label" for="st-exam-total">Tổng điểm đề</label>
-                                    <input id="st-exam-total" type="number" step="0.5" min="1" max="100" class="input tnum" wire:model="examTotalPoints">
-                                </div>
-                                <div>
-                                    <label class="label" for="st-exam-duration">Thời gian (phút)</label>
-                                    <input id="st-exam-duration" type="number" min="1" max="600" class="input tnum" wire:model="examDurationMinutes">
+                                    <input id="st-exam-count" type="number" min="1" max="{{ \App\Services\Notebook\ArtifactGenerator::maxQuestionsPerSection() }}" class="input tnum" wire:model="examQuestionsPerSection">
                                 </div>
                                 <div class="col-span-2">
                                     <label class="label" for="st-exam-qt">Tỉ lệ câu hỏi</label>
@@ -139,32 +131,36 @@
                                         <p class="mt-1.5 text-[11px] text-ink-faint dark:text-slate-500">Câu đúng/sai được gom thành chùm 4 mệnh đề chung một đoạn thông tin.</p>
                                     @endif
                                 </div>
-                                <div>
-                                    <label class="label" for="st-exam-diff">Độ khó chung</label>
-                                    <select id="st-exam-diff" class="input" wire:model="difficulty">
-                                        <option value="easy">Dễ</option>
-                                        <option value="medium">Trung bình</option>
-                                        <option value="hard">Khó</option>
-                                    </select>
-                                </div>
-                                <div class="flex items-end">
-                                    @php
-                                        $examQuestionTotal = (int) $examSections * (int) $examQuestionsPerSection;
-                                        $examPerCall = \App\Services\Notebook\ArtifactGenerator::questionsPerAiCall();
-                                    @endphp
-                                    @if ($examQuestionTotal > $examPerCall)
-                                        <p class="pb-2 text-[11px] leading-relaxed text-ink-faint dark:text-slate-500">
-                                            {{ $examQuestionTotal }} câu · {{ \App\Services\Notebook\ArtifactGenerator::examPointsPerQuestion((int) $examSections, (int) $examQuestionsPerSection, (float) $examTotalPoints) }} điểm/câu.
-                                            Đề lớn sẽ tự soạn thành nhiều đợt rồi ghép lại.
-                                        </p>
-                                    @else
-                                        <p class="tnum pb-2 text-[11px] leading-relaxed text-ink-faint dark:text-slate-500">
-                                            {{ \App\Services\Notebook\ArtifactGenerator::examPointsPerQuestion((int) $examSections, (int) $examQuestionsPerSection, (float) $examTotalPoints) }} điểm/câu
-                                            · {{ $examQuestionTotal }} câu
-                                        </p>
-                                    @endif
-                                </div>
                             </div>
+                            <details class="rounded-[10px] border border-rule px-2.5 py-1.5 dark:border-night-700">
+                                <summary class="cursor-pointer list-none text-xs text-ink-faint hover:text-ink dark:text-slate-500 dark:hover:text-white">Nâng cao: điểm, giờ, độ khó</summary>
+                                <div class="grid grid-cols-2 gap-3 pb-1 pt-2">
+                                    <div>
+                                        <label class="label" for="st-exam-total">Tổng điểm đề</label>
+                                        <input id="st-exam-total" type="number" step="0.5" min="1" max="100" class="input tnum" wire:model="examTotalPoints">
+                                    </div>
+                                    <div>
+                                        <label class="label" for="st-exam-duration">Thời gian (phút)</label>
+                                        <input id="st-exam-duration" type="number" min="1" max="600" class="input tnum" wire:model="examDurationMinutes">
+                                    </div>
+                                    <div>
+                                        <label class="label" for="st-exam-diff">Độ khó chung</label>
+                                        <select id="st-exam-diff" class="input" wire:model="difficulty">
+                                            <option value="easy">Dễ</option>
+                                            <option value="medium">Trung bình</option>
+                                            <option value="hard">Khó</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </details>
+                            @php
+                                $examQuestionTotal = (int) $examSections * (int) $examQuestionsPerSection;
+                                $examPerCall = \App\Services\Notebook\ArtifactGenerator::questionsPerAiCall();
+                            @endphp
+                            <p class="tnum text-[11px] leading-relaxed text-ink-faint dark:text-slate-500">
+                                {{ \App\Services\Notebook\ArtifactGenerator::examPointsPerQuestion((int) $examSections, (int) $examQuestionsPerSection, (float) $examTotalPoints) }} điểm/câu
+                                · {{ $examQuestionTotal }} câu @if ($examQuestionTotal > $examPerCall). Đề lớn sẽ tự soạn thành nhiều đợt rồi ghép lại. @endif
+                            </p>
                         @elseif ($activeType === \App\Enums\ArtifactType::MindMap->value)
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
@@ -206,11 +202,30 @@
                                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
                                         </svg>
-                                        <div class="min-w-0">
+                                        <div class="min-w-0 flex-1">
                                             <p class="line-clamp-2 text-sm text-ink dark:text-slate-100">{{ $artifact->title }}</p>
-                                            <p class="tnum mt-1 text-[11px] text-ink-faint dark:text-slate-500">
-                                                AI đang soạn — đã {{ max(1, (int) round($artifact->updated_at->diffInMinutes(now()))) }} phút. Bạn có thể chuyển sang màn khác.
-                                            </p>
+                                            @php $progress = $artifact->payload['_progress'] ?? null; @endphp
+                                            @if (is_array($progress) && isset($progress['done'], $progress['total']))
+                                                <p class="tnum mt-1 text-[11px] text-ink-faint dark:text-slate-500">
+                                                    Xong đợt {{ $progress['done'] }}/{{ $progress['total'] }} — bạn có thể chuyển sang màn khác.
+                                                </p>
+                                            @else
+                                                <p class="mt-1 flex items-center gap-1.5 text-[11px] text-ink-faint dark:text-slate-500"
+                                                    x-data="{ step: 0 }"
+                                                    x-init="const tick = setInterval(() => { if (!$el.isConnected) { clearInterval(tick); return; } step = (step + 1) % 3; }, 2600)">
+                                                    <span class="awawa-think-dots flex items-center gap-1" aria-hidden="true">
+                                                        <span class="h-1 w-1 rounded-full bg-brand-500"></span>
+                                                        <span class="h-1 w-1 rounded-full bg-brand-500"></span>
+                                                        <span class="h-1 w-1 rounded-full bg-brand-500"></span>
+                                                    </span>
+                                                    <span x-text="['Đang đọc nguồn…', 'Đang soạn nội dung…', 'Đang kiểm tra lại…'][step]">Đang đọc nguồn…</span>
+                                                </p>
+                                            @endif
+                                            <div class="mt-2 space-y-1.5 animate-pulse" aria-hidden="true">
+                                                <div class="h-2 rounded bg-paper-2 dark:bg-white/5" style="width: 92%"></div>
+                                                <div class="h-2 rounded bg-paper-2 dark:bg-white/5" style="width: 78%"></div>
+                                                <div class="h-2 rounded bg-paper-2 dark:bg-white/5" style="width: 60%"></div>
+                                            </div>
                                         </div>
                                     </div>
                                 @elseif ($artifact->isFailed())
@@ -225,35 +240,46 @@
                                     <button type="button" wire:click="openPreview({{ $artifact->id }})" class="flex-1 text-left">
                                         <span class="line-clamp-2 block text-sm text-ink dark:text-slate-100">{{ $artifact->title }}</span>
                                         <span class="mt-1.5 flex flex-wrap items-center gap-1.5">
-                                            <span class="chip {{ $artifact->isPublished() ? 'chip-success' : 'chip-warning' }}">{{ $artifact->isPublished() ? 'Đã xuất bản' : 'Nháp' }}</span>
+                                            <span class="chip {{ $artifact->isPublished() ? 'chip-success' : 'chip-neutral' }}">{{ $artifact->isPublished() ? 'Đã xuất bản' : 'Nháp' }}</span>
                                             <span class="text-[11px] text-ink-faint dark:text-slate-500">{{ $artifact->updated_at->diffForHumans() }}</span>
                                         </span>
                                     </button>
                                 @endif
 
                                 @unless ($artifact->isGenerating())
-                                    <div class="mt-2 flex flex-wrap items-center gap-1.5">
+                                    <div class="mt-2 flex items-center gap-1.5">
                                         @if ($artifact->isPublished())
-                                            <button type="button" wire:click="openPreview({{ $artifact->id }})" class="btn btn-outline px-2 py-1 text-[11px]">Xem</button>
-                                            <a href="{{ route('studio.ai.artifacts.export', ['artifact' => $artifact->id, 'format' => 'docx']) }}"
-                                                class="btn btn-ghost px-2 py-1 text-[11px]">DOCX</a>
+                                            <button type="button" wire:click="openPreview({{ $artifact->id }})" class="btn btn-outline px-3 py-1.5 text-xs">Xem</button>
+                                        @elseif ($artifact->isFailed())
+                                            <button type="button" wire:click="regenerate({{ $artifact->id }})" wire:loading.attr="disabled" wire:target="regenerate({{ $artifact->id }})"
+                                                class="btn btn-primary px-3 py-1.5 text-xs">Thử lại</button>
                                         @else
-                                            @if ($artifact->isFailed())
-                                                <button type="button" wire:click="regenerate({{ $artifact->id }})" wire:loading.attr="disabled" wire:target="regenerate({{ $artifact->id }})"
-                                                    class="btn btn-primary px-2 py-1 text-[11px]">Thử lại</button>
-                                            @else
-                                                <button type="button" wire:click="openPreview({{ $artifact->id }})" class="btn btn-outline px-2 py-1 text-[11px]">Xem</button>
-                                                <button type="button" wire:click="regenerate({{ $artifact->id }})" wire:loading.attr="disabled" wire:target="regenerate({{ $artifact->id }})"
-                                                    wire:confirm="Tạo lại nội dung này bằng AI? Bản nháp hiện tại sẽ bị thay thế."
-                                                    class="btn btn-ghost px-2 py-1 text-[11px]">Tạo lại</button>
-                                                <button type="button" wire:click="publish({{ $artifact->id }})" wire:loading.attr="disabled" wire:target="publish({{ $artifact->id }})"
-                                                    class="btn btn-primary px-2 py-1 text-[11px]">Xuất bản</button>
-                                            @endif
-                                            <button type="button" wire:click="delete({{ $artifact->id }})" wire:confirm="Xóa nội dung này?"
-                                                class="ml-auto rounded-[10px] p-1.5 text-ink-faint transition-colors hover:bg-signal-soft hover:text-signal dark:hover:bg-red-500/10" title="Xóa">
-                                                <x-icon name="trash" class="h-4 w-4" />
-                                            </button>
+                                            <button type="button" wire:click="openPreview({{ $artifact->id }})" class="btn btn-outline px-3 py-1.5 text-xs">Xem</button>
+                                            <button type="button" wire:click="publish({{ $artifact->id }})" wire:loading.attr="disabled" wire:target="publish({{ $artifact->id }})"
+                                                class="btn btn-primary px-3 py-1.5 text-xs">Xuất bản</button>
                                         @endif
+                                        <div class="relative ml-auto" x-data="{ cardMenu: false }" @click.outside="cardMenu = false" @keydown.escape.window="cardMenu = false">
+                                            <button type="button" @click="cardMenu = ! cardMenu"
+                                                class="flex min-h-9 min-w-9 items-center justify-center rounded-[10px] p-1.5 text-ink-faint hover:bg-paper-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-brand-600 dark:text-slate-500 dark:hover:bg-white/5 dark:hover:text-white"
+                                                :aria-expanded="cardMenu ? 'true' : 'false'" aria-label="Tùy chọn khác" aria-haspopup="menu">
+                                                <x-icon name="dots" class="h-4 w-4" />
+                                            </button>
+                                            <div x-show="cardMenu" x-cloak role="menu"
+                                                class="panel absolute bottom-9 right-0 z-40 w-44 overflow-hidden py-1 shadow-lg">
+                                                @if ($artifact->isPublished())
+                                                    <a href="{{ route('studio.ai.artifacts.export', ['artifact' => $artifact->id, 'format' => 'docx']) }}" @click="cardMenu = false"
+                                                        class="flex w-full items-center gap-2 px-3 py-2 text-xs text-ink-soft hover:bg-paper-2 dark:text-slate-300 dark:hover:bg-white/5" role="menuitem">DOCX</a>
+                                                @else
+                                                    @unless ($artifact->isFailed())
+                                                        <button type="button" wire:click="regenerate({{ $artifact->id }})" wire:loading.attr="disabled" wire:target="regenerate({{ $artifact->id }})"
+                                                            wire:confirm="Tạo lại nội dung này bằng AI? Bản nháp hiện tại sẽ bị thay thế." @click="cardMenu = false"
+                                                            class="flex w-full items-center gap-2 px-3 py-2 text-xs text-ink-soft hover:bg-paper-2 dark:text-slate-300 dark:hover:bg-white/5" role="menuitem">Tạo lại</button>
+                                                    @endunless
+                                                    <button type="button" wire:click="delete({{ $artifact->id }})" wire:confirm="Xóa nội dung này?" @click="cardMenu = false"
+                                                        class="flex w-full items-center gap-2 px-3 py-2 text-xs text-signal hover:bg-signal-soft dark:hover:bg-red-500/10" role="menuitem">Xóa</button>
+                                                @endif
+                                            </div>
+                                        </div>
                                     </div>
                                 @endunless
                             </article>
@@ -275,27 +301,39 @@
             <div class="p-3">
                 <h3 class="mb-2 text-xs font-semibold text-ink dark:text-slate-200">Tạo nội dung mới</h3>
 
-                <div class="grid grid-cols-1 gap-2 @sm:grid-cols-2 @3xl:grid-cols-3">
-                    @foreach ($types as $type)
+                <div class="grid grid-cols-1 gap-2 @sm:grid-cols-2">
+                    @foreach ($types->whereIn('value', ['questions', 'exam']) as $type)
                         <button type="button" wire:click="selectType('{{ $type->value }}')" title="{{ $type->description() }}"
-                            class="group flex items-start gap-3 rounded-[14px] border border-rule p-3 text-left transition-colors hover:border-brand-300 hover:bg-paper-2 dark:border-night-700 dark:hover:border-brand-500/40 dark:hover:bg-white/[0.03]"
+                            class="group flex items-start gap-3 rounded-[14px] border border-rule p-3 text-left transition-colors hover:border-brand-300 hover:bg-paper-2 focus-visible:outline-2 focus-visible:outline-brand-600 dark:border-night-700 dark:hover:border-brand-500/40 dark:hover:bg-white/[0.03]"
                             wire:key="format-{{ $type->value }}">
                             <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] {{ $type->tone() }}">
                                 <x-icon :name="$type->icon()" class="h-5 w-5" />
                             </span>
                             <span class="min-w-0 flex-1">
-                                <span class="flex items-center gap-1.5">
-                                    <span class="text-sm font-semibold text-ink dark:text-white">{{ $type->label() }}</span>
-                                    @if ($typeCounts->get($type->value, 0) > 0)
-                                        <span class="tnum chip chip-neutral">{{ $typeCounts->get($type->value, 0) }}</span>
-                                    @endif
-                                </span>
+                                <span class="block text-sm font-semibold text-ink dark:text-white">{{ $type->label() }}</span>
                                 <span class="mt-0.5 block text-xs leading-relaxed text-ink-soft dark:text-slate-400">{{ $type->description() }}</span>
                             </span>
                             <x-icon name="chevron-right" class="mt-1 h-4 w-4 shrink-0 text-ink-faint transition-colors group-hover:text-brand-600 dark:group-hover:text-brand-400" />
                         </button>
                     @endforeach
                 </div>
+
+                <details class="mt-2 rounded-[14px] border border-rule dark:border-night-700">
+                    <summary class="cursor-pointer list-none px-3 py-2.5 text-xs font-medium text-ink-soft hover:text-ink dark:text-slate-400 dark:hover:text-white">Tài liệu & ôn tập khác</summary>
+                    <div class="grid grid-cols-1 gap-1.5 p-2 pt-0 @sm:grid-cols-2">
+                        @foreach ($types->whereNotIn('value', ['questions', 'exam']) as $type)
+                            <button type="button" wire:click="selectType('{{ $type->value }}')" title="{{ $type->description() }}"
+                                class="group flex items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-left transition-colors hover:bg-paper-2 focus-visible:outline-2 focus-visible:outline-brand-600 dark:hover:bg-white/[0.03]"
+                                wire:key="format-{{ $type->value }}">
+                                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] {{ $type->tone() }}">
+                                    <x-icon :name="$type->icon()" class="h-4 w-4" />
+                                </span>
+                                <span class="min-w-0 flex-1 truncate text-sm text-ink dark:text-slate-200">{{ $type->label() }}</span>
+                                <x-icon name="chevron-right" class="h-3.5 w-3.5 shrink-0 text-ink-faint transition-colors group-hover:text-brand-600 dark:group-hover:text-brand-400" />
+                            </button>
+                        @endforeach
+                    </div>
+                </details>
 
                 <h3 class="mb-1 mt-5 text-xs font-semibold text-ink dark:text-slate-200">Nội dung gần đây</h3>
 
@@ -312,7 +350,14 @@
                                         </svg>
                                         <span class="truncate">{{ $artifact->title }}</span>
                                     </p>
-                                    <p class="mt-1 text-[11px] text-ink-faint dark:text-slate-500">Đang soạn nền, có thể chuyển sang màn khác.</p>
+                                    <p class="mt-1 flex items-center gap-1.5 text-[11px] text-ink-faint dark:text-slate-500">
+                                        <span class="awawa-think-dots flex items-center gap-1" aria-hidden="true">
+                                            <span class="h-1 w-1 rounded-full bg-brand-500"></span>
+                                            <span class="h-1 w-1 rounded-full bg-brand-500"></span>
+                                            <span class="h-1 w-1 rounded-full bg-brand-500"></span>
+                                        </span>
+                                        Đang soạn nền, có thể chuyển sang màn khác.
+                                    </p>
                                 </div>
                             @else
                                 <button type="button" wire:click="openPreview({{ $artifact->id }})" class="min-w-0 flex-1 text-left">
@@ -322,33 +367,39 @@
                                             <span class="chip chip-neutral">{{ $rowType->label() }}</span>
                                         @endif
                                         @if ($artifact->isFailed())
-                                            <span class="chip chip-warning">Soạn lỗi</span>
+                                            <span class="chip chip-signal">Soạn lỗi</span>
                                         @else
-                                            <span class="chip {{ $artifact->isPublished() ? 'chip-success' : 'chip-warning' }}">{{ $artifact->isPublished() ? 'Đã xuất bản' : 'Nháp' }}</span>
+                                            <span class="chip {{ $artifact->isPublished() ? 'chip-success' : 'chip-neutral' }}">{{ $artifact->isPublished() ? 'Đã xuất bản' : 'Nháp' }}</span>
                                         @endif
                                         <span class="text-[11px] text-ink-faint dark:text-slate-500">{{ $artifact->updated_at->diffForHumans() }}</span>
                                     </p>
                                 </button>
 
-                                <div class="flex shrink-0 items-center gap-1">
+                                <div class="relative flex shrink-0 items-center" x-data="{ rowMenu: false }" @click.outside="rowMenu = false" @keydown.escape.window="rowMenu = false">
                                     @if ($artifact->isPublished())
-                                        <a href="{{ route('studio.ai.artifacts.export', ['artifact' => $artifact->id, 'format' => 'docx']) }}"
-                                            class="btn btn-ghost px-2 py-1 text-[11px]">DOCX</a>
+                                        <button type="button" wire:click="openPreview({{ $artifact->id }})" class="btn btn-outline px-3 py-1.5 text-xs">Xem</button>
                                     @elseif ($artifact->isFailed())
                                         <button type="button" wire:click="regenerate({{ $artifact->id }})" wire:loading.attr="disabled" wire:target="regenerate({{ $artifact->id }})"
-                                            class="btn btn-outline px-2 py-1 text-[11px]">Thử lại</button>
-                                        <button type="button" wire:click="delete({{ $artifact->id }})" wire:confirm="Xóa nội dung này?"
-                                            class="rounded-[10px] p-1.5 text-ink-faint transition-colors hover:bg-signal-soft hover:text-signal dark:hover:bg-red-500/10" title="Xóa">
-                                            <x-icon name="trash" class="h-4 w-4" />
-                                        </button>
+                                            class="btn btn-outline px-3 py-1.5 text-xs">Thử lại</button>
                                     @else
                                         <button type="button" wire:click="publish({{ $artifact->id }})" wire:loading.attr="disabled" wire:target="publish({{ $artifact->id }})"
-                                            class="btn btn-outline px-2 py-1 text-[11px]">Xuất bản</button>
-                                        <button type="button" wire:click="delete({{ $artifact->id }})" wire:confirm="Xóa nội dung này?"
-                                            class="rounded-[10px] p-1.5 text-ink-faint transition-colors hover:bg-signal-soft hover:text-signal dark:hover:bg-red-500/10" title="Xóa">
-                                            <x-icon name="trash" class="h-4 w-4" />
-                                        </button>
+                                            class="btn btn-outline px-3 py-1.5 text-xs">Xuất bản</button>
                                     @endif
+                                    <button type="button" @click="rowMenu = ! rowMenu"
+                                        class="flex min-h-9 min-w-9 items-center justify-center rounded-[10px] p-1.5 text-ink-faint hover:bg-paper-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-brand-600 dark:text-slate-500 dark:hover:bg-white/5 dark:hover:text-white"
+                                        :aria-expanded="rowMenu ? 'true' : 'false'" aria-label="Tùy chọn khác" aria-haspopup="menu">
+                                        <x-icon name="dots" class="h-4 w-4" />
+                                    </button>
+                                    <div x-show="rowMenu" x-cloak role="menu"
+                                        class="panel absolute bottom-9 right-0 z-40 w-44 overflow-hidden py-1 shadow-lg">
+                                        @if ($artifact->isPublished())
+                                            <a href="{{ route('studio.ai.artifacts.export', ['artifact' => $artifact->id, 'format' => 'docx']) }}" @click="rowMenu = false"
+                                                class="flex w-full items-center gap-2 px-3 py-2 text-xs text-ink-soft hover:bg-paper-2 dark:text-slate-300 dark:hover:bg-white/5" role="menuitem">DOCX</a>
+                                        @else
+                                            <button type="button" wire:click="delete({{ $artifact->id }})" wire:confirm="Xóa nội dung này?" @click="rowMenu = false"
+                                                class="flex w-full items-center gap-2 px-3 py-2 text-xs text-signal hover:bg-signal-soft dark:hover:bg-red-500/10" role="menuitem">Xóa</button>
+                                        @endif
+                                    </div>
                                 </div>
                             @endif
                         </div>
@@ -360,6 +411,10 @@
                 @if ($artifacts->count() >= 30)
                     <p class="px-1 py-3 text-center text-[11px] text-ink-faint dark:text-slate-500">Chỉ hiện 30 nội dung gần nhất.</p>
                 @endif
+
+                <p class="px-1 py-3 text-center">
+                    <a href="{{ route('studio.ai.activity') }}" class="text-[11px] text-ink-faint hover:text-brand-700 dark:text-slate-500 dark:hover:text-brand-300">Hoạt động AI</a>
+                </p>
             </div>
         @endif
     </div>
@@ -368,22 +423,22 @@
     @if ($preview)
         @php $previewType = \App\Enums\ArtifactType::from($preview->type); @endphp
         <div class="fixed inset-0 z-50 flex items-end justify-center bg-night-900/60 p-0 sm:items-center sm:p-4">
-            <div class="notebook-artifact-print flex max-h-[90vh] w-full {{ $previewType === \App\Enums\ArtifactType::Exam ? 'max-w-3xl' : 'max-w-2xl' }} flex-col rounded-t-[14px] bg-white p-6 sm:rounded-[14px] dark:bg-night-800">
-                <div class="mb-3 flex items-start justify-between gap-3">
-                    <div>
+            <div class="notebook-artifact-print flex max-h-[90vh] w-full {{ $previewType === \App\Enums\ArtifactType::Exam ? 'max-w-3xl' : 'max-w-2xl' }} flex-col rounded-t-[14px] bg-white p-4 sm:rounded-[14px] sm:p-6 dark:bg-night-800">
+                <div class="notebook-print-hide mb-3 flex shrink-0 items-start justify-between gap-3">
+                    <div class="min-w-0">
                         <h2 class="font-serif text-lg font-semibold text-ink dark:text-white">{{ $preview->title }}</h2>
                         <p class="mt-0.5 flex flex-wrap items-center gap-1.5">
                             <span class="chip chip-neutral">{{ $previewType->label() }}</span>
                             @if ($preview->isGenerating())
-                                <span class="chip chip-warning">Đang soạn</span>
+                                <span class="chip chip-neutral">Đang soạn</span>
                             @elseif ($preview->isFailed())
-                                <span class="chip chip-warning">Soạn lỗi</span>
+                                <span class="chip chip-signal">Soạn lỗi</span>
                             @else
-                                <span class="chip {{ $preview->isPublished() ? 'chip-success' : 'chip-warning' }}">{{ $preview->isPublished() ? 'Đã xuất bản' : 'Nháp' }}</span>
+                                <span class="chip {{ $preview->isPublished() ? 'chip-success' : 'chip-neutral' }}">{{ $preview->isPublished() ? 'Đã xuất bản' : ($editingPreview ? 'Đang sửa' : 'Nháp') }}</span>
                             @endif
                         </p>
                     </div>
-                    <button type="button" wire:click="closePreview" class="notebook-print-hide rounded-[10px] p-1.5 text-ink-faint hover:bg-paper-2 dark:hover:bg-white/5" aria-label="Đóng">
+                    <button type="button" wire:click="closePreview" class="notebook-print-hide shrink-0 rounded-[10px] p-1.5 text-ink-faint hover:bg-paper-2 focus-visible:outline-2 focus-visible:outline-brand-600 dark:hover:bg-white/5" aria-label="Đóng">
                         <x-icon name="x" class="h-5 w-5" />
                     </button>
                 </div>
@@ -394,10 +449,21 @@
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
                         </svg>
-                        <p class="text-sm text-ink dark:text-slate-200">AI đang soạn nội dung…</p>
-                        <p class="tnum text-xs text-ink-faint dark:text-slate-500">
-                            Đã chờ {{ max(1, (int) round($preview->updated_at->diffInMinutes(now()))) }} phút.
+                        <p class="flex items-center gap-2 text-sm text-ink dark:text-slate-200"
+                            x-data="{ step: 0 }"
+                            x-init="const tick = setInterval(() => { if (!$el.isConnected) { clearInterval(tick); return; } step = (step + 1) % 3; }, 2600)">
+                            <span class="awawa-think-dots flex items-center gap-1" aria-hidden="true">
+                                <span class="h-1.5 w-1.5 rounded-full bg-brand-500"></span>
+                                <span class="h-1.5 w-1.5 rounded-full bg-brand-500"></span>
+                                <span class="h-1.5 w-1.5 rounded-full bg-brand-500"></span>
+                            </span>
+                            <span x-text="['AI đang đọc nguồn…', 'AI đang soạn nội dung…', 'AI đang kiểm tra lại…'][step]">AI đang soạn nội dung…</span>
                         </p>
+                        <div class="w-full max-w-xs space-y-1.5 animate-pulse" aria-hidden="true">
+                            <div class="h-2 rounded bg-paper-2 dark:bg-white/5" style="width: 88%"></div>
+                            <div class="h-2 rounded bg-paper-2 dark:bg-white/5" style="width: 72%"></div>
+                            <div class="h-2 rounded bg-paper-2 dark:bg-white/5" style="width: 55%"></div>
+                        </div>
                         <p class="max-w-sm text-xs text-ink-faint dark:text-slate-500">
                             Bạn có thể đóng cửa sổ này hoặc chuyển sang màn khác, quá trình vẫn chạy nền. Nội dung dài có thể mất vài phút.
                         </p>
@@ -757,14 +823,16 @@
                             </div>
 
                             <div x-show="showAnswers" x-cloak class="exam-answer-key">
-                                <h4 class="text-sm font-semibold text-ink dark:text-white">Bảng đáp án</h4>
-                                <div class="mt-2 grid grid-cols-5 gap-1 text-xs sm:grid-cols-8">
-                                    @foreach ($examAnswers as $index => $answer)
-                                        <div class="rounded-[6px] bg-paper-2 px-1.5 py-1 text-ink dark:bg-white/5 dark:text-slate-200">
-                                            <span class="tnum font-semibold">{{ $index + 1 }}.</span> {{ $answer !== '' ? $answer : '—' }}
-                                        </div>
-                                    @endforeach
-                                </div>
+                                <details>
+                                    <summary class="cursor-pointer text-sm font-semibold text-ink dark:text-white">Bảng đáp án</summary>
+                                    <div class="mt-2 grid grid-cols-5 gap-1 text-xs sm:grid-cols-8">
+                                        @foreach ($examAnswers as $index => $answer)
+                                            <div class="rounded-[6px] bg-paper-2 px-1.5 py-1 text-ink dark:bg-white/5 dark:text-slate-200">
+                                                <span class="tnum font-semibold">{{ $index + 1 }}.</span> {{ $answer !== '' ? $answer : '—' }}
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                </details>
                             </div>
                         </div>
                     @elseif ($previewType === \App\Enums\ArtifactType::Flashcards)
@@ -782,6 +850,102 @@
                         <div class="notebook-markdown text-sm leading-relaxed text-ink dark:text-slate-200">{!! \Illuminate\Support\Str::markdown((string) $preview->text_content, ['html_input' => 'strip', 'allow_unsafe_links' => false]) !!}</div>
                     @endif
                 </div>
+
+                @if (! $preview->isPublished() && ! $preview->isGenerating() && ! $preview->isFailed())
+                    <div class="notebook-print-hide mt-4 border-t border-rule pt-3 dark:border-night-700">
+                        <h3 class="text-sm font-semibold text-ink dark:text-white">Nhờ AI chỉnh sửa</h3>
+                        <p class="mt-0.5 text-xs text-ink-faint dark:text-slate-500">Nêu rõ số câu hoặc đoạn cần sửa, vd “làm khó câu 3 và 7 lên”. AI chỉ sửa đúng chỗ đó, bạn duyệt rồi mới áp vào bản nháp.</p>
+
+                        @foreach ($refines->take(1) as $refine)
+                            <div class="mt-2 rounded-[10px] border border-rule p-3 dark:border-night-700" wire:key="refine-{{ $refine->id }}">
+                                <p class="text-xs text-ink-faint dark:text-slate-500">{{ $refine->created_at->format('d/m H:i') }} · Bạn: {{ $refine->instruction }}</p>
+                                @if ($refine->summary)
+                                    <p class="mt-1 text-sm text-ink dark:text-slate-100">AI: {{ $refine->summary }}</p>
+                                @endif
+                                @if (is_array($refine->proposal['edits'] ?? null))
+                                    <div class="mt-2 space-y-2">
+                                        @foreach ($refine->proposal['edits'] as $edit)
+                                            @if (isset($edit['find']))
+                                                <div class="grid gap-1 text-xs sm:grid-cols-2">
+                                                    <p class="rounded-[8px] bg-signal-soft/60 p-2 text-ink-soft line-through dark:bg-red-500/10 dark:text-slate-400">{{ \Illuminate\Support\Str::limit($edit['find'], 300) }}</p>
+                                                    <p class="rounded-[8px] bg-success/10 p-2 text-ink dark:bg-emerald-500/10 dark:text-slate-100">{{ \Illuminate\Support\Str::limit($edit['replace'] ?? '', 300) }}</p>
+                                                </div>
+                                            @else
+                                                <div class="rounded-[8px] bg-paper-2 p-2 text-xs dark:bg-white/5">
+                                                    <p class="font-semibold text-ink dark:text-slate-100">{{ $edit['label'] ?? ('Mục '.($edit['index'] ?? '')) }}</p>
+                                                    @php
+                                                        $oldText = $edit['old']['content'] ?? $edit['old']['front'] ?? $edit['old']['label'] ?? '';
+                                                        $newText = $edit['new']['content'] ?? $edit['new']['front'] ?? $edit['new']['label'] ?? '';
+                                                    @endphp
+                                                    @if ($oldText !== '')
+                                                        <p class="mt-1 text-ink-soft line-through dark:text-slate-400">{{ \Illuminate\Support\Str::limit($oldText, 300) }}</p>
+                                                    @endif
+                                                    @if ($newText !== '')
+                                                        <p class="mt-1 text-ink dark:text-slate-100">{{ \Illuminate\Support\Str::limit($newText, 300) }}</p>
+                                                    @endif
+                                                </div>
+                                            @endif
+                                        @endforeach
+                                    </div>
+                                @endif
+                                @if ($refine->note)
+                                    <p class="mt-1.5 text-xs text-ink-faint dark:text-slate-500">{{ $refine->note }}</p>
+                                @endif
+                                <div class="mt-2 flex flex-wrap items-center gap-2">
+                                    @if ($refine->isPending())
+                                        <button type="button" wire:click="applyRefine({{ $refine->id }})" class="btn btn-primary px-3 py-1.5 text-xs">Áp vào bản nháp</button>
+                                        <button type="button" wire:click="dismissRefine({{ $refine->id }})" class="btn btn-ghost px-3 py-1.5 text-xs">Bỏ qua</button>
+                                    @elseif ($refine->isApplied())
+                                        <span class="text-xs text-ink-faint dark:text-slate-500">Đã áp vào bản nháp</span>
+                                    @else
+                                        <span class="text-xs text-ink-faint dark:text-slate-500">Đã bỏ qua</span>
+                                    @endif
+                                </div>
+                            </div>
+                        @endforeach
+                        @if ($refines->count() > 1)
+                            <details class="mt-2">
+                                <summary class="cursor-pointer text-xs text-ink-faint hover:text-ink dark:text-slate-500 dark:hover:text-white">Xem {{ $refines->count() - 1 }} lượt sửa trước</summary>
+                                <div class="mt-2 space-y-2">
+                                    @foreach ($refines->skip(1) as $refine)
+                                        <div class="rounded-[10px] border border-rule p-3 dark:border-night-700" wire:key="refine-old-{{ $refine->id }}">
+                                            <p class="text-xs text-ink-faint dark:text-slate-500">{{ $refine->created_at->format('d/m H:i') }} · Bạn: {{ $refine->instruction }}</p>
+                                            @if ($refine->summary)
+                                                <p class="mt-1 text-sm text-ink dark:text-slate-100">AI: {{ $refine->summary }}</p>
+                                            @endif
+                                            @if ($refine->note)
+                                                <p class="mt-1.5 text-xs text-ink-faint dark:text-slate-500">{{ $refine->note }}</p>
+                                            @endif
+                                            <p class="mt-1.5 text-xs text-ink-faint dark:text-slate-500">
+                                                @if ($refine->isApplied())
+                                                    Đã áp vào bản nháp
+                                                @elseif ($refine->isPending())
+                                                    Chờ duyệt
+                                                @else
+                                                    Đã bỏ qua
+                                                @endif
+                                            </p>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </details>
+                        @endif
+
+                        @if ($refineError)
+                            <div class="alert alert-error mt-2">{{ $refineError }}</div>
+                        @endif
+
+                        <form wire:submit="sendRefine" class="mt-2 flex gap-2">
+                            <input type="text" wire:model="refineInstruction" maxlength="1500" placeholder="Vd: làm khó câu 3 và 7 lên"
+                                class="input min-w-0 flex-1 py-2 text-sm" aria-label="Yêu cầu AI sửa" @disabled($refining)>
+                            <button type="submit" class="btn btn-outline shrink-0 text-xs" wire:loading.attr="disabled" wire:target="sendRefine" @disabled($refining || blank($refineInstruction))>
+                                <span wire:loading.remove wire:target="sendRefine">Gửi</span>
+                                <span wire:loading wire:target="sendRefine">Đang sửa…</span>
+                            </button>
+                        </form>
+                        @error('refineInstruction') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
+                    </div>
+                @endif
 
                 @unless ($preview->isPublished())
                     <div class="notebook-print-hide mt-4 flex flex-wrap items-center justify-end gap-3 border-t border-rule pt-3 dark:border-night-700">

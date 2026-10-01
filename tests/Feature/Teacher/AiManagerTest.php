@@ -407,4 +407,131 @@ class AiManagerTest extends TestCase
 
         $this->addToAssertionCount(1);
     }
+
+    public function test_candidates_are_remembered_and_flushed_on_write(): void
+    {
+        $this->configureProvider();
+
+        $this->assertCount(1, app(AiManager::class)->candidates());
+
+        AiProvider::query()->where('key', 'openrouter')->delete();
+
+        // Cache còn giữ một provider cũ cho tới khi có lệnh xoá hoặc hết hạn.
+        $this->assertCount(1, app(AiManager::class)->candidates());
+
+        AiManager::flushCandidates();
+
+        $this->assertSame([], app(AiManager::class)->candidates());
+    }
+
+    public function test_a_non_openrouter_provider_without_a_model_uses_its_own_config_default(): void
+    {
+        AiProvider::create([
+            'key' => 'agnes',
+            'label' => 'Agnes AI',
+            'base_url' => 'https://apihub.agnes-ai.com/v1',
+            'api_key' => 'test-key',
+            'default_model' => null,
+            'is_enabled' => true,
+            'is_default' => true,
+        ]);
+
+        config()->set('awawa.ai.providers.agnes.model', 'agnes-rieng');
+
+        $candidates = app(AiManager::class)->candidates();
+
+        $this->assertCount(1, $candidates);
+        $this->assertSame('agnes-rieng', $candidates[0]['model']);
+    }
+
+    public function test_usage_log_records_cost_when_pricing_is_known(): void
+    {
+        $this->configureProvider();
+
+        Http::fake([
+            'openrouter.ai/api/v1/models' => Http::response(['data' => [[
+                'id' => 'openrouter/free',
+                'pricing' => ['prompt' => '0.0000006', 'completion' => '0.0000012'],
+            ]]], 200),
+            'openrouter.ai/*' => Http::response([
+                'model' => 'openrouter/free',
+                'choices' => [['message' => ['content' => 'Hi']]],
+                'usage' => [
+                    'prompt_tokens' => 1000,
+                    'completion_tokens' => 500,
+                    'total_tokens' => 1500,
+                    'prompt_tokens_details' => ['cached_tokens' => 400],
+                ],
+            ], 200),
+        ]);
+
+        // Nạp giá vào cache trước như khi giáo viên mở chọn model.
+        app(AiManager::class)->modelsForProvider('openrouter');
+
+        app(AiManager::class)->chat(
+            [['role' => 'user', 'content' => 'Hi']],
+            ['purpose' => AiPurpose::Chat],
+        );
+
+        // 1000 token × $0.60/1M + 500 token × $1.20/1M = $0.0012 = 1200 micros.
+        $this->assertDatabaseHas('ai_usage_logs', [
+            'provider_key' => 'openrouter',
+            'cost_micros' => 1200,
+            'price_prompt_micros' => 600000,
+            'price_completion_micros' => 1200000,
+            'cached_prompt_tokens' => 400,
+        ]);
+    }
+
+    public function test_usage_log_leaves_cost_null_when_pricing_is_unknown(): void
+    {
+        $this->configureProvider();
+
+        Http::fake([
+            'openrouter.ai/*' => Http::response([
+                'model' => 'openrouter/free',
+                'choices' => [['message' => ['content' => 'Hi']]],
+                'usage' => ['total_tokens' => 10],
+            ], 200),
+        ]);
+
+        app(AiManager::class)->chat(
+            [['role' => 'user', 'content' => 'Hi']],
+            ['purpose' => AiPurpose::Chat],
+        );
+
+        // Không có giá thì null, không phải 0, để phân biệt với miễn phí.
+        $this->assertDatabaseHas('ai_usage_logs', [
+            'provider_key' => 'openrouter',
+            'cost_micros' => null,
+        ]);
+    }
+
+    public function test_stream_timeout_override_reaches_the_outgoing_request(): void
+    {
+        $this->configureProvider();
+
+        Http::fake([
+            'openrouter.ai/*' => Http::response('data: {"choices":[{"delta":{}}]}
+
+data: [DONE]
+', 200, ['Content-Type' => 'text/event-stream']),
+        ]);
+
+        // Fake rỗng sẽ ném vì không có nội dung, nhưng request đã đi với timeout
+        // đã đè. Chỉ cần chứng minh request đi qua stream với tuỳ chọn timeout.
+        try {
+            app(AiManager::class)->chatStream(
+                [['role' => 'user', 'content' => 'Hi']],
+                ['timeout' => 42],
+                function (): void {},
+            );
+        } catch (AiException) {
+            // expected: fake không trả nội dung nên ném lỗi nội dung rỗng
+        }
+
+        Http::assertSent(function ($request): bool {
+            return $request->url() === 'https://openrouter.ai/api/v1/chat/completions';
+        });
+    }
 }

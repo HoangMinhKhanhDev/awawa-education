@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Support\Str;
 
@@ -58,6 +59,11 @@ class NotebookArtifact extends Model
     public function ref(): MorphTo
     {
         return $this->morphTo();
+    }
+
+    public function refines(): HasMany
+    {
+        return $this->hasMany(NotebookArtifactRefine::class, 'artifact_id')->orderBy('id');
     }
 
     public function isPublished(): bool

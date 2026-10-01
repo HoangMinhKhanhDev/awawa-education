@@ -550,4 +550,47 @@ class AiJsonResilienceTest extends TestCase
 
         return $data['payload'];
     }
+
+    public function test_json_generation_requests_json_mode_from_the_provider(): void
+    {
+        Http::preventStrayRequests();
+        $this->fakeResponses([[
+            'model' => 'openrouter/free',
+            'choices' => [['message' => ['content' => $this->flashcardJson()]]],
+            'usage' => ['total_tokens' => 20],
+        ]]);
+
+        $this->generateFlashcards();
+
+        Http::assertSent(function (HttpRequest $request): bool {
+            $format = $request->data()['response_format'] ?? null;
+
+            return is_array($format) && ($format['type'] ?? null) === 'json_object';
+        });
+    }
+
+    public function test_json_mode_rejection_falls_back_to_a_plain_request(): void
+    {
+        Http::preventStrayRequests();
+
+        $fake = Http::sequence()
+            ->push(['error' => ['message' => 'response_format json_object is not supported']], 400)
+            ->push([
+                'model' => 'openrouter/free',
+                'choices' => [['message' => ['content' => $this->flashcardJson()]]],
+                'usage' => ['total_tokens' => 20],
+            ], 200);
+
+        Http::fake(['openrouter.ai/*' => $fake]);
+
+        $payload = $this->generateFlashcards();
+
+        $this->assertSame('Phép tính?', $payload['cards'][0]['front']);
+
+        $sent = Http::recorded();
+
+        $this->assertCount(2, $sent);
+        $this->assertSame('json_object', $sent[0][0]->data()['response_format']['type'] ?? null);
+        $this->assertArrayNotHasKey('response_format', $sent[1][0]->data());
+    }
 }

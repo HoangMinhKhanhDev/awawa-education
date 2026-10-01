@@ -324,8 +324,36 @@
         @apply border-signal/25 bg-signal-soft text-signal dark:border-signal/20 dark:bg-signal/10 dark:text-red-300;
     }
 
-    .alert-warning {
+.alert-warning {
         @apply border-warning/25 bg-warning-soft text-warning dark:border-warning/20 dark:bg-warning/10 dark:text-amber-300;
+    }
+
+    /*
+     * Chấm "đang nghĩ" của AI: 3 chấm nảy nối tiếp. Viết bằng CSS thuần thay
+     * vì utility Tailwind để chắc chắn có mặt sau mọi lần build.
+     */
+    @keyframes awawa-think-bounce {
+        0%, 60%, 100% { transform: translateY(0); opacity: 0.45; }
+        30% { transform: translateY(-4px); opacity: 1; }
+    }
+
+    .awawa-think-dots > span {
+        animation: awawa-think-bounce 1.2s ease-in-out infinite;
+    }
+
+    .awawa-think-dots > span:nth-child(2) {
+        animation-delay: 150ms;
+    }
+
+    .awawa-think-dots > span:nth-child(3) {
+        animation-delay: 300ms;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .awawa-think-dots > span {
+            animation: none;
+            opacity: 0.7;
+        }
     }
 
     /* ----- Motif giấy ô ly (chỉ landing/auth) ----- */

@@ -30,7 +30,7 @@ class Activity extends Component
             ->get();
 
         $summary = AiUsageLog::query()->where('user_id', auth()->id())->selectRaw(
-            'COUNT(*) as calls, SUM(CASE WHEN is_success = 1 THEN 1 ELSE 0 END) as successes, SUM(total_tokens) as tokens',
+            'COUNT(*) as calls, SUM(CASE WHEN is_success = 1 THEN 1 ELSE 0 END) as successes, SUM(total_tokens) as tokens, SUM(cost_micros) as cost_micros, SUM(cached_prompt_tokens) as cached_tokens',
         )->first();
 
         return view('livewire.notebook.activity', [

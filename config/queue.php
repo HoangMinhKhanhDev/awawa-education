@@ -35,12 +35,31 @@ return [
             'driver' => 'sync',
         ],
 
+        /*
+        | Job ngắn: `retry_after` 90s là quá dư so với timeout 60s của worker.
+        */
         'database' => [
             'driver' => 'database',
             'connection' => env('DB_QUEUE_CONNECTION'),
             'table' => env('DB_QUEUE_TABLE', 'jobs'),
             'queue' => env('DB_QUEUE', 'default'),
             'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 90),
+            'after_commit' => false,
+        ],
+
+        /*
+        | Job soạn nội dung AI, `timeout` 330s nên `retry_after` phải lớn hơn hẳn
+        | con số đó: worker đánh dấu job treo bằng chính `retry_after`, đặt nhỏ
+        | hơn thì nó tưởng job chết và chạy lại trong lúc AI còn đang trả lời.
+        | Worker của hàng đợi này phải chạy trên chính connection `ai`
+        | (xem `routes/console.php`), không dùng chung `database`.
+        */
+        'ai' => [
+            'driver' => 'database',
+            'connection' => env('DB_QUEUE_CONNECTION'),
+            'table' => env('DB_QUEUE_TABLE', 'jobs'),
+            'queue' => env('DB_QUEUE_AI', 'ai'),
+            'retry_after' => (int) env('DB_QUEUE_AI_RETRY_AFTER', 600),
             'after_commit' => false,
         ],
 
@@ -85,6 +104,7 @@ return [
             'driver' => 'failover',
             'connections' => [
                 'database',
+                'ai',
                 'deferred',
             ],
         ],

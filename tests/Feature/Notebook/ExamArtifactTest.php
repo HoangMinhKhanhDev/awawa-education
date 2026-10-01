@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Notebook;
 
+use App\Enums\ArtifactType;
 use App\Enums\ExamType;
 use App\Jobs\GenerateArtifact;
 use App\Livewire\Notebook\Studio;
@@ -134,6 +135,17 @@ class ExamArtifactTest extends TestCase
         ];
     }
 
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function essayQuestions(int $from, int $count): array
+    {
+        return array_map(
+            fn (int $index): array => $this->question('Câu '.($from + $index), 'essay'),
+            range(0, $count - 1),
+        );
+    }
+
     public function test_generated_exam_follows_the_requested_structure(): void
     {
         $this->fakeExamJson([
@@ -183,6 +195,146 @@ class ExamArtifactTest extends TestCase
                 $this->assertSame(2.0, (float) $question['points'], 'Điểm mỗi câu phải bằng tổng điểm chia đều số câu.');
             }
         }
+    }
+
+    public function test_every_question_asked_for_above_thirty_is_kept(): void
+    {
+        // Ngân sách một lần gọi đủ cho 70 câu nên đề này không bị chia đợt.
+        config()->set('awawa.notebook.max_artifact_tokens', 20000);
+
+        $this->fakeExamJson([
+            ['title' => 'PHẦN I', 'questions' => $this->essayQuestions(1, 35)],
+            ['title' => 'PHẦN II', 'questions' => $this->essayQuestions(36, 35)],
+        ]);
+
+        $component = $this->generateExam([
+            'examSections' => 2,
+            'examQuestionsPerSection' => 35,
+            'examTotalPoints' => 70,
+        ]);
+
+        $component->assertHasNoErrors();
+
+        $artifact = $this->artifactOf($component)->fresh();
+
+        $this->assertSame('draft', $artifact->status);
+        $this->assertCount(35, $artifact->payload['sections'][0]['questions']);
+        $this->assertCount(35, $artifact->payload['sections'][1]['questions']);
+        $this->assertSame('Câu 1', $artifact->payload['sections'][0]['questions'][0]['content']);
+        $this->assertSame('Câu 70', $artifact->payload['sections'][1]['questions'][34]['content']);
+
+        // Trước đây phần bị cắt cụt ở 30 câu nên phải soạn lại toàn bộ lần hai
+        // rồi vẫn hỏng; đủ câu thì một lần gọi là xong.
+        Http::assertSentCount(1);
+    }
+
+    public function test_an_exam_at_the_per_section_ceiling_does_not_fail_the_completeness_check(): void
+    {
+        config()->set('awawa.notebook.max_artifact_tokens', 20000);
+
+        $max = ArtifactGenerator::maxQuestionsPerSection();
+
+        $this->fakeExamJson([
+            ['title' => 'PHẦN I', 'questions' => $this->essayQuestions(1, $max)],
+        ]);
+
+        $artifact = $this->artifactOf($this->generateExam([
+            'examSections' => 1,
+            'examQuestionsPerSection' => $max,
+            'examTotalPoints' => $max,
+        ]))->fresh();
+
+        $this->assertSame('draft', $artifact->status);
+        $this->assertNull($artifact->failedReason());
+        $this->assertCount($max, $artifact->payload['sections'][0]['questions']);
+        $this->assertSame('Câu '.$max, $artifact->payload['sections'][0]['questions'][$max - 1]['content']);
+        Http::assertSentCount(1);
+    }
+
+    public function test_a_chunked_exam_at_the_per_section_ceiling_merges_to_the_full_count(): void
+    {
+        // Ép ngân sách một lần gọi về 32 câu nên đề 1 phần × 50 câu phải chia
+        // 2 đợt, bất kể NOTEBOOK_MAX_ARTIFACT_TOKENS ngoài .env là bao nhiêu.
+        config()->set('awawa.notebook.max_artifact_tokens', 6000);
+
+        $max = ArtifactGenerator::maxQuestionsPerSection();
+
+        $sequence = Http::sequence();
+        $from = 1;
+
+        foreach ([32, $max - 32] as $count) {
+            $sequence->push([
+                'model' => 'openrouter/free',
+                'choices' => [['message' => ['content' => json_encode([
+                    'title' => 'Đề kiểm tra',
+                    'description' => 'Đề do AI soạn',
+                    'sections' => [['title' => 'PHẦN I', 'questions' => $this->essayQuestions($from, $count)]],
+                ], JSON_UNESCAPED_UNICODE)]]],
+                'usage' => ['total_tokens' => 60],
+            ], 200);
+
+            $from += $count;
+        }
+
+        Http::fake(['openrouter.ai/*' => $sequence]);
+
+        $artifact = $this->artifactOf($this->generateExam([
+            'examSections' => 1,
+            'examQuestionsPerSection' => $max,
+            'examTotalPoints' => $max,
+        ]))->fresh();
+
+        $this->assertSame('draft', $artifact->status);
+        $this->assertCount($max, $artifact->payload['sections'][0]['questions']);
+        $this->assertSame('Câu 1', $artifact->payload['sections'][0]['questions'][0]['content']);
+        $this->assertSame('Câu '.$max, $artifact->payload['sections'][0]['questions'][$max - 1]['content']);
+        Http::assertSentCount(2);
+    }
+
+    public function test_chunked_exam_reports_progress_after_each_part(): void
+    {
+        config()->set('awawa.notebook.max_artifact_tokens', 6000);
+
+        $max = ArtifactGenerator::maxQuestionsPerSection();
+
+        $sequence = Http::sequence();
+        $from = 1;
+
+        foreach ([32, $max - 32] as $count) {
+            $sequence->push([
+                'model' => 'openrouter/free',
+                'choices' => [['message' => ['content' => json_encode([
+                    'title' => 'Đề kiểm tra',
+                    'description' => 'Đề do AI soạn',
+                    'sections' => [['title' => 'PHẦN I', 'questions' => $this->essayQuestions($from, $count)]],
+                ], JSON_UNESCAPED_UNICODE)]]],
+                'usage' => ['total_tokens' => 60],
+            ], 200);
+
+            $from += $count;
+        }
+
+        Http::fake(['openrouter.ai/*' => $sequence]);
+
+        $progress = [];
+
+        app(ArtifactGenerator::class)->generate(
+            $this->notebook,
+            ArtifactType::Exam,
+            [
+                'instruction' => '',
+                'exam_sections' => 1,
+                'exam_questions_per_section' => $max,
+                'exam_total_points' => $max,
+            ],
+            null,
+            null,
+            function (int $done, int $total) use (&$progress): void {
+                $progress[] = [$done, $total];
+            },
+        );
+
+        $this->assertSame([[1, 2], [2, 2]], $progress);
     }
 
     public function test_incomplete_exam_fails_loudly_instead_of_saving_a_truncated_draft(): void
@@ -565,6 +717,40 @@ class ExamArtifactTest extends TestCase
         $this->assertSame(1.0, ArtifactGenerator::examPointsPerQuestion(2, 5, 10));
         $this->assertSame(0.5, ArtifactGenerator::examPointsPerQuestion(4, 5, 10));
         $this->assertSame(10.0, ArtifactGenerator::examPointsPerQuestion(0, 0, 10));
+    }
+
+    public function test_the_per_section_ceiling_is_shared_by_the_input_and_the_validation(): void
+    {
+        $max = ArtifactGenerator::maxQuestionsPerSection();
+
+        // Trần phải lớn hơn con số 30 mà chuẩn hoá từng cắt cụt âm thầm.
+        $this->assertGreaterThan(30, $max);
+
+        Livewire::test(Studio::class, ['notebookId' => $this->notebook->id])
+            ->call('selectType', 'exam')
+            ->assertSeeHtml('id="st-exam-count" type="number" min="1" max="'.$max.'"');
+
+        $this->fakeExamJson([
+            ['title' => 'PHẦN I', 'questions' => $this->essayQuestions(1, $max)],
+        ]);
+
+        $this->generateExam([
+            'examSections' => 1,
+            'examQuestionsPerSection' => $max,
+            'examTotalPoints' => $max,
+        ])->assertHasNoErrors();
+
+        $this->assertCount($max, NotebookArtifact::query()
+            ->where('notebook_id', $this->notebook->id)
+            ->latest('id')
+            ->firstOrFail()
+            ->payload['sections'][0]['questions']);
+
+        Livewire::test(Studio::class, ['notebookId' => $this->notebook->id])
+            ->call('selectType', 'exam')
+            ->set('examQuestionsPerSection', $max + 1)
+            ->call('generate')
+            ->assertHasErrors(['examQuestionsPerSection']);
     }
 
     public function test_exam_artifact_requires_the_exams_feature(): void

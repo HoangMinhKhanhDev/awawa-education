@@ -9,14 +9,19 @@ use App\Jobs\GenerateArtifact;
 use App\Models\Exam;
 use App\Models\Notebook;
 use App\Models\NotebookArtifact;
+use App\Models\NotebookArtifactRefine;
 use App\Services\Ai\AiException;
 use App\Services\Ai\AiManager;
 use App\Services\Notebook\ArtifactGenerator;
 use App\Services\Notebook\ArtifactPublisher;
+use App\Services\Notebook\ArtifactRefiner;
 use App\Support\BackgroundProcess;
 use App\Support\TrueFalseClusterMerger;
+use Illuminate\Bus\UniqueLock;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -72,6 +77,12 @@ class Studio extends Component
     public array $draftPayload = [];
 
     public bool $publishPublic = true;
+
+    public string $refineInstruction = '';
+
+    public bool $refining = false;
+
+    public ?string $refineError = null;
 
     /**
      * 'browse' để chọn định dạng, 'type' để tuỳ chỉnh và xem kết quả của một định dạng.
@@ -148,7 +159,7 @@ class Studio extends Component
             'difficulty' => ['required', 'in:easy,medium,hard'],
             'mindmapBranches' => ['integer', 'min:2', 'max:8'],
             'examSections' => ['integer', 'min:1', 'max:10'],
-            'examQuestionsPerSection' => ['integer', 'min:1', 'max:50'],
+            'examQuestionsPerSection' => ['integer', 'min:1', 'max:'.ArtifactGenerator::maxQuestionsPerSection()],
             'examTotalPoints' => ['numeric', 'min:1', 'max:100'],
             'examDurationMinutes' => ['integer', 'min:1', 'max:600'],
         ]);
@@ -174,7 +185,9 @@ class Studio extends Component
         }
 
         // Đề lớn hơn ngân sách một lần gọi AI thì hệ thống tự chia thành nhiều
-        // đợt soạn rồi ghép lại, nên ở đây không chặn nữa.
+        // đợt soạn rồi ghép lại, nên ở đây không chặn nữa. Vì thế trần câu mỗi
+        // phần (`ArtifactGenerator::maxQuestionsPerSection()`) cố ý lớn hơn
+        // `questionsPerAiCall()`: đề vẫn ra đủ câu, chỉ tốn thêm vài lần gọi.
         if ($type === ArtifactType::Exam) {
             $total = $this->examSections * $this->examQuestionsPerSection;
 
@@ -229,19 +242,24 @@ class Studio extends Component
      * Giao việc soạn ra ngoài web request để bấm "Tạo" là thấy màn "đang soạn"
      * ngay, kể cả trên shared hosting chặn `proc_open`.
      *
-     * Ba tầng theo thứ tự ưu tiên, xem `BackgroundProcess`:
+     * Bốn tầng theo thứ tự ưu tiên, xem `BackgroundProcess`:
      *   1. tiến trình con nếu hosting cho phép `proc_open`;
-     *   2. gửi response trước rồi soạn nốt nếu chạy FastCGI;
-     *   3. chạy ngay trong request — tab hiện spinner suốt lúc soạn nhưng chạy
+     *   2. hàng chờ cron — tầng chạy được thật trên shared hosting và là tầng
+     *      duy nhất thử lại được lỗi hạ tầng cũng như giữ được việc khi giáo viên
+     *      đóng tab;
+     *   3. gửi response trước rồi soạn nốt nếu chạy FastCGI;
+     *   4. chạy ngay trong request — tab hiện spinner suốt lúc soạn nhưng chạy
      *      được trên mọi SAPI, kể cả CGI không có FastCGI.
      *
-     * Không có tầng chờ cron: cấu hình sai phải báo ngay, không được xếp hàng
-     * một phút rồi mới đổ lỗi. `dispatch()->afterResponse()` không dùng được vì
-     * Laravel vẫn chạy job đồng bộ trong chính request đó.
+     * Cấu hình sai đã bị `generate()` chặn ngay lúc bấm "Tạo" nên xếp hàng không
+     * phải đợi đến lúc mới đổ lỗi. `dispatch()->afterResponse()` không dùng
+     * được vì Laravel vẫn chạy job đồng bộ trong chính request đó.
      * Xem `test_poll_never_calls_the_ai_from_the_web_request`.
      */
     protected function startGeneration(NotebookArtifact $artifact, BackgroundProcess $backgroundProcess): void
     {
+        // Ghi tầng dự kiến chạy trước khi khởi chạy nó: tiến trình nền và worker
+        // có thể xong rất nhanh, ghi sau sẽ đè mất kết quả vừa có.
         $payload = $artifact->payload ?? [];
         $payload['_generation_runner'] = 'process';
         $artifact->update(['payload' => $payload]);
@@ -255,8 +273,21 @@ class Studio extends Component
             return;
         }
 
-        // Tầng 2: gửi response trước rồi soạn nốt. Giáo viên thấy màn "đang soạn"
-        // gần như tức thì, đây là đường duy nhất còn lại khi hosting chặn proc_open.
+        // Tầng 2: hàng chờ. Hostinger chặn `proc_open` nên đây là tầng chạy được
+        // thật trên production: worker cron thử lại được lỗi mạng, máy chủ lỗi
+        // hay lần bị giới hạn lượt gọi, thay vì bắt giáo viên bấm "Tạo lại".
+        $payload['_generation_runner'] = 'queue';
+        $artifact->update(['payload' => $payload]);
+
+        if ($this->queueGeneration($artifact)) {
+            $this->generating = true;
+            $this->error = null;
+
+            return;
+        }
+
+        // Tầng 3: gửi response trước rồi soạn nốt. Chỉ dùng được khi hàng chờ
+        // hỏng, còn FastCGI thì không: mất luôn phần thử lại.
         if ($backgroundProcess->defer(function () use ($artifact): void {
             @set_time_limit(0);
             @ini_set('memory_limit', (string) config('awawa.notebook.generation_memory', '1024M'));
@@ -289,10 +320,52 @@ class Studio extends Component
     }
 
     /**
+     * Xếp việc soạn vào hàng chờ, trả về false khi hàng chờ không nhận việc được để
+     * `startGeneration` rơi về tầng sau.
+     *
+     * Tự giành khoá chống soạn trùng rồi mới xếp, thay vì gọi `dispatch()`: hàm đó
+     * trả về `PendingDispatch` và chỉ gửi job khi đối tượng đó bị huỷ, nên không cho
+     * biết khoá đã giành được hay chưa. Giữ khoá trong tay thì nhả được khi xếp
+     * hàng hỏng, không thì giáo viên bấm "Tạo lại" cũng không xếp nổi cho tới hết
+     * `uniqueFor`.
+     */
+    protected function queueGeneration(NotebookArtifact $artifact): bool
+    {
+        $job = new GenerateArtifact($artifact->id);
+        $uniqueLock = new UniqueLock(Cache::store());
+
+        if (! $uniqueLock->acquire($job)) {
+            // Đã có việc soạn cho artefact này trong hàng đời, đừng chạy thêm.
+            Log::info('Việc soạn nội dung đã có trong hàng đời, bỏ qua lần xếp mới.', [
+                'artifact_id' => $artifact->id,
+            ]);
+
+            return true;
+        }
+
+        try {
+            Bus::dispatch($job);
+        } catch (\Throwable $exception) {
+            $uniqueLock->release($job);
+
+            Log::warning('Không xếp hàng được việc soạn nội dung.', [
+                'artifact_id' => $artifact->id,
+                'exception' => $exception->getMessage(),
+            ]);
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * Chỉ đọc trạng thái và dọn nội dung bị treo, không gọi AI.
      */
-    public function poll(): void
+    public function poll(BackgroundProcess $backgroundProcess): void
     {
+        $this->rescueUnpickedQueueJobs($backgroundProcess);
+
         $stale = now()->subMinutes(max(1, (int) config('awawa.notebook.stale_minutes', 30)));
 
         foreach ($this->notebook()->artifacts()->where('status', 'generating')->where('updated_at', '<=', $stale)->get() as $stuck) {
@@ -307,6 +380,73 @@ class Studio extends Component
         if (! $this->generating && ! $this->hasPendingNotices()) {
             $this->skipRender();
         }
+    }
+
+    /**
+     * Số giây chờ trước khi coi một việc trong hàng đời là bị kẹt.
+     *
+     * Cron trên Hostinger chạy mỗi phút, nên đợi quá ba nhịp thì gần như chắc
+     * chắn là worker không chạy chứ không phải chỉ chậm.
+     */
+    private const QUEUE_RESCUE_AFTER_SECONDS = 180;
+
+    /**
+     * Tự soạn nốt việc nằm trong hàng đời mà không worker nào nhận.
+     *
+     * `startGeneration` dừng ở tầng hàng đời, nên nếu cron `schedule:run` trên
+     * hosting không được bật thì job không bao giờ được cầm: giáo viên chỉ thấy
+     * màn "đang soạn" treo tới hết `stale_minutes`. Ở đây phát hiện việc đã nằm
+     * quá lâu mà chưa ai nhận, rồi soạn nốt qua `defer` để không giữ request của
+     * trình duyệt.
+     *
+     * Ghi `_rescued_at` trước khi soạn để job còn nằm trong hàng đời tự bỏ qua,
+     * xem `GenerateArtifact::handle()`.
+     */
+    protected function rescueUnpickedQueueJobs(BackgroundProcess $backgroundProcess): void
+    {
+        $job = null;
+
+        foreach ($this->notebook()->artifacts()->where('status', 'generating')->get() as $artifact) {
+            $payload = $artifact->payload ?? [];
+
+            if (($payload['_generation_runner'] ?? null) !== 'queue' || ! empty($payload['_claimed_at'])) {
+                continue;
+            }
+
+            if ($artifact->created_at->gt(now()->subSeconds(self::QUEUE_RESCUE_AFTER_SECONDS))) {
+                continue;
+            }
+
+            $job = new GenerateArtifact($artifact->id, rescued: true);
+
+            $payload['_rescued_at'] = now()->timestamp;
+            $payload['_claimed_at'] = now()->timestamp;
+            $payload['_generation_runner'] = 'respond';
+            $artifact->update(['payload' => $payload]);
+
+            break;
+        }
+
+        if ($job === null) {
+            return;
+        }
+
+        Log::warning('Việc soạn nội dung nằm quá lâu trong hàng chờ, tự soạn nốt.', [
+            'artifact_id' => $job->artifactId,
+        ]);
+
+        $work = function () use ($job): void {
+            @set_time_limit(0);
+            @ini_set('memory_limit', (string) config('awawa.notebook.generation_memory', '1024M'));
+
+            $job->handle(app(ArtifactGenerator::class));
+        };
+
+        if (! $backgroundProcess->defer($work)) {
+            $work();
+        }
+
+        $this->generating = true;
     }
 
     protected function hasPendingNotices(): bool
@@ -398,6 +538,8 @@ class Studio extends Component
         $this->draftPayload = $this->prepareDraftPayload($artifact);
         $this->editingPreview = false;
         $this->error = null;
+        $this->refineInstruction = '';
+        $this->refineError = null;
     }
 
     public function startEditingPreview(): void
@@ -425,6 +567,8 @@ class Studio extends Component
     {
         $this->previewId = null;
         $this->editingPreview = false;
+        $this->refineInstruction = '';
+        $this->refineError = null;
     }
 
     public function saveDraft(): void
@@ -473,6 +617,107 @@ class Studio extends Component
         $this->editingPreview = false;
         $this->error = null;
         session()->flash('notebook_status', 'Đã lưu bản nháp.');
+    }
+
+    /**
+     * Nhờ AI sửa cục bộ bản nháp đang xem, chưa áp vào nội dung.
+     *
+     * Chạy đồng bộ trong request vì đề xuất sửa rất nhẹ (vài nghìn token);
+     * bản nháp vẫn phải ở trạng thái nháp và chưa xuất bản.
+     */
+    public function sendRefine(ArtifactRefiner $refiner): void
+    {
+        $this->guard();
+        $this->refineError = null;
+        $this->resetErrorBag();
+
+        if ($this->previewId === null || $this->refining) {
+            return;
+        }
+
+        $artifact = $this->notebook()->artifacts()->findOrFail($this->previewId);
+
+        abort_unless(! $artifact->isPublished() && ! $artifact->isGenerating(), 403);
+
+        $this->validate(['refineInstruction' => ['required', 'string', 'min:2', 'max:1500']], [
+            'refineInstruction.required' => 'Nhập yêu cầu sửa, vd "làm khó câu 3 lên".',
+        ]);
+
+        $this->refining = true;
+
+        try {
+            $result = $refiner->refine($artifact, $this->refineInstruction, auth()->id());
+        } catch (\Throwable $exception) {
+            $this->refining = false;
+            $this->refineError = $exception->getMessage();
+
+            return;
+        }
+
+        NotebookArtifactRefine::create([
+            'artifact_id' => $artifact->id,
+            'user_id' => auth()->id(),
+            'instruction' => $this->refineInstruction,
+            'summary' => $result['summary'],
+            'proposal' => ['edits' => $result['edits']],
+            'note' => $result['skipped'] !== [] ? implode(' ', $result['skipped']) : null,
+            'status' => NotebookArtifactRefine::STATUS_PENDING,
+            'provider_key' => $result['provider'],
+            'model' => $result['model'],
+            'tokens' => $result['tokens'],
+        ]);
+
+        $this->refineInstruction = '';
+        $this->refining = false;
+    }
+
+    /**
+     * Áp đề xuất đã duyệt vào bản nháp, rồi mở lại editor để thấy ngay.
+     */
+    public function applyRefine(int $refineId, ArtifactRefiner $refiner): void
+    {
+        $this->guard();
+
+        $refine = NotebookArtifactRefine::query()->findOrFail($refineId);
+        $artifact = $this->notebook()->artifacts()->findOrFail($refine->artifact_id);
+
+        abort_unless(! $artifact->isPublished() && ! $artifact->isGenerating(), 403);
+        abort_unless($refine->isPending(), 409);
+
+        $result = $refiner->apply($artifact, (array) ($refine->proposal['edits'] ?? []));
+
+        $note = [];
+
+        if ($result['applied'] > 0) {
+            $note[] = "Đã áp {$result['applied']} mục sửa vào bản nháp.";
+        }
+
+        foreach ($result['skipped'] as $skipped) {
+            $note[] = $skipped;
+        }
+
+        $refine->forceFill([
+            'status' => NotebookArtifactRefine::STATUS_APPLIED,
+            'note' => $note !== [] ? implode(' ', $note) : $refine->note,
+        ])->save();
+
+        // Mở lại nội dung mới để giáo viên thấy và sửa tay tiếp nếu cần.
+        $this->draftTitle = $artifact->refresh()->title;
+        $this->draftText = (string) $artifact->text_content;
+        $this->draftPayload = $this->prepareDraftPayload($artifact);
+        $this->previewId = $artifact->id;
+    }
+
+    public function dismissRefine(int $refineId): void
+    {
+        $this->guard();
+
+        $refine = NotebookArtifactRefine::query()->findOrFail($refineId);
+        $artifact = $this->notebook()->artifacts()->findOrFail($refine->artifact_id);
+
+        abort_unless(! $artifact->isPublished(), 403);
+
+        $refine->forceFill(['status' => NotebookArtifactRefine::STATUS_DISMISSED])->save();
     }
 
     /**
@@ -1065,12 +1310,15 @@ class Studio extends Component
             ->limit(30)
             ->get();
 
+        $preview = $this->previewId ? $this->notebook()->artifacts()->find($this->previewId) : null;
+
         return view('livewire.notebook.studio', [
             'types' => $types,
             'artifacts' => $artifacts,
             'typeCounts' => $this->typeCounts($types),
             'activeTypeEnum' => $this->activeType !== null ? ArtifactType::from($this->activeType) : null,
-            'preview' => $this->previewId ? $this->notebook()->artifacts()->find($this->previewId) : null,
+            'preview' => $preview,
+            'refines' => $preview ? $preview->refines()->latest('id')->limit(20)->get() : collect(),
             'hasSources' => $this->notebook()->enabledSourceIds() !== [],
             'isGenerating' => $this->notebook()->artifacts()->where('status', 'generating')->exists(),
             'notice' => $this->collectNotices(),

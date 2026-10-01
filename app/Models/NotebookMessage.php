@@ -15,9 +15,11 @@ class NotebookMessage extends Model
      */
     protected $fillable = [
         'notebook_id',
+        'conversation_id',
         'user_id',
         'role',
         'content',
+        'rendered_html',
         'citations',
         'source_ids',
         'provider_key',
@@ -42,6 +44,11 @@ class NotebookMessage extends Model
     public function notebook(): BelongsTo
     {
         return $this->belongsTo(Notebook::class);
+    }
+
+    public function conversation(): BelongsTo
+    {
+        return $this->belongsTo(NotebookConversation::class, 'conversation_id');
     }
 
     public function user(): BelongsTo

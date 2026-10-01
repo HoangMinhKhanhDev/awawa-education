@@ -126,7 +126,10 @@ class OpenAiCompatibleClient
     /**
      * Lấy danh sách model từ endpoint /models (chuẩn OpenAI).
      *
-     * @return array<int, array{id: string, name: string, free: bool}>
+     * Giữ lại giá theo token (USD) khi nhà cung cấp công bố, để `AiManager`
+     * tính được chi phí từng lần gọi. Không có giá thì để null.
+     *
+     * @return array<int, array{id: string, name: string, free: bool, price_prompt: float|null, price_completion: float|null}>
      */
     public function models(string $baseUrl, ?string $apiKey, int $timeout = 30): array
     {
@@ -167,6 +170,8 @@ class OpenAiCompatibleClient
                 'id' => $id,
                 'name' => (string) ($item['name'] ?? $id),
                 'free' => $free,
+                'price_prompt' => self::pricePerToken(is_array($pricing) ? $pricing : null, 'prompt'),
+                'price_completion' => self::pricePerToken(is_array($pricing) ? $pricing : null, 'completion'),
             ];
         }
 
@@ -179,5 +184,24 @@ class OpenAiCompatibleClient
         });
 
         return $models;
+    }
+
+    /**
+     * Giá USD theo token từ khối `pricing` của /models. OpenRouter trả chuỗi
+     * ("0.0000006"), nơi khác có thể trả số; thiếu hoặc sai thì null.
+     *
+     * @param  array<string, mixed>|null  $pricing
+     */
+    protected static function pricePerToken(?array $pricing, string $key): ?float
+    {
+        $value = $pricing[$key] ?? null;
+
+        if (! is_numeric($value)) {
+            return null;
+        }
+
+        $price = (float) $value;
+
+        return $price >= 0 ? $price : null;
     }
 }

@@ -56,6 +56,11 @@ class Notebook extends Model
         return $this->hasMany(NotebookMessage::class)->orderBy('id');
     }
 
+    public function conversations(): HasMany
+    {
+        return $this->hasMany(NotebookConversation::class)->latest('updated_at');
+    }
+
     public function artifacts(): HasMany
     {
         return $this->hasMany(NotebookArtifact::class)->latest();

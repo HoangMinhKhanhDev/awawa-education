@@ -11,6 +11,7 @@ use App\Models\Question;
 use App\Models\Subject;
 use App\Models\User;
 use App\Services\Notebook\SourceIngestor;
+use App\Services\Notebook\WebSourceFinder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Http\UploadedFile;
@@ -267,5 +268,70 @@ class WebSourceTest extends TestCase
             ->set('webTopic', 'chủ đề')
             ->call('searchWeb')
             ->assertSet('error', fn ($value) => is_string($value) && $value !== '');
+    }
+
+    public function test_search_uses_exa_when_selected_by_admin(): void
+    {
+        NotebookSetting::set('exa_api_key', 'exa-test', true);
+        NotebookSetting::set('web_search_provider', 'exa');
+        NotebookSetting::flushMemo();
+
+        Http::fake([
+            'api.exa.ai/search' => Http::response([
+                'results' => [[
+                    'title' => 'Định lý Cauchy',
+                    'url' => 'https://example.com/cauchy',
+                    'text' => 'Toàn văn về định lý Cauchy.',
+                    'score' => 0.9,
+                ]],
+            ], 200),
+            'openrouter.ai/*' => Http::response([
+                'model' => 'openrouter/free',
+                'choices' => [['message' => ['content' => json_encode([
+                    ['index' => 1, 'keep' => true, 'reason' => 'Đúng chủ đề'],
+                ], JSON_UNESCAPED_UNICODE)]]],
+                'usage' => ['total_tokens' => 15],
+            ], 200),
+        ]);
+
+        $component = Livewire::test(Sources::class, ['notebookId' => $this->notebook->id])
+            ->call('openAddForm', '')
+            ->set('webTopic', 'định lý Cauchy')
+            ->call('searchWeb')
+            ->assertHasNoErrors();
+
+        $results = $component->get('webResults');
+
+        $this->assertCount(1, $results);
+        $this->assertSame('Định lý Cauchy', $results[0]['title']);
+        $this->assertSame('Toàn văn về định lý Cauchy.', $results[0]['content']);
+
+        Http::assertSent(function (HttpRequest $request): bool {
+            return str_contains($request->url(), 'api.exa.ai/search')
+                && $request->header('x-api-key')[0] === 'exa-test';
+        });
+        Http::assertNotSent(function (HttpRequest $request): bool {
+            return str_contains($request->url(), 'api.tavily.com');
+        });
+    }
+
+    public function test_exa_extract_maps_page_text_by_url(): void
+    {
+        NotebookSetting::set('exa_api_key', 'exa-test', true);
+        NotebookSetting::set('web_search_provider', 'exa');
+        NotebookSetting::flushMemo();
+
+        Http::fake([
+            'api.exa.ai/contents' => Http::response([
+                'results' => [[
+                    'url' => 'https://example.com/a',
+                    'text' => 'Nội dung đầy đủ trang A.',
+                ]],
+            ], 200),
+        ]);
+
+        $content = app(WebSourceFinder::class)->extract(['https://example.com/a']);
+
+        $this->assertSame(['https://example.com/a' => 'Nội dung đầy đủ trang A.'], $content);
     }
 }

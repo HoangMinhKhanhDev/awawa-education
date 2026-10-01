@@ -3,8 +3,11 @@
 namespace App\Services\Notebook;
 
 use App\Models\Notebook;
+use App\Models\NotebookChunk;
+use App\Models\NotebookSource;
 use App\Support\NotebookConfig;
-use Illuminate\Support\Str;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Dựng prompt: gom toàn bộ đoạn của các nguồn đang bật thành ngữ cảnh ĐÁNH SỐ [n]
@@ -38,6 +41,10 @@ class PromptComposer
     /**
      * Gom nguồn đang bật thành các đoạn đánh số [n] dùng làm ngữ cảnh.
      *
+     * Truy hồi qua chỉ mục ngược thay vì nạp toàn bộ `content` vào RAM: chỉ đọc
+     * nội dung của đúng số chunk sẽ gửi cho AI. Từ trong tiêu đề nguồn được tính
+     * điểm cao hơn từ trong nội dung.
+     *
      * @return array{blocks: array<int, string>, citations: array<int, array<string, mixed>>, truncated: bool, chars: int}
      */
     protected function context(Notebook $notebook, string $question, ?array $sourceIds = null, ?int $maxChunks = null): array
@@ -50,47 +57,28 @@ class PromptComposer
             ->where('status', 'ready')
             ->when($sourceIds !== null, fn ($query) => $query->whereIn('id', $sourceIds))
             ->orderBy('order')
-            // Chỉ lấy cột dùng để dựng prompt + trích dẫn, khỏi hydrate full model.
-            ->select(['id', 'notebook_id', 'title', 'type', 'url'])
-            ->with(['chunks' => fn ($query) => $query
-                ->select(['id', 'source_id', 'position', 'content'])
-                ->orderBy('position'),
-            ])
-            ->get();
+            ->get(['id', 'notebook_id', 'title', 'type', 'url']);
 
-        $terms = $this->searchTerms($question);
+        if ($sources->isEmpty()) {
+            return ['blocks' => [], 'citations' => [], 'truncated' => false, 'chars' => 0];
+        }
+
+        $this->ensureIndexed($sources);
+
+        $terms = array_values(array_unique(VietnameseTerms::tokenize($question)));
+
+        $ranked = $terms === []
+            ? $this->rankedWithoutTerms($sources, $chunkLimit)
+            : $this->rankedByTerms($sources, $terms, $chunkLimit);
+
         $blocks = [];
         $citations = [];
         $used = 0;
         $index = 0;
-        $truncated = false;
-        $chunks = [];
+        $truncated = $ranked['total'] > $chunkLimit;
 
-        foreach ($sources as $source) {
-            foreach ($source->chunks as $chunk) {
-                $chunks[] = [
-                    'source' => $source,
-                    'chunk' => $chunk,
-                    'score' => $this->relevanceScore($source->title, $chunk->content, $terms),
-                    'order' => count($chunks),
-                ];
-            }
-        }
-
-        if ($terms !== []) {
-            usort($chunks, function (array $left, array $right): int {
-                return ($right['score'] <=> $left['score']) ?: ($left['order'] <=> $right['order']);
-            });
-        }
-
-        if (count($chunks) > $chunkLimit) {
-            $truncated = true;
-        }
-
-        foreach (array_slice($chunks, 0, $chunkLimit) as $entry) {
-            $source = $entry['source'];
-            $chunk = $entry['chunk'];
-            $block = '['.($index + 1)."] (Nguồn: {$source->title})\n{$chunk->content}";
+        foreach ($ranked['chunks'] as $entry) {
+            $block = '['.($index + 1)."] (Nguồn: {$entry['source_title']})\n{$entry['content']}";
 
             if ($used + mb_strlen($block) > $budget) {
                 $truncated = true;
@@ -104,17 +92,17 @@ class PromptComposer
             $blocks[] = $block;
             $citations[$index] = [
                 'index' => $index,
-                'source_id' => $source->id,
-                'source_title' => $source->title,
-                'source_type' => $source->type,
-                'source_url' => $source->url,
-                'chunk_id' => $chunk->id,
-                'position' => $chunk->position,
-                'text' => $chunk->content,
+                'source_id' => $entry['source_id'],
+                'source_title' => $entry['source_title'],
+                'source_type' => $entry['source_type'],
+                'source_url' => $entry['source_url'],
+                'chunk_id' => $entry['chunk_id'],
+                'position' => $entry['position'],
+                'text' => $entry['content'],
             ];
         }
 
-        if ($index < count($chunks)) {
+        if ($index < min($ranked['total'], $chunkLimit)) {
             $truncated = true;
         }
 
@@ -123,6 +111,173 @@ class PromptComposer
             'citations' => $citations,
             'truncated' => $truncated,
             'chars' => $used,
+        ];
+    }
+
+    /**
+     * Nạp chỉ mục cho nguồn nào chưa có. Chunk tạo trước khi có chỉ mục thì lần
+     * hỏi đầu tiên tự nạp, các lần sau dùng luôn nên không cần lệnh backfill.
+     *
+     * @param  Collection<int, NotebookSource>  $sources
+     */
+    protected function ensureIndexed($sources): void
+    {
+        $missing = app(ChunkIndexer::class)->missingSourceIds(
+            $sources->pluck('id')->map(fn ($id): int => (int) $id)->all(),
+        );
+
+        foreach ($missing as $sourceId) {
+            $source = $sources->firstWhere('id', $sourceId);
+
+            if ($source !== null) {
+                app(ChunkIndexer::class)->indexSource($source);
+            }
+        }
+    }
+
+    /**
+     * Không có từ khoá thì lấy chunk đầu theo thứ tự nguồn, giống hành vi cũ khi
+     * mọi điểm relevance đều bằng 0.
+     *
+     * @param  Collection<int, NotebookSource>  $sources
+     * @return array{total: int, chunks: array<int, array<string, mixed>>}
+     */
+    protected function rankedWithoutTerms($sources, int $chunkLimit): array
+    {
+        $sourceIds = $sources->pluck('id')->all();
+
+        $total = NotebookChunk::query()->whereIn('source_id', $sourceIds)->count();
+
+        $order = $sources->pluck('id')->flip()->all();
+
+        $rows = NotebookChunk::query()
+            ->whereIn('source_id', $sourceIds)
+            ->orderBy('source_id')
+            ->orderBy('position')
+            ->limit($chunkLimit)
+            ->get(['id', 'source_id', 'position', 'content']);
+
+        $bySource = $sources->keyBy('id');
+
+        $chunks = $rows->map(fn (NotebookChunk $chunk): array => $this->chunkEntry($chunk, $bySource->get($chunk->source_id)))->all();
+
+        usort($chunks, fn (array $a, array $b): int => ($order[$a['source_id']] ?? 0) <=> ($order[$b['source_id']] ?? 0) ?: $a['position'] <=> $b['position']);
+
+        return ['total' => $total, 'chunks' => array_slice($chunks, 0, $chunkLimit)];
+    }
+
+    /**
+     * Chấm điểm BM25 trên tập chunk khớp ít nhất một từ khoá, rồi bù thêm chunk
+     * không khớp theo thứ tự để đủ số lượng như hành vi cũ.
+     *
+     * @param  Collection<int, NotebookSource>  $sources
+     * @param  array<int, string>  $terms
+     * @return array{total: int, chunks: array<int, array<string, mixed>>}
+     */
+    protected function rankedByTerms($sources, array $terms, int $chunkLimit): array
+    {
+        $sourceIds = $sources->pluck('id')->all();
+        $bySource = $sources->keyBy('id');
+        $order = $sources->pluck('id')->flip()->all();
+
+        $total = NotebookChunk::query()->whereIn('source_id', $sourceIds)->count();
+
+        $stats = NotebookChunk::query()
+            ->whereIn('source_id', $sourceIds)
+            ->selectRaw('COUNT(*) as docs, AVG(term_count) as avg_len')
+            ->first();
+
+        $docs = max(1, (int) ($stats->docs ?? 0));
+        $avgLen = max(1.0, (float) ($stats->avg_len ?? 0));
+
+        $docFrequencies = DB::table('notebook_chunk_terms')
+            ->whereIn('source_id', $sourceIds)
+            ->whereIn('term', $terms)
+            ->selectRaw('term, COUNT(DISTINCT chunk_id) as df')
+            ->groupBy('term')
+            ->pluck('df', 'term')
+            ->all();
+
+        $hits = DB::table('notebook_chunk_terms')
+            ->whereIn('source_id', $sourceIds)
+            ->whereIn('term', $terms)
+            ->get(['chunk_id', 'source_id', 'term', 'tf', 'in_title']);
+
+        $lengths = NotebookChunk::query()
+            ->whereIn('source_id', $sourceIds)
+            ->whereIn('id', $hits->pluck('chunk_id')->unique()->all())
+            ->pluck('term_count', 'id')
+            ->all();
+
+        $scores = [];
+        $matchedIds = [];
+
+        foreach ($hits as $hit) {
+            $chunkId = (int) $hit->chunk_id;
+            $matchedIds[$chunkId] = true;
+
+            $df = max(1, (int) ($docFrequencies[$hit->term] ?? 1));
+            $idf = log(1 + ($docs - $df + 0.5) / ($df + 0.5));
+
+            $tf = (int) $hit->tf + ($hit->in_title ? 2 : 0);
+            $len = max(1, (int) ($lengths[$chunkId] ?? 0));
+
+            // BM25 chuẩn với k1 = 1.2, b = 0.75: từ hiếm được điểm cao, từ lặp
+            // nhiều bão hoà, chunk dài bị chuẩn hoá.
+            $tfComponent = ($tf * 2.2) / ($tf + 1.2 * (0.25 + 0.75 * ($len / $avgLen)));
+
+            $scores[$chunkId] = ($scores[$chunkId] ?? 0) + $idf * $tfComponent;
+        }
+
+        arsort($scores);
+
+        $pickedIds = array_slice(array_keys($scores), 0, $chunkLimit);
+
+        // Chưa đủ số lượng thì bù chunk không khớp từ nào theo thứ tự nguồn, để
+        // prompt vẫn đủ ngữ cảnh như khi chấm điểm toàn corpus.
+        if (count($pickedIds) < $chunkLimit) {
+            $extra = NotebookChunk::query()
+                ->whereIn('source_id', $sourceIds)
+                ->whereNotIn('id', array_keys($matchedIds))
+                ->orderBy('source_id')
+                ->orderBy('position')
+                ->limit($chunkLimit - count($pickedIds))
+                ->pluck('id')
+                ->all();
+
+            $pickedIds = array_merge($pickedIds, $extra);
+        }
+
+        if ($pickedIds === []) {
+            return ['total' => $total, 'chunks' => []];
+        }
+
+        $rows = NotebookChunk::query()
+            ->whereIn('id', $pickedIds)
+            ->get(['id', 'source_id', 'position', 'content']);
+
+        $chunks = $rows->map(fn (NotebookChunk $chunk): array => $this->chunkEntry($chunk, $bySource->get($chunk->source_id)))->all();
+
+        $rank = array_flip($pickedIds);
+
+        usort($chunks, fn (array $a, array $b): int => ($rank[$a['chunk_id']] ?? 0) <=> ($rank[$b['chunk_id']] ?? 0));
+
+        return ['total' => $total, 'chunks' => $chunks];
+    }
+
+    /**
+     * @return array{chunk_id: int, source_id: int, source_title: string, source_type: string|null, source_url: string|null, position: int, content: string}
+     */
+    protected function chunkEntry(NotebookChunk $chunk, ?NotebookSource $source): array
+    {
+        return [
+            'chunk_id' => $chunk->id,
+            'source_id' => (int) $chunk->source_id,
+            'source_title' => (string) ($source?->title ?? 'Nguồn'),
+            'source_type' => $source?->type,
+            'source_url' => $source?->url,
+            'position' => (int) $chunk->position,
+            'content' => (string) $chunk->content,
         ];
     }
 
@@ -198,64 +353,23 @@ class PromptComposer
     }
 
     /**
-     * @return array<int, string>
-     */
-    protected function searchTerms(string $question): array
-    {
-        preg_match_all('/[\p{L}\p{N}]{2,}/u', mb_strtolower($question), $matches);
-
-        $stopWords = [
-            'cac', 'cua', 'cho', 'trong', 'mot', 'nhung', 'duoc', 'nhu', 'khi', 'voi', 'tai', 'den',
-            'nay', 'do', 've', 'khong', 'hay', 'toi', 'ban', 'lam', 'noi', 'dung', 'nguon', 'doan',
-            'gi', 'sao', 'the', 'nao', 'co', 'can', 'giup', 'tom', 'tat', 'cac', 'va', 'la',
-        ];
-
-        $terms = array_map(fn (string $term): string => Str::ascii($term), $matches[0] ?? []);
-
-        return array_values(array_unique(array_filter($terms, fn (string $term): bool => ! in_array($term, $stopWords, true))));
-    }
-
-    /**
-     * @param  array<int, string>  $terms
-     */
-    protected function relevanceScore(string $title, string $content, array $terms): int
-    {
-        if ($terms === []) {
-            return 0;
-        }
-
-        preg_match_all('/[\p{L}\p{N}]{2,}/u', mb_strtolower($content), $matches);
-        $frequencies = array_count_values(array_map(
-            fn (string $term): string => Str::ascii($term),
-            $matches[0] ?? [],
-        ));
-        $normalizedTitle = Str::ascii(mb_strtolower($title));
-        $score = 0;
-
-        foreach ($terms as $term) {
-            $score += min($frequencies[$term] ?? 0, 3) * 2;
-
-            if (str_contains($normalizedTitle, $term)) {
-                $score += 1;
-            }
-        }
-
-        return $score;
-    }
-
-    /**
      * Prompt cho việc tạo artefact (câu hỏi/đề/tài liệu...).
      *
      * Dùng chung ngữ cảnh nguồn với chat nhưng không yêu cầu ghi ký hiệu [n]: artefact
      * không có lớp render trích dẫn, và nội dung này đưa thẳng cho học sinh.
      *
+     * `$retrievalQuery` là câu dùng để tìm nguồn, mặc định lấy `$instruction`.
+     * Vòng soạn lại thường gắn thêm câu "đợt trước thiếu..." vào instruction:
+     * truyền query gốc riêng để ngữ cảnh tìm được giống hệt vòng đầu, vừa đúng
+     * ý vừa để nhà cung cấp cache được tiền tố prompt.
+     *
      * @return array<int, array{role: string, content: string}>
      */
-    public function artifactMessages(Notebook $notebook, string $instruction, string $schemaHint): array
+    public function artifactMessages(Notebook $notebook, string $instruction, string $schemaHint, ?string $retrievalQuery = null): array
     {
         $context = $this->context(
             $notebook,
-            $instruction,
+            $retrievalQuery ?? $instruction,
             maxChunks: NotebookConfig::maxArtifactContextChunks(),
         );
 

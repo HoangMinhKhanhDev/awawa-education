@@ -7,10 +7,13 @@
     $subject = $user && ! $user->isSuperAdmin() && $user->subject_id ? $user->subject : null;
     $brand = config('awawa.brand.name');
     $initial = $user ? \Illuminate\Support\Str::upper(\Illuminate\Support\Str::substr($user->name, 0, 1)) : null;
+    // Biến màu điểm nhấn đặt thẳng lên <html>: thẻ <html> tồn tại xuyên suốt
+    // wire:navigate nên không bao giờ bị merge/tháo như thẻ <style> trong head.
+    $accentDeclarations = $user ? \App\Enums\AccentColor::declarationsFor($user->accent) : null;
 @endphp
 
 <!DOCTYPE html>
-<html lang="vi" class="h-full">
+<html lang="vi" class="h-full"@if($accentDeclarations) style="{{ $accentDeclarations }}"@endif>
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">

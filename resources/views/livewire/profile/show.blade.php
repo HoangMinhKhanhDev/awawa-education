@@ -113,7 +113,7 @@
                     <h2 class="text-[15px] font-semibold text-ink dark:text-white">Cài đặt</h2>
                 </div>
                 <div class="divide-y divide-rule dark:divide-night-700">
-                    <button type="button" data-theme-toggle onclick="window.awawa.cyclePreference()"
+<button type="button" data-theme-toggle onclick="window.awawa.cyclePreference()"
                         class="flex w-full items-center gap-3 px-5 py-3.5 text-left text-sm text-ink-soft transition-colors hover:bg-paper-2 dark:text-slate-300 dark:hover:bg-white/5">
                         <x-icon name="sun" class="theme-icon theme-icon-light h-[18px] w-[18px]" />
                         <x-icon name="moon" class="theme-icon theme-icon-dark h-[18px] w-[18px]" />
@@ -122,6 +122,56 @@
                         <span class="theme-icon theme-icon-dark">Giao diện: tối</span>
                         <span class="theme-icon theme-icon-system">Giao diện: theo hệ thống</span>
                     </button>
+
+                    <div class="relative px-5 py-3.5" x-data="{ accentOpen: false }" @click.outside="accentOpen = false" @keydown.escape.window="accentOpen = false">
+                        @php
+                            $currentPreset = \App\Enums\AccentColor::tryFrom($accent);
+                            $isCustomAccent = $accent !== '' && $currentPreset === null;
+                            $currentDot = $currentPreset ? $currentPreset->swatch() : ($isCustomAccent ? $accent : \App\Enums\AccentColor::Blue->swatch());
+                            $currentLabel = $currentPreset ? $currentPreset->label() : ($isCustomAccent ? 'Tùy chỉnh' : 'Mặc định');
+                        @endphp
+                        <button type="button" @click="accentOpen = ! accentOpen"
+                            class="flex w-full items-center gap-3 text-left text-sm text-ink-soft dark:text-slate-300"
+                            :aria-expanded="accentOpen ? 'true' : 'false'" aria-label="Chọn màu điểm nhấn" aria-haspopup="listbox">
+                            <span class="h-4 w-4 shrink-0 rounded-full" style="background-color: {{ $currentDot }}" aria-hidden="true"></span>
+                            <span class="min-w-0 flex-1">Màu điểm nhấn: <span class="font-medium text-ink dark:text-white">{{ $currentLabel }}</span></span>
+                            <x-icon name="chevron-down" class="h-3.5 w-3.5 shrink-0 text-ink-faint" />
+                        </button>
+
+                        <div x-show="accentOpen" x-cloak role="listbox" aria-label="Màu điểm nhấn"
+                            class="panel absolute left-5 right-5 top-full z-40 -mt-1 space-y-0.5 p-2 shadow-lg">
+                            <button type="button" wire:click="saveAccent('')" @click="accentOpen = false" role="option" aria-selected="{{ $accent === '' ? 'true' : 'false' }}"
+                                class="flex w-full items-center gap-2.5 rounded-[8px] px-2.5 py-2 text-left text-sm text-ink-soft transition-colors hover:bg-paper-2 dark:text-slate-300 dark:hover:bg-white/5">
+                                <span class="h-4 w-4 shrink-0 rounded-full" style="background-color: {{ \App\Enums\AccentColor::Blue->swatch() }}" aria-hidden="true"></span>
+                                <span class="min-w-0 flex-1">Mặc định</span>
+                                @if ($accent === '')
+                                    <x-icon name="check" class="h-4 w-4 shrink-0 text-ink dark:text-white" />
+                                @endif
+                            </button>
+                            @foreach (\App\Enums\AccentColor::cases() as $color)
+                                <button type="button" wire:click="saveAccent('{{ $color->value }}')" @click="accentOpen = false" role="option" aria-selected="{{ $accent === $color->value ? 'true' : 'false' }}"
+                                    class="flex w-full items-center gap-2.5 rounded-[8px] px-2.5 py-2 text-left text-sm text-ink-soft transition-colors hover:bg-paper-2 dark:text-slate-300 dark:hover:bg-white/5"
+                                    wire:key="accent-{{ $color->value }}">
+                                    <span class="h-4 w-4 shrink-0 rounded-full" style="background-color: {{ $color->swatch() }}" aria-hidden="true"></span>
+                                    <span class="min-w-0 flex-1">{{ $color->label() }}</span>
+                                    @if ($accent === $color->value)
+                                        <x-icon name="check" class="h-4 w-4 shrink-0 text-ink dark:text-white" />
+                                    @endif
+                                </button>
+                            @endforeach
+                            <div class="border-t border-rule pt-1 dark:border-night-700">
+                                <label class="flex w-full cursor-pointer items-center gap-2.5 rounded-[8px] px-2.5 py-2 text-left text-sm text-ink-soft transition-colors hover:bg-paper-2 dark:text-slate-300 dark:hover:bg-white/5">
+                                    <input type="color" value="{{ $isCustomAccent ? $accent : '#2154d6' }}" wire:change="saveAccent($event.target.value)"
+                                        class="h-4 w-4 shrink-0 cursor-pointer appearance-none rounded-full border-0 bg-transparent p-0" aria-label="Chọn màu tùy chỉnh">
+                                    <span class="min-w-0 flex-1">Tùy chỉnh</span>
+                                    @if ($isCustomAccent)
+                                        <x-icon name="check" class="h-4 w-4 shrink-0 text-ink dark:text-white" />
+                                    @endif
+                                </label>
+                            </div>
+                        </div>
+                        @error('accent') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
+                    </div>
 
                     <div x-data="{ push: 'idle', init() { if (window.AwawaPush) { window.AwawaPush.status().then((s) => { this.push = s; }); } } }">
                         <button type="button"

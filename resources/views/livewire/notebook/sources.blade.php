@@ -1,11 +1,13 @@
 <div class="flex h-full min-h-0 flex-col">
     <div class="flex h-12 shrink-0 items-center justify-between gap-2 px-4">
         <h2 class="text-sm font-semibold text-ink dark:text-white">Nguồn</h2>
-        <span class="tnum text-xs text-ink-faint dark:text-slate-500">{{ $allSourcesCount }}/{{ $maxSources }}</span>
+        @if ($allSourcesCount >= $maxSources * 0.8)
+            <span class="tnum text-xs text-ink-faint dark:text-slate-500">{{ $allSourcesCount }}/{{ $maxSources }}</span>
+        @endif
     </div>
 
     <div class="shrink-0 space-y-2 px-4 pb-3">
-        <p class="text-[11px] leading-relaxed text-ink-faint dark:text-slate-500">AI chỉ dùng nội dung từ nguồn đang bật khi trò chuyện và soạn bài.</p>
+        <p class="text-[11px] leading-relaxed text-ink-faint dark:text-slate-500">AI chỉ dùng nguồn đang bật.</p>
 
         @if (session('notebook_status'))
             <div class="alert alert-success">{{ session('notebook_status') }}</div>
@@ -21,22 +23,25 @@
             Thêm nguồn
         </button>
 
-        <div class="flex items-center gap-1.5">
-            <div class="relative min-w-0 flex-1">
-                <x-icon name="search" class="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-faint dark:text-slate-500" />
-                <input type="text" class="input py-1.5 pl-8 text-sm" wire:model.live.debounce.400ms="sourceQuery"
-                    placeholder="Tìm trong danh sách nguồn" aria-label="Tìm trong danh sách nguồn">
+        <details class="rounded-[10px] border border-rule px-2 py-1 dark:border-night-700" @if ($allSourcesCount > 8) open @endif>
+            <summary class="cursor-pointer list-none py-1 text-xs text-ink-faint hover:text-ink dark:text-slate-500 dark:hover:text-white">Tìm và lọc nguồn</summary>
+            <div class="flex items-center gap-1.5 pb-2 pt-1">
+                <div class="relative min-w-0 flex-1">
+                    <x-icon name="search" class="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-faint dark:text-slate-500" />
+                    <input type="text" class="input py-1.5 pl-8 text-sm" wire:model.live.debounce.400ms="sourceQuery"
+                        placeholder="Tìm trong danh sách nguồn" aria-label="Tìm trong danh sách nguồn">
+                </div>
+                <select class="input w-auto shrink-0 py-1.5 text-xs" wire:model.live="sourceTypeFilter" aria-label="Lọc theo loại nguồn">
+                    <option value="">Tất cả</option>
+                    <option value="web">Trang web</option>
+                    <option value="file">Tệp</option>
+                    <option value="text">Văn bản</option>
+                    <option value="document">Tài liệu</option>
+                    <option value="question">Câu hỏi</option>
+                    <option value="exam">Đề thi</option>
+                </select>
             </div>
-            <select class="input w-auto shrink-0 py-1.5 text-xs" wire:model.live="sourceTypeFilter" aria-label="Lọc theo loại nguồn">
-                <option value="">Tất cả</option>
-                <option value="web">Trang web</option>
-                <option value="file">Tệp</option>
-                <option value="text">Văn bản</option>
-                <option value="document">Tài liệu</option>
-                <option value="question">Câu hỏi</option>
-                <option value="exam">Đề thi</option>
-            </select>
-        </div>
+        </details>
 
         @if ($sources->isNotEmpty())
             <div class="flex items-center justify-between text-[11px] text-ink-faint dark:text-slate-500">
@@ -67,12 +72,23 @@
                         <input type="checkbox" value="{{ $index }}" wire:model="webSelected"
                             class="mt-0.5 h-4 w-4 rounded border-rule-strong text-brand-600 focus:ring-brand-500 dark:border-night-700">
                         <span class="min-w-0">
-                            <span class="line-clamp-2 text-sm font-medium text-ink dark:text-slate-100">{{ $result['title'] }}</span>
+                            <span class="flex items-start gap-1.5">
+                                @php $resultFavicon = \App\Models\NotebookSource::faviconForUrl($result['url'] ?? null); @endphp
+                                @if ($resultFavicon)
+                                    <img src="{{ $resultFavicon }}" alt="" loading="lazy" aria-hidden="true"
+                                        class="mt-0.5 h-4 w-4 shrink-0 rounded-[4px] bg-white object-cover dark:bg-night-800"
+                                        onerror="this.remove()">
+                                @endif
+                                <span class="line-clamp-2 text-sm font-medium text-ink dark:text-slate-100">{{ $result['title'] }}</span>
+                            </span>
                             <span class="mt-0.5 block truncate text-[11px] text-ink-faint dark:text-slate-500">{{ $result['url'] }}</span>
-                            <span class="mt-1 line-clamp-2 text-xs leading-relaxed text-ink-soft dark:text-slate-400">{{ $result['content'] }}</span>
-                            @if (! empty($result['reason']))
-                                <span class="mt-1 block text-[11px] text-ink-faint dark:text-slate-500">{{ $result['reason'] }}</span>
-                            @endif
+                            <details>
+                                <summary class="mt-1 cursor-pointer text-[11px] text-ink-faint hover:text-ink dark:text-slate-500 dark:hover:text-white">Xem trích đoạn</summary>
+                                <span class="mt-1 line-clamp-2 text-xs leading-relaxed text-ink-soft dark:text-slate-400">{{ $result['content'] }}</span>
+                                @if (! empty($result['reason']))
+                                    <span class="mt-1 block text-[11px] text-ink-faint dark:text-slate-500">{{ $result['reason'] }}</span>
+                                @endif
+                            </details>
                         </span>
                     </label>
                 @endforeach
@@ -99,22 +115,29 @@
                             @error('sourceTitleDraft') <p class="mt-1 text-[11px] text-signal">{{ $message }}</p> @enderror
                         @else
                             <button type="button" wire:click="view({{ $source->id }})" class="w-full text-left">
-                                <span class="flex items-start gap-1.5">
-                                    <x-icon :name="$source->typeIcon()" class="mt-0.5 h-3.5 w-3.5 flex-none text-ink-faint dark:text-slate-500" />
-                                    <span class="line-clamp-2 text-sm leading-snug text-ink dark:text-slate-100">{{ $source->title }}</span>
+                                <span class="flex items-start gap-2">
+                                    <span class="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] {{ $source->typeTone() }}">
+                                        <x-icon :name="$source->typeIcon()" class="h-4 w-4" aria-hidden="true" />
+                                        @if ($source->faviconUrl())
+                                            <img src="{{ $source->faviconUrl() }}" alt="" loading="lazy" aria-hidden="true"
+                                                class="absolute inset-0 h-full w-full rounded-[10px] bg-white object-cover p-1.5 dark:bg-night-800"
+                                                onerror="this.remove()">
+                                        @endif
+                                    </span>
+                                    <span class="line-clamp-2 min-w-0 flex-1 text-sm leading-snug text-ink dark:text-slate-100">{{ $source->title }}</span>
                                 </span>
                                 <span class="mt-1 flex items-center gap-1.5 overflow-hidden whitespace-nowrap">
                                     <span class="status-chip {{ $source->statusClass() }}">{{ $source->statusLabel() }}</span>
-                                    <span class="truncate text-[11px] text-ink-faint dark:text-slate-500">{{ $source->typeLabel() }} · {{ $source->chunks_count }} đoạn · {{ number_format($source->char_count) }} ký tự</span>
+                                    <span class="truncate text-[11px] text-ink-faint dark:text-slate-500">{{ $source->typeLabel() }} · {{ $source->chunks_count }} đoạn</span>
                                 </span>
                             </button>
                         @endif
                     </div>
 
                     <div class="relative flex-none" x-data="{ menu: false }">
-                        <button type="button" @click="menu = ! menu" @click.outside="menu = false"
-                            class="rounded-[8px] p-1 text-ink-faint opacity-0 transition-opacity hover:bg-paper-2 hover:text-ink focus:opacity-100 group-hover:opacity-100 dark:text-slate-500 dark:hover:bg-white/5 dark:hover:text-white"
-                            aria-label="Tuỳ chọn nguồn {{ $source->title }}">
+                        <button type="button" @click="menu = ! menu" @click.outside="menu = false" @keydown.escape.window="menu = false"
+                            class="rounded-[8px] p-1 text-ink-faint opacity-0 transition-opacity hover:bg-paper-2 hover:text-ink focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-brand-600 group-hover:opacity-100 group-focus-within:opacity-100 max-lg:opacity-60 dark:text-slate-500 dark:hover:bg-white/5 dark:hover:text-white"
+                            aria-label="Tuỳ chọn nguồn {{ $source->title }}" aria-haspopup="menu" :aria-expanded="menu ? 'true' : 'false'">
                             <x-icon name="dots" class="h-4 w-4" />
                         </button>
 
@@ -183,33 +206,19 @@
 
                 <div class="grid gap-2 sm:grid-cols-2">
                     @foreach ([
-                        'text' => ['Dán văn bản', 'doc', 'Dán nội dung bạn đã sao chép.'],
-                        'file' => ['Tải tệp từ máy', 'upload', 'Chọn nhiều tệp PDF, DOCX, TXT, MD, CSV.'],
-                        'url' => ['Dán đường dẫn', 'link', 'Dán một hoặc nhiều link, mỗi dòng một link.'],
-                        'internal' => ['Từ trong ứng dụng', 'layers', 'Tài liệu, câu hỏi hoặc đề thi đã có trong môn.'],
-                    ] as $key => [$label, $icon, $description])
+                        'text' => ['Dán văn bản', 'doc'],
+                        'file' => ['Tải tệp từ máy', 'upload'],
+                        'url' => ['Dán đường dẫn', 'link'],
+                        'internal' => ['Từ trong ứng dụng', 'layers'],
+                    ] as $key => [$label, $icon])
                         <button type="button" wire:click="openAddForm('{{ $key }}')"
-                            class="flex items-start gap-3 rounded-[12px] border border-rule p-3 text-left transition-colors hover:bg-paper-2 dark:border-night-700 dark:hover:bg-white/5">
-                            <x-icon :name="$icon" class="mt-0.5 h-5 w-5 flex-none text-brand-600 dark:text-brand-400" />
-                            <span class="min-w-0">
-                                <span class="block text-sm font-medium text-ink dark:text-slate-100">{{ $label }}</span>
-                                <span class="mt-0.5 block text-xs leading-relaxed text-ink-faint dark:text-slate-500">{{ $description }}</span>
-                            </span>
+                            class="flex items-center gap-3 rounded-[12px] border border-rule p-3 text-left transition-colors hover:bg-paper-2 focus-visible:outline-2 focus-visible:outline-brand-600 dark:border-night-700 dark:hover:bg-white/5">
+                            <x-icon :name="$icon" class="h-5 w-5 flex-none text-brand-600 dark:text-brand-400" />
+                            <span class="text-sm font-medium text-ink dark:text-slate-100">{{ $label }}</span>
                         </button>
                     @endforeach
-
-                    <button type="button" disabled title="Sẽ có sau khi kết nối Google Drive"
-                        class="flex cursor-not-allowed items-start gap-3 rounded-[12px] border border-dashed border-rule p-3 text-left opacity-60">
-                        <x-icon name="external" class="mt-0.5 h-5 w-5 flex-none text-ink-faint dark:text-slate-500" />
-                        <span class="min-w-0">
-                            <span class="flex items-center gap-1.5 text-sm font-medium text-ink-soft dark:text-slate-300">
-                                Google Drive
-                                <span class="chip chip-neutral text-[10px]">Sắp có</span>
-                            </span>
-                            <span class="mt-0.5 block text-xs leading-relaxed text-ink-faint dark:text-slate-500">Chọn tệp trực tiếp trên Drive của bạn.</span>
-                        </span>
-                    </button>
                 </div>
+                <p class="mt-2 text-center text-[11px] text-ink-faint dark:text-slate-500">Google Drive — sắp có</p>
 
                 <div class="mt-5 border-t border-rule pt-4 dark:border-night-700">
                     <label class="label" for="src-web-topic">Hoặc tìm nguồn theo chủ đề</label>
@@ -222,7 +231,7 @@
                         </button>
                     </div>
                     @if (! $webConfigured)
-                        <p class="mt-1.5 text-xs text-ink-faint dark:text-slate-500">Chưa cấu hình Tavily API key nên chưa tìm được nguồn web.</p>
+                        <p class="mt-1.5 text-xs text-ink-faint dark:text-slate-500">Tìm web tạm tắt.</p>
                     @endif
                 </div>
             </div>
@@ -250,7 +259,7 @@
                         </div>
                         <div>
                             <label class="label" for="src-text">Nội dung</label>
-                            <textarea id="src-text" rows="10" class="input" wire:model="text" placeholder="Dán nội dung vào đây…"></textarea>
+                            <textarea id="src-text" rows="5" class="input" wire:model="text" placeholder="Dán nội dung vào đây…"></textarea>
                             @error('text') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
                         </div>
                         <div class="flex justify-end">
@@ -382,11 +391,8 @@
                 <div class="mb-3 flex items-start justify-between gap-3">
                     <div class="min-w-0">
                         <h2 class="truncate font-serif text-lg font-semibold text-ink dark:text-white">{{ $viewing->title }}</h2>
-                        <p class="tnum mt-0.5 text-xs text-ink-faint dark:text-slate-500">
-                            {{ number_format($viewing->char_count) }} ký tự · {{ $viewing->chunks->count() }} đoạn
-                        </p>
                     </div>
-                    <button type="button" wire:click="closeViewer" class="flex-none rounded-[10px] p-1.5 text-ink-faint hover:bg-paper-2 dark:hover:bg-white/5" aria-label="Đóng">
+                    <button type="button" wire:click="closeViewer" class="flex-none rounded-[10px] p-1.5 text-ink-faint hover:bg-paper-2 focus-visible:outline-2 focus-visible:outline-brand-600 dark:hover:bg-white/5" aria-label="Đóng">
                         <x-icon name="x" class="h-5 w-5" />
                     </button>
                 </div>
@@ -394,13 +400,9 @@
                 <div class="tabs mb-3">
                     <button type="button" wire:click="$set('viewerTab', 'highlights')" class="tab {{ $viewerTab === 'highlights' ? 'tab-active' : '' }}">
                         Đoạn nổi bật
-                        @if ($viewingPassages->isNotEmpty())
-                            <span class="tnum ml-1 text-[11px] opacity-70">{{ $viewingPassages->count() }}</span>
-                        @endif
                     </button>
                     <button type="button" wire:click="$set('viewerTab', 'full')" class="tab {{ $viewerTab === 'full' ? 'tab-active' : '' }}">
                         Toàn văn
-                        <span class="tnum ml-1 text-[11px] opacity-70">{{ $viewing->chunks->count() }}</span>
                     </button>
                 </div>
 
@@ -423,16 +425,9 @@
                     @else
                         @foreach ($viewing->chunks as $chunk)
                             <div id="notebook-chunk-{{ $chunk->id }}" @class([
-                                'rounded-[10px] border p-3 transition-colors dark:border-night-700',
-                                'border-brand-500 bg-brand-50 ring-2 ring-brand-200 dark:bg-brand-500/10' => $highlightChunkId === $chunk->id,
-                                'border-rule' => $highlightChunkId !== $chunk->id,
+                                'rounded-[10px] p-1 transition-colors',
+                                'bg-brand-50 ring-2 ring-brand-200 dark:bg-brand-500/10' => $highlightChunkId === $chunk->id,
                             ])>
-                                <p class="tnum mb-1 flex items-center gap-2 text-[11px] text-ink-faint dark:text-slate-500">
-                                    <span>Đoạn {{ $chunk->position + 1 }}</span>
-                                    @if ($chunk->is_highlight)
-                                        <span class="status-chip status-success">Có trích dẫn</span>
-                                    @endif
-                                </p>
                                 <p class="whitespace-pre-line text-sm leading-relaxed text-ink-soft dark:text-slate-300">{{ $chunk->content }}</p>
                             </div>
                         @endforeach

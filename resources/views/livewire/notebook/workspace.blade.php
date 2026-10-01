@@ -5,8 +5,14 @@
     x-on:pointerup.window="onPointerUp()"
     x-on:pointercancel.window="onPointerUp()"
     x-on:keydown.escape.window="dragging = null">
-    <div class="flex h-12 shrink-0 items-center border-b border-rule px-3 dark:border-night-700">
-        <livewire:notebook.manager :notebook-id="$notebook->id" :key="'manager-'.$notebook->id" />
+    <div class="flex h-12 shrink-0 items-center gap-2 border-b border-rule px-3 dark:border-night-700">
+        <a href="{{ route('studio.ai') }}" wire:navigate
+            class="flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-[10px] text-ink-faint transition-colors hover:bg-paper-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-brand-600 dark:text-slate-500 dark:hover:bg-white/5 dark:hover:text-white"
+            aria-label="Về danh sách sổ tay">
+            <x-icon name="arrow-left" class="h-4 w-4" />
+        </a>
+        <p class="min-w-0 flex-1 truncate text-sm font-semibold text-ink dark:text-white">{{ $notebook->title }}</p>
+        <p class="hidden shrink-0 truncate text-[11px] text-ink-faint sm:block dark:text-slate-500">{{ $notebook->subject?->name }}</p>
     </div>
 
     {{-- Tab cho mobile: chuyển tức thì phía client để không phải chờ server

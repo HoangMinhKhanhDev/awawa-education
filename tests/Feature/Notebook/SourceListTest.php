@@ -5,6 +5,7 @@ namespace Tests\Feature\Notebook;
 use App\Livewire\Notebook\Sources;
 use App\Models\Notebook;
 use App\Models\NotebookSetting;
+use App\Models\NotebookSource;
 use App\Models\Subject;
 use App\Models\User;
 use App\Services\Notebook\HighlightPicker;
@@ -304,5 +305,33 @@ class SourceListTest extends TestCase
         $this->actingAs(User::factory()->teacher($this->subject)->create());
 
         Livewire::test(Sources::class, ['notebookId' => $this->notebook->id])->assertForbidden();
+    }
+
+    public function test_each_source_type_has_its_own_tone(): void
+    {
+        $tones = [];
+
+        foreach (['web', 'file', 'text', 'document', 'question', 'exam'] as $type) {
+            $source = new NotebookSource(['type' => $type]);
+
+            $this->assertNotSame('', $source->typeTone());
+            $tones[$type] = $source->typeTone();
+        }
+
+        $this->assertSame(count($tones), count(array_unique($tones)));
+    }
+
+    public function test_web_source_exposes_favicon_while_others_do_not(): void
+    {
+        $web = new NotebookSource(['type' => 'web', 'url' => 'https://example.com/bai-viet']);
+
+        $this->assertSame('https://www.google.com/s2/favicons?domain=example.com&sz=64', $web->faviconUrl());
+
+        $file = new NotebookSource(['type' => 'file']);
+        $bad = new NotebookSource(['type' => 'web', 'url' => 'javascript:alert(1)']);
+
+        $this->assertNull($file->faviconUrl());
+        $this->assertNull($bad->faviconUrl());
+        $this->assertNull(NotebookSource::faviconForUrl('not-a-url'));
     }
 }

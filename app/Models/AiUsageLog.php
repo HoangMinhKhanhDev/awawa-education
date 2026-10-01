@@ -22,6 +22,11 @@ class AiUsageLog extends Model
         'prompt_tokens',
         'completion_tokens',
         'total_tokens',
+        'cost_micros',
+        'price_prompt_micros',
+        'price_completion_micros',
+        'cached_prompt_tokens',
+        'cache_creation_tokens',
         'latency_ms',
         'is_success',
         'error',
@@ -37,8 +42,21 @@ class AiUsageLog extends Model
             'prompt_tokens' => 'integer',
             'completion_tokens' => 'integer',
             'total_tokens' => 'integer',
+            'cost_micros' => 'integer',
+            'price_prompt_micros' => 'integer',
+            'price_completion_micros' => 'integer',
+            'cached_prompt_tokens' => 'integer',
+            'cache_creation_tokens' => 'integer',
             'latency_ms' => 'integer',
         ];
+    }
+
+    /**
+     * Chi phí dạng USD, null khi chưa có giá của model.
+     */
+    public function costUsd(): ?float
+    {
+        return $this->cost_micros === null ? null : $this->cost_micros / 1000000;
     }
 
     public function subject(): BelongsTo

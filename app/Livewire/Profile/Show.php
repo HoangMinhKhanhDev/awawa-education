@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Profile;
 
+use App\Enums\AccentColor;
 use App\Models\ExamAttempt;
 use App\Models\StudentProfile;
 use App\Models\TeacherProfile;
@@ -33,6 +34,8 @@ class Show extends Component
 
     public string $note = '';
 
+    public string $accent = '';
+
     public $avatar = null;
 
     public function mount(): void
@@ -40,6 +43,7 @@ class Show extends Component
         $user = auth()->user();
 
         $this->name = $user->name;
+        $this->accent = (string) ($user->accent ?? '');
 
         if ($user->isStudent()) {
             $this->note = (string) $user->note;
@@ -114,6 +118,28 @@ class Show extends Component
         $this->avatar = null;
 
         session()->flash('status', 'Đã cập nhật ảnh đại diện.');
+    }
+
+    /**
+     * Chọn màu xong là lưu và tải lại trang ngay để màu mới áp vào toàn bộ
+     * giao diện (biến CSS nằm trong `<head>`, Livewire không morph được).
+     */
+    public function saveAccent(string $value = ''): void
+    {
+        $normalized = AccentColor::normalize($value);
+
+        if (filled($value) && $normalized === null) {
+            $this->addError('accent', 'Màu không hợp lệ.');
+
+            return;
+        }
+
+        auth()->user()->forceFill(['accent' => $normalized])->save();
+        $this->accent = (string) ($normalized ?? '');
+
+        session()->flash('status', 'Đã đổi màu điểm nhấn.');
+
+        $this->redirect(route('profile'));
     }
 
     public function save(): void

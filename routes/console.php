@@ -31,8 +31,21 @@ Schedule::command('files:prune-orphans')->dailyAt('03:20')->withoutOverlapping(3
 | Chạy queue bằng cron trên shared hosting (không có supervisor/daemon):
 | cron mỗi phút gọi `schedule:run`, lệnh này xử lý tối đa 100 job rồi dừng,
 | phiên sau xử lý tiếp. Không dùng queue:work daemon vì Hostinger kill process.
+|
+| Hai worker vì `retry_after` phải lớn hơn `timeout` của job, mà job soạn nội
+| dung AI timeout 330s còn job thường chỉ 60s. `ai` nhận 600s, `default` giữ 90s.
+| Worker phải chạy trên đúng connection với hàng đời nó phục vụ, vì `retry_after`
+| đọc từ config của connection đang chạy, không đọc từ payload của job.
 */
-Schedule::command('queue:work database --stop-when-empty --max-jobs=100 --max-time=50 --sleep=3 --tries=3')
+Schedule::command('queue:work ai --queue=ai --stop-when-empty --max-jobs=100 --max-time=50 --sleep=3 --tries=3')
+    ->everyMinute()
+    ->withoutOverlapping(60)
+    ->name('awawa:queue-ai')
+    ->onFailure(function (): void {
+        logger()->warning('awawa:queue-ai worker thất bại, job sẽ thử lại ở phiên cron sau.');
+    });
+
+Schedule::command('queue:work database --queue=default --stop-when-empty --max-jobs=100 --max-time=50 --sleep=3 --tries=3')
     ->everyMinute()
     ->withoutOverlapping(60)
     ->name('awawa:queue')

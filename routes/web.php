@@ -23,6 +23,7 @@ use App\Livewire\Maps\Editor as MapEditor;
 use App\Livewire\Maps\Index as MapsIndex;
 use App\Livewire\Maps\Shared as MapsShared;
 use App\Livewire\Notebook\Activity;
+use App\Livewire\Notebook\Index as NotebookIndex;
 use App\Livewire\Notebook\Workspace as NotebookWorkspace;
 use App\Livewire\Notifications\Index as NotificationsIndex;
 use App\Livewire\Profile\Show as ProfileShow;
@@ -130,7 +131,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/studio/thong-bao', AnnouncementsIndex::class)
             ->middleware('feature:announcements')->name('studio.announcements');
 
-        Route::get('/studio/ai', NotebookWorkspace::class)
+        Route::get('/studio/ai', NotebookIndex::class)
             ->middleware('feature:ai_tools')->name('studio.ai');
 
         Route::get('/studio/ai/notebook/{notebookId}', NotebookWorkspace::class)

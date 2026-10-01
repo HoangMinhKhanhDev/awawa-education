@@ -269,6 +269,8 @@ class SourceIngestor
             'raw_content' => $text,
             'char_count' => mb_strlen($text),
         ])->save();
+
+        app(ChunkIndexer::class)->indexSource($source->refresh());
     }
 
     protected function markFailed(NotebookSource $source, string $message): NotebookSource

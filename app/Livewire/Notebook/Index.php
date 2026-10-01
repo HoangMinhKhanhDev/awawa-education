@@ -6,40 +6,47 @@ use App\Models\Notebook;
 use App\Models\User;
 use App\Support\NotebookConfig;
 use Illuminate\Contracts\View\View;
-use Livewire\Attributes\Locked;
+use Livewire\Attributes\Layout;
+use Livewire\Attributes\Title;
 use Livewire\Component;
 
 /**
- * Chuyển / tạo / đổi tên / xoá notebook của giáo viên đang mở.
+ * Trang Sổ tay AI: liệt kê, tạo, đổi tên và xoá notebook của giáo viên.
+ *
+ * Đây là cửa vào duy nhất của workspace — workspace chỉ còn nút quay lại về
+ * đây, không chuyển/tạo notebook tại chỗ nữa.
  */
-class Manager extends Component
+#[Layout('components.layouts.app')]
+#[Title('Sổ tay AI')]
+class Index extends Component
 {
-    #[Locked]
-    public int $notebookId;
-
     public string $newTitle = '';
+
+    public bool $creating = false;
+
+    public ?int $renamingId = null;
+
+    public string $renamingTitle = '';
 
     public ?string $error = null;
 
-    public bool $atLimit = false;
-
-    public function mount(int $notebookId): void
+    public function mount(): void
     {
-        $this->notebookId = $notebookId;
-
-        $this->guard();
+        abort_unless(auth()->user()?->isTeacher(), 403);
     }
 
     public function render(): View
     {
-        $user = auth()->user();
-        $notebooks = Notebook::forUser($user);
-        $this->atLimit = $notebooks->count() >= NotebookConfig::maxNotebooksPerUser();
+        $notebooks = Notebook::forUser(auth()->user())->loadMissing('subject');
+        $count = $notebooks->count();
+        $limit = NotebookConfig::maxNotebooksPerUser();
 
-        return view('livewire.notebook.manager', [
+        return view('livewire.notebook.index', [
             'notebooks' => $notebooks,
-            'current' => $notebooks->firstWhere('id', $this->notebookId) ?? $notebooks->first(),
-            'maxNotebooks' => NotebookConfig::maxNotebooksPerUser(),
+            'resume' => $notebooks->sortByDesc('updated_at')->first(),
+            'atLimit' => $count >= $limit,
+            'maxNotebooks' => $limit,
+            'deletable' => $count > 1,
         ]);
     }
 
@@ -62,34 +69,47 @@ class Manager extends Component
 
         $notebook = Notebook::createFor($user, $this->newTitle);
         $this->newTitle = '';
+        $this->creating = false;
 
         $this->redirectRoute('studio.ai.notebook', ['notebookId' => $notebook->id], navigate: true);
     }
 
-    public function rename(int $id, string $title): void
+    public function startRename(int $id): void
     {
         $notebook = $this->ownedNotebook($id);
-        $title = trim($title);
 
         if ($notebook === null) {
             return;
         }
 
-        if ($title === '') {
-            $this->error = 'Tên notebook không được để trống.';
-
-            return;
-        }
-
-        if (mb_strlen($title) > 120) {
-            $this->error = 'Tên notebook không được quá 120 ký tự.';
-
-            return;
-        }
-
-        $notebook->update(['title' => $title]);
+        $this->renamingId = $notebook->id;
+        $this->renamingTitle = $notebook->title;
         $this->error = null;
-        session()->flash('notebook_status', 'Đã đổi tên notebook.');
+    }
+
+    public function saveRename(): void
+    {
+        $notebook = $this->ownedNotebook($this->renamingId ?? 0);
+
+        if ($notebook === null) {
+            return;
+        }
+
+        $this->validate(['renamingTitle' => ['required', 'string', 'max:120']], [
+            'renamingTitle.required' => 'Tên notebook không được để trống.',
+            'renamingTitle.max' => 'Tên notebook không được quá 120 ký tự.',
+        ]);
+
+        $notebook->update(['title' => trim($this->renamingTitle)]);
+        $this->renamingId = null;
+        $this->renamingTitle = '';
+        $this->error = null;
+    }
+
+    public function cancelRename(): void
+    {
+        $this->renamingId = null;
+        $this->renamingTitle = '';
     }
 
     public function delete(int $id): void
@@ -106,15 +126,8 @@ class Manager extends Component
             return;
         }
 
-        $remaining = Notebook::forUser(auth()->user())->reject(fn (Notebook $item): bool => $item->id === $id)->first();
         $notebook->delete();
         $this->error = null;
-
-        if ($id === $this->notebookId) {
-            $this->redirectRoute('studio.ai.notebook', ['notebookId' => $remaining?->id], navigate: true);
-
-            return;
-        }
 
         session()->flash('notebook_status', 'Đã xoá notebook.');
     }
@@ -127,11 +140,6 @@ class Manager extends Component
         abort_unless($notebook->isOwnedBy(auth()->user()), 403);
 
         return $notebook;
-    }
-
-    protected function guard(): void
-    {
-        abort_unless($this->ownedNotebook($this->notebookId) !== null, 404);
     }
 
     protected function user(): User

@@ -15,6 +15,7 @@ use App\Services\Notebook\SourceIngestor;
 use App\Support\BackgroundProcess;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as HttpRequest;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Features\SupportTesting\Testable;
@@ -76,6 +77,30 @@ class BackgroundGenerationTest extends TestCase
     }
 
     /**
+     * Hàng chờ hỏng (bảng `jobs` thiếu, không kết nối được database…) thì phải rơi
+     * về tầng dự phòng thay vì báo lỗi cho giáo viên.
+     */
+    private function breakAiQueue(): void
+    {
+        config()->set('queue.connections.ai', ['driver' => 'awawa-het-hang-cho']);
+    }
+
+    /**
+     * Một phiên `queue:work` ngắn giống hệt cron trên Hostinger: dọn việc đang
+     * chờ rồi thoát ngay.
+     */
+    private function workAiQueue(): void
+    {
+        $this->artisan('queue:work', [
+            'connection' => GenerateArtifact::CONNECTION,
+            '--queue' => GenerateArtifact::QUEUE,
+            '--stop-when-empty' => true,
+            '--sleep' => 1,
+            '--tries' => 3,
+        ])->assertSuccessful();
+    }
+
+    /**
      * Việc soạn nội dung chạy ở tiến trình nền nên test phải tự chạy phần đó.
      */
     private function runBackgroundWork(): void
@@ -101,7 +126,42 @@ class BackgroundGenerationTest extends TestCase
         $this->assertArrayHasKey('_generation', $artifact->payload);
 
         // Việc soạn chạy ở tiến trình CLI riêng, không đi qua queue.
+        $this->assertSame('process', $artifact->payload['_generation_runner']);
         Queue::assertNothingPushed();
+    }
+
+    /**
+     * Đường chạy được trên Hostinger: chặn `proc_open` nhưng còn cron dọn hàng
+     * đời. Xếp hàng để được thử lại thật, và sống được cả khi giáo viên đóng tab
+     * ngay sau khi bấm "Tạo".
+     */
+    public function test_generation_is_queued_when_the_host_blocks_child_processes(): void
+    {
+        Queue::fake();
+        Http::preventStrayRequests();
+        $this->fakeDocumentText();
+
+        $this->mock(BackgroundProcess::class, function ($mock): void {
+            $mock->shouldReceive('phpBinary')->andReturn('/usr/bin/php');
+            $mock->shouldReceive('start')->once()->andReturnFalse();
+        });
+
+        $this->studio()
+            ->call('generate')
+            ->assertSet('generating', true)
+            ->assertSet('error', null);
+
+        $artifact = NotebookArtifact::query()->firstOrFail();
+
+        $this->assertSame('generating', $artifact->status);
+        $this->assertSame('queue', $artifact->payload['_generation_runner']);
+
+        Queue::assertPushedOn(GenerateArtifact::QUEUE, GenerateArtifact::class, function (GenerateArtifact $job) use ($artifact): bool {
+            return $job->artifactId === $artifact->id && $job->connection === GenerateArtifact::CONNECTION;
+        });
+
+        // AI chỉ chạy ở worker, không chạy trong web request.
+        Http::assertNothingSent();
     }
 
     /**
@@ -111,7 +171,7 @@ class BackgroundGenerationTest extends TestCase
      */
     public function test_generation_runs_inside_the_request_when_no_background_option_exists(): void
     {
-        Queue::fake();
+        $this->breakAiQueue();
         $this->fakeDocumentText('Nội dung soạn ngay trong request.');
 
         $this->mock(BackgroundProcess::class, function ($mock): void {
@@ -129,16 +189,16 @@ class BackgroundGenerationTest extends TestCase
 
         $this->assertSame('draft', $artifact->status);
         $this->assertSame('Nội dung soạn ngay trong request.', $artifact->text_content);
-        Queue::assertNothingPushed();
+        $this->assertDatabaseCount('jobs', 0);
     }
 
     /**
-     * Đây là đường dùng được trên shared hosting: chặn proc_open nhưng vẫn chạy
-     * FastCGI. Giáo viên phải thấy màn "đang soạn" ngay, không phải chờ vài chục giây.
+     * Hàng chờ hỏng mà vẫn chạy FastCGI thì dùng `defer`: giáo viên phải thấy màn
+     * "đang soạn" gần như tức thì, không phải chờ vài chục giây.
      */
     public function test_generation_defers_when_the_host_blocks_child_processes_only(): void
     {
-        Queue::fake();
+        $this->breakAiQueue();
         Http::preventStrayRequests();
         $this->fakeDocumentText();
 
@@ -275,6 +335,129 @@ class BackgroundGenerationTest extends TestCase
     }
 
     /**
+     * Lỗi hạ tầng (máy chủ lỗi) thì phải thử lại được: lần sau provider đã tỉnh
+     * thì ra nội dung, thay vì bắt giáo viên bấm "Tạo lại" bằng tay.
+     */
+    public function test_a_transient_failure_is_retried_and_the_next_attempt_succeeds(): void
+    {
+        Http::fake([
+            'openrouter.ai/*' => Http::sequence()
+                ->push(['error' => ['message' => 'máy chủ bận']], 500)
+                ->push([
+                    'model' => 'openrouter/free',
+                    'choices' => [['message' => ['content' => 'Nội dung soạn ở lần thử sau.']]],
+                    'usage' => ['total_tokens' => 20],
+                ], 200),
+        ]);
+
+        $artifact = $this->queuedArtifact('queue', now());
+        dispatch(new GenerateArtifact($artifact->id));
+
+        $this->workAiQueue();
+
+        // Lần đầu hỏng thì artefact phải còn "đang soạn" và việc còn nằm trong
+        // hàng đời chờ tới hạn: đó mới là chỗ thử lại có tác dụng.
+        $this->assertSame('generating', $artifact->fresh()->status);
+        $this->assertDatabaseCount('jobs', 1);
+
+        $waiting = DB::table('jobs')->first();
+
+        $this->assertSame(1, (int) $waiting->attempts);
+        $this->assertGreaterThan(now()->getTimestamp(), (int) $waiting->available_at, 'Phải chờ hết backoff mới thử lại.');
+
+        // Cho việc đến hạn rồi chạy phiên cron kế tiếp.
+        DB::table('jobs')->update(['available_at' => now()->getTimestamp()]);
+        $this->workAiQueue();
+
+        $artifact->refresh();
+
+        $this->assertSame('draft', $artifact->status);
+        $this->assertSame('Nội dung soạn ở lần thử sau.', $artifact->text_content);
+        $this->assertDatabaseCount('jobs', 0);
+        Http::assertSentCount(2);
+    }
+
+    /**
+     * Lỗi cấu hình (sai thông tin đăng nhập) thử lại cũng hoài: phải dừng ngay,
+     * đánh dấu hỏng và đưa lời của provider lên thẻ lỗi.
+     */
+    public function test_a_configuration_failure_is_not_retried(): void
+    {
+        Http::fake([
+            'openrouter.ai/*' => Http::response(['error' => ['message' => 'API key không hợp lệ']], 401),
+        ]);
+
+        $artifact = $this->queuedArtifact('queue', now());
+        dispatch(new GenerateArtifact($artifact->id));
+
+        $this->workAiQueue();
+        // Thêm một phiên nữa: việc đã dừng thì không được xếp lại lần nữa.
+        $this->workAiQueue();
+
+        $artifact->refresh();
+
+        $this->assertSame('failed', $artifact->status);
+        $this->assertStringContainsString('API key không hợp lệ', (string) $artifact->failedReason());
+        $this->assertDatabaseCount('jobs', 0);
+        Http::assertSentCount(1);
+    }
+
+    /**
+     * Hai lần bấm "Tạo lại" cho cùng một artefact không được xếp hai việc: khoá
+     * chống soạn trùng giữ lại đúng một, nếu không sẽ có hai tiến trình cùng soạn
+     * một bản và tốn gấp đôi lượt gọi AI.
+     */
+    public function test_the_same_artifact_is_never_queued_twice(): void
+    {
+        Queue::fake();
+        $this->fakeDocumentText();
+
+        $this->mock(BackgroundProcess::class, function ($mock): void {
+            $mock->shouldReceive('phpBinary')->andReturn('/usr/bin/php');
+            $mock->shouldReceive('start')->andReturnFalse();
+        });
+
+        $this->studio()->call('generate');
+
+        $artifact = NotebookArtifact::query()->firstOrFail();
+
+        $this->assertSame('queue', $artifact->payload['_generation_runner']);
+
+        // Artefact hỏng nhưng khoá chống soạn trùng vẫn còn giữ: lần bấm "Tạo lại"
+        // sau phải bị chặn chứ không xếp thêm việc.
+        $artifact->markStalled('Lỗi để kiểm thử.');
+
+        Livewire::test(Studio::class, ['notebookId' => $this->notebook->id])
+            ->call('regenerate', $artifact->id)
+            ->assertSet('generating', true);
+
+        Queue::assertPushedTimes(GenerateArtifact::class, 1);
+    }
+
+    /**
+     * Worker chạy hai tiến trình (cron mỗi phút, một job có thể dài hơn một phút)
+     * thì lần thứ hai phải thấy artefact không còn "đang soạn" và bỏ qua, không
+     * gọi AI thêm lần nữa.
+     */
+    public function test_a_double_spawn_does_not_generate_twice(): void
+    {
+        $this->fakeDocumentText('Chỉ soạn một lần.');
+
+        $artifact = $this->queuedArtifact('queue', now());
+        dispatch(new GenerateArtifact($artifact->id));
+
+        $this->workAiQueue();
+        $this->workAiQueue();
+
+        $artifact->refresh();
+
+        $this->assertSame('draft', $artifact->status);
+        $this->assertSame('Chỉ soạn một lần.', $artifact->text_content);
+        $this->assertDatabaseCount('jobs', 0);
+        Http::assertSentCount(1);
+    }
+
+    /**
      * Bị giới hạn thì thẻ lỗi hiện đúng lời của provider ("giới hạn… chờ một
      * chút"), không cần thêm hộp cảnh báo riêng.
      */
@@ -356,6 +539,98 @@ class BackgroundGenerationTest extends TestCase
 
         $this->assertSame('generating', $artifact->fresh()->status);
         $this->assertNull($artifact->fresh()->text_content);
+
+        Http::assertNothingSent();
+    }
+
+    /**
+     * Cron `schedule:run` không chạy thì job nằm im trong hàng đời mãi: giáo viên
+     * chỉ thấy màn "đang soạn". `poll` phải tự soạn nốt thay vì chờ tới hết hạn
+     * treo.
+     */
+    public function test_an_unpicked_queued_generation_is_rescued_by_poll(): void
+    {
+        Queue::fake();
+        Http::preventStrayRequests();
+        $this->fakeDocumentText('Nội dung cứu khỏi hàng đời.');
+
+        $this->mock(BackgroundProcess::class, function ($mock): void {
+            $mock->shouldReceive('phpBinary')->andReturn('/usr/bin/php');
+            $mock->shouldReceive('start')->once()->andReturnFalse();
+            $mock->shouldReceive('defer')->andReturnFalse();
+        });
+
+        $this->studio()->call('generate');
+
+        $artifact = NotebookArtifact::query()->firstOrFail();
+
+        $this->assertSame('queue', $artifact->payload['_generation_runner']);
+
+        $artifact->forceFill(['created_at' => now()->subMinutes(10)])->save();
+
+        Livewire::test(Studio::class, ['notebookId' => $this->notebook->id])->call('poll');
+
+        $artifact->refresh();
+
+        $this->assertSame('draft', $artifact->status);
+        $this->assertSame('Nội dung cứu khỏi hàng đời.', $artifact->text_content);
+    }
+
+    /**
+     * Mới xếp hàng thì chưa đến nhịp cron đầu tiên: để worker lo, không cứu.
+     */
+    public function test_a_recently_queued_generation_is_left_for_the_worker(): void
+    {
+        Queue::fake();
+        Http::preventStrayRequests();
+        $this->fakeDocumentText();
+
+        $this->mock(BackgroundProcess::class, function ($mock): void {
+            $mock->shouldReceive('phpBinary')->andReturn('/usr/bin/php');
+            $mock->shouldReceive('start')->once()->andReturnFalse();
+        });
+
+        $this->studio()->call('generate');
+
+        $artifact = NotebookArtifact::query()->firstOrFail();
+
+        Livewire::test(Studio::class, ['notebookId' => $this->notebook->id])->call('poll');
+
+        $this->assertSame('generating', $artifact->fresh()->status);
+        $this->assertSame('queue', $artifact->fresh()->payload['_generation_runner']);
+        $this->assertNull($artifact->fresh()->text_content);
+
+        Http::assertNothingSent();
+    }
+
+    /**
+     * Worker đã nhận việc thì không xen vào, dù nó còn soạn tới bao lâu nữa.
+     */
+    public function test_a_claimed_queued_generation_is_never_rescued(): void
+    {
+        Queue::fake();
+        Http::preventStrayRequests();
+        $this->fakeDocumentText();
+
+        $this->mock(BackgroundProcess::class, function ($mock): void {
+            $mock->shouldReceive('phpBinary')->andReturn('/usr/bin/php');
+            $mock->shouldReceive('start')->once()->andReturnFalse();
+        });
+
+        $this->studio()->call('generate');
+
+        $artifact = NotebookArtifact::query()->firstOrFail();
+
+        $payload = $artifact->payload;
+        $payload['_claimed_at'] = now()->timestamp;
+        $artifact->forceFill([
+            'payload' => $payload,
+            'created_at' => now()->subMinutes(10),
+        ])->save();
+
+        Livewire::test(Studio::class, ['notebookId' => $this->notebook->id])->call('poll');
+
+        $this->assertSame('generating', $artifact->fresh()->status);
 
         Http::assertNothingSent();
     }

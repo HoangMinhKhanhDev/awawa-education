@@ -4,6 +4,7 @@ namespace App\Livewire\Notebook;
 
 use App\Enums\AiPurpose;
 use App\Models\Notebook;
+use App\Models\NotebookConversation;
 use App\Models\NotebookMessage;
 use App\Services\Ai\AiException;
 use App\Services\Ai\AiManager;
@@ -12,6 +13,7 @@ use App\Services\Notebook\PromptComposer;
 use App\Support\NotebookConfig;
 use App\Support\SubjectContext;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\On;
@@ -44,6 +46,17 @@ class Chat extends Component
 
     public string $focusSourceTitle = '';
 
+    public int $visibleCount = 0;
+
+    public ?int $conversationId = null;
+
+    public ?int $renamingId = null;
+
+    public string $renamingTitle = '';
+
+    /** Memo trong một request: render() cũ gọi notebook() nhiều lần. */
+    protected ?Notebook $memoNotebook = null;
+
     public function mount(int $notebookId, AiManager $ai): void
     {
         $this->notebookId = $notebookId;
@@ -54,6 +67,8 @@ class Chat extends Component
         $settings = $notebook->settings ?? [];
         $this->selectedProviderKey = (string) ($settings['ai_provider'] ?? $ai->defaultProviderKey() ?? '');
         $this->selectedModel = (string) ($settings['ai_model'] ?? $ai->defaultModelFor($this->selectedProviderKey) ?? '');
+        $this->visibleCount = $this->renderLimit();
+        $this->conversationId = $this->ensureConversation()->id;
 
         if ($this->selectedModel !== '') {
             $this->availableModels = [[
@@ -66,12 +81,82 @@ class Chat extends Component
 
     protected function notebook(): Notebook
     {
-        return Notebook::query()->findOrFail($this->notebookId);
+        if ($this->memoNotebook === null) {
+            $this->memoNotebook = Notebook::query()->findOrFail($this->notebookId);
+        }
+
+        return $this->memoNotebook;
     }
 
     protected function guard(): void
     {
         abort_unless($this->notebook()->isOwnedBy(auth()->user()), 403);
+    }
+
+    /**
+     * Luồng đang mở. Chưa có thì tạo mới và gom tin nhắn cũ chưa thuộc luồng
+     * nào vào đó, nên dữ liệu trước khi có tính năng này không bị mất.
+     */
+    protected function ensureConversation(): NotebookConversation
+    {
+        $notebook = $this->notebook();
+
+        $conversation = $notebook->conversations()->first();
+
+        if ($conversation === null) {
+            $conversation = NotebookConversation::create([
+                'notebook_id' => $notebook->id,
+                'user_id' => auth()->id(),
+                'title' => 'Cuộc trò chuyện mới',
+            ]);
+
+            $notebook->messages()->whereNull('conversation_id')->update(['conversation_id' => $conversation->id]);
+        }
+
+        return $conversation;
+    }
+
+    protected function conversation(): NotebookConversation
+    {
+        $conversation = $this->notebook()->conversations()->find($this->conversationId);
+
+        abort_unless($conversation !== null && $conversation->isOwnedBy(auth()->user()), 404);
+
+        return $conversation;
+    }
+
+    protected function conversationMessages(): HasMany
+    {
+        return $this->conversation()->messages();
+    }
+
+    /**
+     * Số tin nhắn gần nhất vẽ lên màn hình. Tin cũ hơn vẫn trong database và vẫn
+     * gửi cho AI, chỉ không render để mỗi request không parse lại Markdown cả
+     * cuộc trò chuyện dài.
+     */
+    protected function renderLimit(): int
+    {
+        return max(10, (int) config('awawa.notebook.chat_render_limit', 50));
+    }
+
+    public function loadMore(): void
+    {
+        $this->guard();
+
+        $this->visibleCount += $this->renderLimit();
+    }
+
+    public function askSuggestion(string $text): void
+    {
+        $this->guard();
+
+        if ($this->streaming) {
+            return;
+        }
+
+        $this->prompt = $text;
+        $this->send();
     }
 
     protected function hitChatLimiter(): bool
@@ -110,13 +195,23 @@ class Chat extends Component
         $selectedSourceIds = array_values(array_intersect($enabledSourceIds, $this->normalizedSourceIds()));
         $this->selectedSourceIds = $selectedSourceIds;
 
+        $conversation = $this->conversation();
+
         NotebookMessage::create([
             'notebook_id' => $this->notebookId,
+            'conversation_id' => $conversation->id,
             'user_id' => auth()->id(),
             'role' => 'user',
             'content' => $this->prompt,
             'source_ids' => $selectedSourceIds,
         ]);
+
+        // Luồng mới chưa đặt tên thì lấy câu hỏi đầu làm tên.
+        if ($conversation->title === 'Cuộc trò chuyện mới') {
+            $conversation->forceFill(['title' => mb_substr($this->prompt, 0, 60)])->save();
+        } else {
+            $conversation->touch();
+        }
 
         $this->prompt = '';
         $this->truncated = false;
@@ -131,7 +226,7 @@ class Chat extends Component
     {
         $this->guard();
 
-        $last = $this->notebook()->messages()->reorder('id', 'desc')->first();
+        $last = $this->conversationMessages()->reorder('id', 'desc')->first();
 
         if ($last === null || $last->role !== 'user') {
             $this->streaming = false;
@@ -139,8 +234,7 @@ class Chat extends Component
             return;
         }
 
-        $history = $this->notebook()
-            ->messages()
+        $history = $this->conversationMessages()
             ->where('id', '<', $last->id)
             ->reorder('id', 'desc')
             ->limit(NotebookConfig::historyMessages())
@@ -201,13 +295,17 @@ class Chat extends Component
             }
         }
 
+        $citations = $this->usedCitations($result->text, $context['citations']);
+
         NotebookMessage::create([
             'notebook_id' => $this->notebookId,
+            'conversation_id' => $this->conversation()->id,
             'user_id' => auth()->id(),
             'role' => 'assistant',
             'content' => $result->text,
+            'rendered_html' => app(ChatAnswerRenderer::class)->render($result->text, $citations),
             'source_ids' => $sourceIds,
-            'citations' => $this->usedCitations($result->text, $context['citations']),
+            'citations' => $citations,
             'provider_key' => $result->providerKey,
             'model' => $result->model,
             'tokens' => $result->totalTokens(),
@@ -221,7 +319,7 @@ class Chat extends Component
     {
         $this->guard();
 
-        $last = $this->notebook()->messages()->reorder('id', 'desc')->first();
+        $last = $this->conversationMessages()->reorder('id', 'desc')->first();
 
         if ($this->streaming || $last === null || $last->role !== 'user') {
             return;
@@ -334,13 +432,13 @@ class Chat extends Component
             return;
         }
 
-        $last = $this->notebook()->messages()->reorder('id', 'desc')->first();
+        $last = $this->conversationMessages()->reorder('id', 'desc')->first();
 
         if ($last === null || $last->id !== $assistantId || $last->role !== 'assistant') {
             return;
         }
 
-        $previous = $this->notebook()->messages()->where('id', '<', $last->id)->reorder('id', 'desc')->first();
+        $previous = $this->conversationMessages()->where('id', '<', $last->id)->reorder('id', 'desc')->first();
 
         if ($previous === null || $previous->role !== 'user') {
             return;
@@ -422,31 +520,150 @@ class Chat extends Component
     {
         $this->guard();
 
-        $this->notebook()->messages()->delete();
+        $this->conversationMessages()->delete();
         $this->error = null;
         $this->truncated = false;
+    }
+
+    public function newConversation(): void
+    {
+        $this->guard();
+
+        $conversation = NotebookConversation::create([
+            'notebook_id' => $this->notebookId,
+            'user_id' => auth()->id(),
+            'title' => 'Cuộc trò chuyện mới',
+        ]);
+
+        $this->openConversation($conversation->id);
+    }
+
+    public function openConversation(int $conversationId): void
+    {
+        $this->guard();
+
+        $conversation = $this->notebook()->conversations()->find($conversationId);
+
+        abort_unless($conversation !== null && $conversation->isOwnedBy(auth()->user()), 404);
+
+        $this->conversationId = $conversation->id;
+        $this->visibleCount = $this->renderLimit();
+        $this->error = null;
+        $this->truncated = false;
+        $this->streaming = false;
+        $this->renamingId = null;
+        $this->renamingTitle = '';
+    }
+
+    public function startRename(int $conversationId): void
+    {
+        $this->guard();
+
+        $conversation = $this->notebook()->conversations()->findOrFail($conversationId);
+
+        abort_unless($conversation->isOwnedBy(auth()->user()), 403);
+
+        $this->renamingId = $conversation->id;
+        $this->renamingTitle = $conversation->title;
+    }
+
+    public function saveRename(): void
+    {
+        $this->guard();
+
+        $conversation = $this->notebook()->conversations()->findOrFail($this->renamingId ?? 0);
+
+        abort_unless($conversation->isOwnedBy(auth()->user()), 403);
+
+        $this->validate(['renamingTitle' => ['required', 'string', 'max:200']], [
+            'renamingTitle.required' => 'Nhập tên cuộc trò chuyện.',
+        ]);
+
+        $conversation->forceFill(['title' => $this->renamingTitle])->save();
+
+        $this->renamingId = null;
+        $this->renamingTitle = '';
+    }
+
+    public function cancelRename(): void
+    {
+        $this->renamingId = null;
+        $this->renamingTitle = '';
+    }
+
+    public function deleteConversation(int $conversationId): void
+    {
+        $this->guard();
+
+        $conversation = $this->notebook()->conversations()->findOrFail($conversationId);
+
+        abort_unless($conversation->isOwnedBy(auth()->user()), 403);
+
+        $conversation->messages()->delete();
+        $conversation->delete();
+
+        $this->conversationId = $this->ensureConversation()->id;
+        $this->visibleCount = $this->renderLimit();
+        $this->error = null;
+        $this->truncated = false;
+        $this->streaming = false;
     }
 
     public function render(): View
     {
         $notebook = $this->notebook()->loadMissing('subject');
 
-        $messages = $notebook->messages()->get();
+        $total = $this->conversationMessages()->count();
+
+        $messages = $this->conversationMessages()
+            ->reorder('id', 'desc')
+            ->limit(max(1, $this->visibleCount))
+            ->get()
+            ->reverse()
+            ->values();
 
         $renderer = app(ChatAnswerRenderer::class);
+        $answers = [];
+
+        foreach ($messages as $message) {
+            if ($message->role === 'user') {
+                continue;
+            }
+
+            $answers[$message->id] = $this->renderedAnswer($message, $renderer);
+        }
 
         return view('livewire.notebook.chat', [
             'messages' => $messages,
-            'answers' => $messages
-                ->filter(fn (NotebookMessage $message): bool => $message->role !== 'user')
-                ->mapWithKeys(fn (NotebookMessage $message): array => [
-                    $message->id => $renderer->render((string) $message->content, $message->citationList()),
-                ])
-                ->all(),
+            'answers' => $answers,
             'notebook' => $notebook,
             'sources' => $notebook->sources()->where('is_enabled', true)->where('status', 'ready')->get(),
             'sourceCount' => count($notebook->enabledSourceIds()),
             'providers' => app(AiManager::class)->chatProviders(),
+            'hasOlder' => $total > $messages->count(),
+            'totalMessages' => $total,
+            'conversations' => $notebook->conversations()->get(['id', 'title', 'updated_at']),
+            'currentConversation' => $this->notebook()->conversations()->find($this->conversationId),
         ]);
+    }
+
+    /**
+     * HTML của tin nhắn không đổi sau khi tạo, nên tính một lần rồi dùng lại.
+     * Tin cũ chưa có `rendered_html` thì tính bù rồi ghi lại, giữ nguyên
+     * `updated_at` vì cột đó không phải dữ liệu hiển thị.
+     */
+    protected function renderedAnswer(NotebookMessage $message, ChatAnswerRenderer $renderer): string
+    {
+        if (filled($message->rendered_html)) {
+            return $message->rendered_html;
+        }
+
+        $html = $renderer->render((string) $message->content, $message->citationList());
+
+        $message->timestamps = false;
+        $message->forceFill(['rendered_html' => $html])->save();
+        $message->timestamps = true;
+
+        return $html;
     }
 }

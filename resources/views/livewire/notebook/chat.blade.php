@@ -1,22 +1,79 @@
 <div class="flex h-full min-h-0 flex-col">
-    <div class="grid min-h-14 shrink-0 grid-cols-[minmax(0,1fr)_minmax(12rem,2fr)_minmax(0,1fr)] items-center gap-2 border-b border-rule px-4 dark:border-night-700">
-        <div class="min-w-0">
-            <p class="truncate text-sm font-semibold text-ink dark:text-white">{{ $notebook->title }}</p>
-            <p class="hidden truncate text-[11px] text-ink-faint sm:block dark:text-slate-500">{{ $notebook->subject?->name }}</p>
+    <div class="flex min-h-14 shrink-0 items-center justify-between gap-2 border-b border-rule px-4 dark:border-night-700">
+        <div class="relative min-w-0 flex-1" x-data="{ conversationsOpen: false }" @click.outside="conversationsOpen = false" @keydown.escape.window="conversationsOpen = false">
+            <button type="button" @click="conversationsOpen = ! conversationsOpen"
+                class="flex max-w-full items-center gap-1.5 rounded-[10px] px-1 py-1 text-left focus-visible:outline-2 focus-visible:outline-brand-600"
+                :aria-expanded="conversationsOpen ? 'true' : 'false'" aria-label="Chọn cuộc trò chuyện" aria-haspopup="menu">
+                <span class="min-w-0">
+                    <span class="block truncate text-sm font-semibold text-ink dark:text-white">{{ $currentConversation?->title ?? $notebook->title }}</span>
+                    <span class="hidden truncate text-[11px] text-ink-faint sm:block dark:text-slate-500">{{ $notebook->subject?->name }}</span>
+                </span>
+                <x-icon name="chevron-down" class="h-4 w-4 shrink-0 text-ink-faint" />
+            </button>
+
+            <div x-show="conversationsOpen" x-cloak role="menu"
+                class="panel absolute left-0 top-full z-40 mt-1 w-72 max-w-[86vw] space-y-1 p-2 shadow-lg">
+                <button type="button" wire:click="newConversation" @click="conversationsOpen = false"
+                    class="flex min-h-9 w-full items-center gap-2 rounded-[8px] px-2 py-2 text-xs font-medium text-brand-700 hover:bg-paper-2 focus-visible:outline-2 focus-visible:outline-brand-600 dark:text-brand-300 dark:hover:bg-white/5">
+                    <x-icon name="plus" class="h-3.5 w-3.5" />
+                    Cuộc trò chuyện mới
+                </button>
+                <div class="max-h-64 overflow-y-auto">
+                    @foreach ($conversations as $item)
+                        <div class="group flex items-center gap-1 rounded-[8px] px-2 py-1.5 hover:bg-paper-2 focus-within:opacity-100 dark:hover:bg-white/5 {{ $item->id === $currentConversation?->id ? 'bg-paper-2 dark:bg-white/5' : '' }}"
+                            wire:key="conversation-{{ $item->id }}">
+                            @if ($renamingId === $item->id)
+                                <form wire:submit="saveRename" class="flex min-w-0 flex-1 items-center gap-1">
+                                    <input type="text" wire:model="renamingTitle" maxlength="200" autofocus
+                                        class="input min-w-0 flex-1 py-1 text-xs" aria-label="Tên cuộc trò chuyện">
+                                    <button type="submit" class="flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-[8px] p-1 text-success" aria-label="Lưu tên">
+                                        <x-icon name="check" class="h-3.5 w-3.5" />
+                                    </button>
+                                    <button type="button" wire:click="cancelRename" class="flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-[8px] p-1 text-ink-faint" aria-label="Huỷ">
+                                        <x-icon name="x" class="h-3.5 w-3.5" />
+                                    </button>
+                                </form>
+                            @else
+                                <button type="button" wire:click="openConversation({{ $item->id }})" @click="conversationsOpen = false"
+                                    class="flex min-h-9 min-w-0 flex-1 items-center truncate text-left text-xs text-ink dark:text-slate-200">
+                                    {{ $item->title }}
+                                </button>
+                                <button type="button" wire:click="startRename({{ $item->id }})"
+                                    class="flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-[8px] p-1 text-ink-faint opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 max-lg:opacity-60 dark:text-slate-500" aria-label="Đổi tên cuộc trò chuyện">
+                                    <x-icon name="pencil" class="h-3.5 w-3.5" />
+                                </button>
+                                @if ($conversations->count() > 1)
+                                    <button type="button" wire:click="deleteConversation({{ $item->id }})" wire:confirm="Xóa cuộc trò chuyện này và toàn bộ tin nhắn trong đó?"
+                                        class="flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-[8px] p-1 text-ink-faint opacity-0 transition-opacity hover:text-signal group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 max-lg:opacity-60 dark:text-slate-500" aria-label="Xóa cuộc trò chuyện">
+                                        <x-icon name="trash" class="h-3.5 w-3.5" />
+                                    </button>
+                                @endif
+                            @endif
+                        </div>
+                    @endforeach
+                </div>
+                @if ($totalMessages > 0)
+                    <div class="border-t border-rule pt-1 dark:border-night-700">
+                        <button type="button" wire:click="clear" wire:confirm="Xóa toàn bộ tin nhắn trong cuộc trò chuyện này?" @click="conversationsOpen = false"
+                            class="flex min-h-9 w-full items-center gap-2 rounded-[8px] px-2 py-1.5 text-xs font-medium text-signal hover:bg-signal-soft/60 dark:text-red-400 dark:hover:bg-red-500/10">
+                            <x-icon name="trash" class="h-3.5 w-3.5" />
+                            Xóa chat này
+                        </button>
+                    </div>
+                @endif
+            </div>
         </div>
 
-        @if ($providers !== [])
-            <div class="relative mx-auto min-w-0 max-w-full" x-data="{ aiSettings: false }" @click.outside="aiSettings = false">
-                <button type="button" @click="aiSettings = ! aiSettings"
-                    class="flex max-w-full items-center gap-1.5 rounded-full border border-rule bg-white px-2.5 py-1 text-xs text-ink-faint transition-colors hover:text-ink dark:border-night-700 dark:bg-night-800 dark:text-slate-400 dark:hover:text-white"
-                    :aria-expanded="aiSettings ? 'true' : 'false'" aria-label="Cài đặt AI">
-                    <x-icon name="sparkles" class="h-3.5 w-3.5 shrink-0" />
-                    <span class="max-w-28 truncate font-medium sm:max-w-40">{{ $selectedModel !== '' ? \Illuminate\Support\Str::afterLast($selectedModel, '/') : 'Chọn AI' }}</span>
-                    <x-icon name="chevron-down" class="h-3 w-3 shrink-0" />
-                </button>
+        <div class="relative shrink-0" x-data="{ chatMenuOpen: false }" @click.outside="chatMenuOpen = false" @keydown.escape.window="chatMenuOpen = false">
+            <button type="button" @click="chatMenuOpen = ! chatMenuOpen"
+                class="flex min-h-9 min-w-9 items-center justify-center rounded-[10px] px-2 text-ink-faint transition-colors hover:bg-paper-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-brand-600 dark:text-slate-500 dark:hover:bg-white/5 dark:hover:text-white"
+                :aria-expanded="chatMenuOpen ? 'true' : 'false'" aria-label="Tùy chọn chat" aria-haspopup="menu">
+                <x-icon name="dots" class="h-4 w-4" />
+            </button>
 
-                <div x-show="aiSettings" x-cloak
-                    class="panel absolute left-1/2 top-full z-40 mt-1 w-72 max-w-[86vw] -translate-x-1/2 space-y-2 p-3 shadow-lg">
+            <div x-show="chatMenuOpen" x-cloak role="menu"
+                class="panel absolute right-0 top-full z-40 mt-1 w-72 max-w-[86vw] space-y-2 p-3 shadow-lg">
+                @if ($providers !== [])
                     <div>
                         <label class="label" for="notebook-provider">Nhà cung cấp AI</label>
                         <select id="notebook-provider" wire:model="selectedProviderKey" wire:change="providerChanged" class="input py-1.5 text-xs">
@@ -34,24 +91,17 @@
                                 @endforeach
                             </select>
                             <button type="button" wire:click="refreshModels" wire:loading.attr="disabled" wire:target="refreshModels,providerChanged"
-                                class="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] text-ink-faint hover:bg-paper-2 hover:text-ink disabled:opacity-50 dark:text-slate-500 dark:hover:bg-white/5 dark:hover:text-white"
+                                class="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] text-ink-faint hover:bg-paper-2 hover:text-ink disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-brand-600 dark:text-slate-500 dark:hover:bg-white/5 dark:hover:text-white"
                                 title="Tải lại danh sách model" aria-label="Tải lại danh sách model">
                                 <x-icon name="refresh" class="h-3.5 w-3.5" />
                             </button>
                         </div>
                     </div>
                     <p class="text-[11px] leading-relaxed text-ink-faint dark:text-slate-500">Mặc định do quản trị viên đặt. Chỉ đổi khi AI báo lỗi hoặc hết lượt miễn phí.</p>
-                </div>
+                @else
+                    <p class="text-xs text-ink-faint dark:text-slate-500">Chưa có model AI khả dụng</p>
+                @endif
             </div>
-        @else
-            <p class="text-center text-xs text-ink-faint dark:text-slate-500">Chưa có model AI khả dụng</p>
-        @endif
-
-        <div class="flex justify-end">
-            @if ($messages->isNotEmpty())
-                <button type="button" wire:click="clear" wire:confirm="Xóa toàn bộ hội thoại?"
-                    class="shrink-0 text-xs font-medium text-ink-faint hover:text-signal dark:text-slate-500">Xóa chat</button>
-            @endif
         </div>
     </div>
     @if ($modelError)
@@ -59,6 +109,15 @@
     @endif
 
     <div id="notebook-chat-scroll" class="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-5">
+        @if ($hasOlder)
+            <div class="text-center">
+                <button type="button" wire:click="loadMore"
+                    class="rounded-full border border-rule px-4 py-1.5 text-xs font-medium text-ink-faint transition-colors hover:text-ink dark:border-night-700 dark:text-slate-500 dark:hover:text-white">
+                    Xem thêm tin nhắn cũ hơn
+                </button>
+            </div>
+        @endif
+
         @if ($error)
             <div class="alert alert-error flex items-center justify-between gap-3">
                 <span>{{ $error }}</span>
@@ -68,7 +127,7 @@
         @endif
 
         @if ($truncated)
-            <div class="alert alert-warning">Đang gửi các đoạn liên quan nhất; một phần nguồn được lược bớt để giữ ngữ cảnh gọn. Thử tắt nguồn không cần hoặc hỏi cụ thể hơn.</div>
+            <div class="alert alert-warning">Đang gửi các đoạn liên quan nhất; một phần nguồn được lược bớt để giữ ngữ cảnh gọn. Thử tắt bớt nguồn ở cột bên trái hoặc hỏi cụ thể hơn.</div>
         @endif
 
         @forelse ($messages as $message)
@@ -84,11 +143,19 @@
                         <div class="notebook-answer">{!! $answers[$message->id] ?? '' !!}</div>
 
                         <div class="mt-2 flex items-center justify-between gap-3 text-[11px] text-ink-faint dark:text-slate-500">
-                            <span>{{ $message->model ?: 'AI' }}@if ($message->tokens) <span class="tnum">· {{ $message->tokens }} token</span>@endif</span>
-                            @if ($message->id === $messages->last()?->id)
-                                <button type="button" wire:click="regenerate({{ $message->id }})" wire:loading.attr="disabled" wire:target="regenerate"
-                                    class="font-medium hover:text-brand-700 dark:hover:text-brand-300">Tạo lại</button>
-                            @endif
+                            <span title="{{ ($message->model ?: 'AI').($message->tokens ? ' · '.$message->tokens.' token' : '') }}">AI · {{ count($message->source_ids ?? []) }} nguồn</span>
+                            <span class="flex items-center gap-1">
+                                <button type="button" x-data="{ copied: false }"
+                                    @click="navigator.clipboard.writeText($el.parentNode.parentNode.parentNode.querySelector('.notebook-answer').innerText); copied = true; setTimeout(() => copied = false, 1500)"
+                                    class="flex min-h-9 items-center rounded-[8px] px-2 font-medium hover:text-brand-700 focus-visible:outline-2 focus-visible:outline-brand-600 dark:hover:text-brand-300">
+                                    <span x-show="!copied">Chép</span>
+                                    <span x-show="copied" x-cloak>Đã chép!</span>
+                                </button>
+                                @if ($message->id === $messages->last()?->id)
+                                    <button type="button" wire:click="regenerate({{ $message->id }})" wire:loading.attr="disabled" wire:target="regenerate"
+                                        class="flex min-h-9 items-center rounded-[8px] px-2 font-medium hover:text-brand-700 focus-visible:outline-2 focus-visible:outline-brand-600 dark:hover:text-brand-300">Tạo lại</button>
+                                @endif
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -100,8 +167,8 @@
                     <p class="mt-1 text-sm text-ink-soft dark:text-slate-400">Câu trả lời sẽ dựa trên {{ $sourceCount }} nguồn đang bật.</p>
                     <div class="mt-5 grid gap-2 text-left">
                         @foreach (['Tóm tắt các ý chính trong nguồn', 'Giải thích khái niệm khó bằng ví dụ', 'Soạn câu hỏi ôn tập từ nguồn'] as $suggestion)
-                            <button type="button" wire:click="$set('prompt', @js($suggestion))"
-                                class="rounded-[12px] border border-rule px-4 py-3 text-sm text-ink-soft transition-colors hover:bg-paper-2 dark:border-night-700 dark:text-slate-300 dark:hover:bg-white/5">
+                            <button type="button" wire:click="askSuggestion(@js($suggestion))"
+                                class="rounded-[12px] border border-rule px-4 py-3 text-sm text-ink-soft transition-colors hover:bg-paper-2 focus-visible:outline-2 focus-visible:outline-brand-600 dark:border-night-700 dark:text-slate-300 dark:hover:bg-white/5">
                                 {{ $suggestion }}
                             </button>
                         @endforeach
@@ -114,7 +181,16 @@
             <div class="flex justify-start">
                 <div class="max-w-[46rem] rounded-[16px] rounded-bl-[4px] border border-rule bg-white px-4 py-3 text-sm leading-relaxed text-ink dark:border-night-700 dark:bg-night-800 dark:text-slate-200">
                     <span id="notebook-chat-stream" class="notebook-answer-stream block whitespace-pre-line" wire:stream="answer"></span>
-                    <span class="mt-1 inline-block animate-pulse text-xs text-ink-faint dark:text-slate-500">Đang đọc nguồn và trả lời…</span>
+                    <span class="mt-2 flex items-center gap-2 text-xs text-ink-faint dark:text-slate-500"
+                        x-data="{ step: 0 }"
+                        x-init="const tick = setInterval(() => { if (!$el.isConnected) { clearInterval(tick); return; } step = (step + 1) % 3; }, 2200)">
+                        <span class="awawa-think-dots flex items-center gap-1" aria-hidden="true">
+                            <span class="h-1.5 w-1.5 rounded-full bg-brand-500"></span>
+                            <span class="h-1.5 w-1.5 rounded-full bg-brand-500"></span>
+                            <span class="h-1.5 w-1.5 rounded-full bg-brand-500"></span>
+                        </span>
+                        <span x-text="['Đang đọc nguồn…', 'Đang soạn câu trả lời…', 'Đang kiểm tra trích dẫn…'][step]">Đang đọc nguồn…</span>
+                    </span>
                 </div>
             </div>
         @endif
@@ -123,7 +199,7 @@
     <div class="shrink-0 border-t border-rule p-3 dark:border-night-700">
         <form wire:submit="send" class="rounded-[18px] border border-rule bg-white p-2.5 shadow-sm dark:border-night-700 dark:bg-night-800">
             <textarea rows="2" class="max-h-40 w-full resize-y border-0 bg-transparent px-1 py-1 text-sm text-ink placeholder:text-ink-faint focus:outline-none dark:text-slate-100"
-                wire:model="prompt" placeholder="Hỏi về tài liệu, yêu cầu giải thích hoặc tạo nội dung…"
+                wire:model="prompt" placeholder="Hỏi về tài liệu… (Enter để gửi, Shift+Enter xuống dòng)"
                 wire:keydown.enter.prevent="send" @disabled($streaming)></textarea>
             <div class="flex items-center justify-between gap-2 border-t border-rule pt-2 dark:border-night-700">
                 <div class="relative flex min-w-0 items-center gap-2" x-data="{ sourcesOpen: false }">
@@ -141,6 +217,14 @@
                             <label class="flex cursor-pointer items-start gap-2 rounded-[8px] px-2 py-2 hover:bg-paper-2 dark:hover:bg-white/5" wire:key="chat-source-{{ $source->id }}">
                                 <input type="checkbox" value="{{ $source->id }}" wire:model.live="selectedSourceIds"
                                     class="mt-0.5 h-4 w-4 rounded border-rule-strong text-brand-600 focus:ring-brand-500 dark:border-night-700">
+                                <span class="relative flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] {{ $source->typeTone() }}">
+                                    <x-icon :name="$source->typeIcon()" class="h-3 w-3" aria-hidden="true" />
+                                    @if ($source->faviconUrl())
+                                        <img src="{{ $source->faviconUrl() }}" alt="" loading="lazy" aria-hidden="true"
+                                            class="absolute inset-0 h-full w-full rounded-[6px] bg-white object-cover p-0.5 dark:bg-night-800"
+                                            onerror="this.remove()">
+                                    @endif
+                                </span>
                                 <span class="min-w-0 text-xs text-ink dark:text-slate-200">{{ $source->title }}</span>
                             </label>
                         @empty
@@ -165,21 +249,6 @@
             if (el) el.scrollTop = el.scrollHeight;
         };
         window.__awawaScrollChat();
-
-        // Trong lúc chờ chữ tới, chuẩn hoá gạch đầu dòng Markdown để không thấy dấu * thô.
-        const bindStreamNormalizer = () => {
-            const el = document.getElementById('notebook-chat-stream');
-            if (!el || el.dataset.mdNormalizer === '1') return;
-            el.dataset.mdNormalizer = '1';
-            const apply = () => {
-                const text = el.textContent || '';
-                const next = text.replace(/^[ \t]*[*+-][ \t]+/gm, '• ');
-                if (next !== text) el.textContent = next;
-            };
-            new MutationObserver(apply).observe(el, { childList: true, characterData: true, subtree: true });
-        };
-        bindStreamNormalizer();
-        document.addEventListener('livewire:initialized', () => Livewire.hook('morphed', bindStreamNormalizer));
     </script>
     @endscript
 </div>

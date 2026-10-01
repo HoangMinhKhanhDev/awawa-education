@@ -17,11 +17,44 @@ class AiManager
     ) {}
 
     /**
+     * Tên cache danh sách nhà cung cấp. Admin xoá khi thêm/sửa/xoá provider, còn
+     * không thì tự hết hạn sau 60 giây.
+     */
+    public const CANDIDATES_CACHE_KEY = 'ai-provider-candidates';
+
+    protected ?array $memoCandidates = null;
+
+    public static function flushCandidates(): void
+    {
+        Cache::forget(self::CANDIDATES_CACHE_KEY);
+    }
+
+    /**
      * Danh sách nhà cung cấp khả dụng (DB trước, config sau), đã lọc theo credentials.
+     *
+     * Đắt vì mỗi provider phải giải mã `api_key`, mà một request gọi tới 3-4 lần
+     * (pinnedSelection, resolveCandidates, chatProviders) nên nhớ trong instance
+     * và cache dùng chung 60 giây.
      *
      * @return array<int, array{key: string, label: string, base_url: string, api_key: string|null, model: string}>
      */
     public function candidates(): array
+    {
+        if ($this->memoCandidates !== null) {
+            return $this->memoCandidates;
+        }
+
+        return $this->memoCandidates = SafeCache::remember(
+            self::CANDIDATES_CACHE_KEY,
+            now()->addSeconds(60),
+            fn (): array => $this->loadCandidates(),
+        );
+    }
+
+    /**
+     * @return array<int, array{key: string, label: string, base_url: string, api_key: string|null, model: string}>
+     */
+    protected function loadCandidates(): array
     {
         $candidates = [];
 
@@ -38,7 +71,7 @@ class AiManager
                     'label' => $provider->label,
                     'base_url' => $provider->base_url,
                     'api_key' => $provider->api_key,
-                    'model' => $provider->default_model ?: 'openrouter/free',
+                    'model' => $provider->default_model ?: $this->fallbackModel($provider->key),
                 ];
             }
         }
@@ -50,7 +83,7 @@ class AiManager
                     'label' => $config['label'] ?? $key,
                     'base_url' => $config['base_url'],
                     'api_key' => $config['api_key'],
-                    'model' => $config['model'] ?? 'openrouter/free',
+                    'model' => $config['model'] ?? $this->fallbackModel($key),
                 ];
             }
         }
@@ -62,6 +95,18 @@ class AiManager
         }
 
         return array_values($unique);
+    }
+
+    /**
+     * Model dự phòng khi provider không khai báo model mặc định.
+     *
+     * Lấy từ config của đúng provider đó trước (vd Agnes dùng model của Agnes),
+     * chứ không gán cứng model OpenRouter cho mọi provider.
+     */
+    protected function fallbackModel(string $providerKey): string
+    {
+        return (string) (config("awawa.ai.providers.{$providerKey}.model")
+            ?: config('awawa.ai.providers.openrouter.model', 'openrouter/free'));
     }
 
     public function isConfigured(): bool
@@ -129,7 +174,7 @@ class AiManager
     }
 
     /**
-     * @return array<int, array{id: string, name: string, free: bool}>
+     * @return array<int, array{id: string, name: string, free: bool, price_prompt: float|null, price_completion: float|null}>
      */
     public function modelsForProvider(string $providerKey, bool $refresh = false, int $timeout = 30): array
     {
@@ -160,6 +205,56 @@ class AiManager
         }
 
         return $models;
+    }
+
+    /**
+     * Giá theo 1 triệu token của một model, tính bằng micro-dollar để không lệch
+     * float. Null khi chưa có giá trong cache.
+     *
+     * Chỉ đọc từ danh sách model đã cache, KHÔNG gọi API: hàm này chạy trong
+     * `logUsage()` sau mỗi lần gọi AI, gọi API ở đây vừa chậm vừa làm lệch thứ
+     * tự request trong test. Cache được nạp khi giáo viên mở chọn model, khi
+     * admin kiểm tra provider, và khi Studio chạy preflight trước mỗi lần soạn.
+     *
+     * @return array{prompt: int|null, completion: int|null}
+     */
+    public function priceFor(string $providerKey, string $model): array
+    {
+        $candidate = collect($this->candidates())->firstWhere('key', $providerKey);
+
+        if (! is_array($candidate)) {
+            return ['prompt' => null, 'completion' => null];
+        }
+
+        $cacheKey = 'ai-provider-models:'.sha1($providerKey.'|'.$candidate['base_url'].'|'.$candidate['model'].'|'.($candidate['api_key'] ?? ''));
+        $models = Cache::get($cacheKey);
+
+        if (! is_array($models)) {
+            return ['prompt' => null, 'completion' => null];
+        }
+
+        $found = collect($models)->firstWhere('id', $model);
+
+        if (! is_array($found)) {
+            return ['prompt' => null, 'completion' => null];
+        }
+
+        return [
+            'prompt' => self::toMicros($found['price_prompt'] ?? null),
+            'completion' => self::toMicros($found['price_completion'] ?? null),
+        ];
+    }
+
+    /**
+     * Đổi giá USD theo token sang micro-dollar theo 1 triệu token.
+     */
+    protected static function toMicros(mixed $pricePerToken): ?int
+    {
+        if (! is_numeric($pricePerToken) || (float) $pricePerToken < 0) {
+            return null;
+        }
+
+        return (int) round((float) $pricePerToken * 1000000 * 1000000);
     }
 
     /**
@@ -269,6 +364,19 @@ class AiManager
 
         return 'Nhà cung cấp AI đang giới hạn lượt gọi miễn phí. Hãy thử lại sau khoảng '
             .$retryAfterSeconds.' giây, hoặc nhờ quản trị viên thêm nhà cung cấp dự phòng.';
+    }
+
+    /**
+     * Bao lâu được chờ một lần gọi stream.
+     *
+     * Mặc định 180 giây vì token về rải rác trong nhiều phút, khác gọi thường
+     * chỉ chờ một response. Người gọi vẫn đè được qua `$options['timeout']`.
+     *
+     * @param  array<string, mixed>  $options
+     */
+    protected function streamTimeout(array $options): int
+    {
+        return max(1, (int) ($options['timeout'] ?? 180));
     }
 
     /**
@@ -427,7 +535,7 @@ class AiManager
                         $payload = array_merge($payload, $options['extra']);
                     }
 
-                    $request = Http::acceptJson()->withOptions(['stream' => true])->timeout(180);
+                    $request = Http::acceptJson()->withOptions(['stream' => true])->timeout($this->streamTimeout($options));
 
                     if (filled($candidate['api_key'])) {
                         $request = $request->withToken($candidate['api_key']);
@@ -580,6 +688,10 @@ class AiManager
     protected function logUsage(string $providerKey, AiResult $result, mixed $purpose, ?int $subjectId, ?int $userId): void
     {
         $usage = $result->usage;
+        $promptTokens = (int) ($usage['prompt_tokens'] ?? 0);
+        $completionTokens = (int) ($usage['completion_tokens'] ?? 0);
+
+        $price = $this->priceFor($providerKey, $result->model);
 
         AiUsageLog::create([
             'subject_id' => $subjectId,
@@ -587,12 +699,51 @@ class AiManager
             'provider_key' => $providerKey,
             'model' => $result->model,
             'purpose' => $purpose instanceof AiPurpose ? $purpose->value : $purpose,
-            'prompt_tokens' => (int) ($usage['prompt_tokens'] ?? 0),
-            'completion_tokens' => (int) ($usage['completion_tokens'] ?? 0),
+            'prompt_tokens' => $promptTokens,
+            'completion_tokens' => $completionTokens,
             'total_tokens' => (int) ($usage['total_tokens'] ?? 0),
+            'cost_micros' => self::costMicros($promptTokens, $completionTokens, $price),
+            'price_prompt_micros' => $price['prompt'],
+            'price_completion_micros' => $price['completion'],
+            'cached_prompt_tokens' => self::cachedTokens($usage),
+            'cache_creation_tokens' => (int) ($usage['cache_creation_input_tokens'] ?? 0),
             'latency_ms' => $result->latencyMs,
             'is_success' => true,
         ]);
+    }
+
+    /**
+     * Chi phí micro-dollar, null khi chưa có giá của model để phân biệt với
+     * miễn phí (0).
+     *
+     * @param  array{prompt: int|null, completion: int|null}  $price  giá theo micro-dollar của 1 triệu token
+     */
+    protected static function costMicros(int $promptTokens, int $completionTokens, array $price): ?int
+    {
+        if ($price['prompt'] === null || $price['completion'] === null) {
+            return null;
+        }
+
+        return (int) round(($promptTokens * $price['prompt'] + $completionTokens * $price['completion']) / 1000000);
+    }
+
+    /**
+     * Số token prompt được phục vụ từ cache của nhà cung cấp.
+     *
+     * OpenAI trả trong `usage.prompt_tokens_details.cached_tokens`, Anthropic
+     * qua OpenRouter trả `usage.cached_tokens` hoặc chi tiết tương tự.
+     *
+     * @param  array<string, mixed>  $usage
+     */
+    protected static function cachedTokens(array $usage): int
+    {
+        $details = $usage['prompt_tokens_details'] ?? null;
+
+        if (is_array($details) && isset($details['cached_tokens'])) {
+            return max(0, (int) $details['cached_tokens']);
+        }
+
+        return max(0, (int) ($usage['cached_tokens'] ?? 0));
     }
 
     protected function logFailure(string $providerKey, ?string $model, ?string $purpose, ?int $subjectId, ?int $userId, int $latencyMs, string $error): void

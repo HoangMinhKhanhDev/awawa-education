@@ -4,20 +4,28 @@ namespace App\Services\Notebook;
 
 use App\Enums\AiPurpose;
 use App\Services\Ai\AiManager;
+use App\Support\NotebookConfig;
 
 /**
- * Tìm nguồn web: Tavily search + 1 lượt AI nhanh để đánh dấu nguồn chất lượng.
+ * Tìm nguồn web: dùng nhà cung cấp admin đã chọn (Tavily hoặc Exa) + 1 lượt AI
+ * nhanh để đánh dấu nguồn chất lượng.
  */
 class WebSourceFinder
 {
     public function __construct(
         protected TavilyClient $tavily,
+        protected ExaClient $exa,
         protected AiManager $ai,
     ) {}
 
+    protected function client(): TavilyClient|ExaClient
+    {
+        return NotebookConfig::webSearchProvider() === 'exa' ? $this->exa : $this->tavily;
+    }
+
     public function configured(): bool
     {
-        return $this->tavily->configured();
+        return $this->client()->configured();
     }
 
     /**
@@ -26,7 +34,7 @@ class WebSourceFinder
      */
     public function extract(array $urls): array
     {
-        return $this->tavily->extract($urls);
+        return $this->client()->extract($urls);
     }
 
     /**
@@ -34,7 +42,7 @@ class WebSourceFinder
      */
     public function find(string $topic, ?int $subjectId = null, ?int $userId = null): array
     {
-        $results = $this->tavily->search($topic, (int) config('awawa.notebook.tavily.max_results', 8));
+        $results = $this->client()->search($topic, NotebookConfig::webSearchMaxResults());
 
         if ($results === []) {
             return [];

@@ -610,7 +610,7 @@ class Sources extends Component
         ]);
 
         if (! $finder->configured()) {
-            $this->error = 'Chưa cấu hình Tavily API key. Báo quản trị viên thêm trong mục API key.';
+            $this->error = 'Chưa cấu hình tìm kiếm web. Báo quản trị viên thêm trong mục Tích hợp.';
 
             return;
         }

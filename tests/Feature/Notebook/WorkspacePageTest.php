@@ -23,7 +23,7 @@ class WorkspacePageTest extends TestCase
         $subject->forgetFeatureCache();
     }
 
-    public function test_teacher_can_open_notebook_workspace(): void
+    public function test_teacher_sees_notebook_index_without_auto_creating(): void
     {
         $subject = Subject::factory()->create();
         $this->enableAiTools($subject);
@@ -32,9 +32,23 @@ class WorkspacePageTest extends TestCase
         $this->actingAs($teacher)
             ->get(route('studio.ai'))
             ->assertOk()
-            ->assertSee('Notebook');
+            ->assertSee('Sổ tay AI')
+            ->assertSee('Chưa có sổ tay nào');
 
-        $this->assertDatabaseHas('notebooks', ['owner_id' => $teacher->id, 'subject_id' => $subject->id]);
+        $this->assertSame(0, Notebook::query()->where('owner_id', $teacher->id)->count());
+    }
+
+    public function test_teacher_can_open_notebook_workspace(): void
+    {
+        $subject = Subject::factory()->create();
+        $this->enableAiTools($subject);
+        $teacher = User::factory()->teacher($subject)->create();
+        $notebook = Notebook::factory()->create(['subject_id' => $subject->id, 'owner_id' => $teacher->id]);
+
+        $this->actingAs($teacher)
+            ->get(route('studio.ai.notebook', ['notebookId' => $notebook->id]))
+            ->assertOk()
+            ->assertSee(e($notebook->title), escape: false);
     }
 
     public function test_workspace_exposes_resizable_panels_with_keyboard_and_double_click_reset(): void
@@ -42,8 +56,9 @@ class WorkspacePageTest extends TestCase
         $subject = Subject::factory()->create();
         $this->enableAiTools($subject);
         $teacher = User::factory()->teacher($subject)->create();
+        $notebook = Notebook::factory()->create(['subject_id' => $subject->id, 'owner_id' => $teacher->id]);
 
-        $html = $this->actingAs($teacher)->get(route('studio.ai'))->assertOk()->getContent();
+        $html = $this->actingAs($teacher)->get(route('studio.ai.notebook', ['notebookId' => $notebook->id]))->assertOk()->getContent();
 
         $this->assertStringContainsString('x-data="{ ...awawaNotebookPanels(), mobileTab:', $html);
         $this->assertStringContainsString('class="notebook-panes', $html);
@@ -74,8 +89,9 @@ class WorkspacePageTest extends TestCase
         $subject = Subject::factory()->create();
         $this->enableAiTools($subject);
         $teacher = User::factory()->teacher($subject)->create();
+        $notebook = Notebook::factory()->create(['subject_id' => $subject->id, 'owner_id' => $teacher->id]);
 
-        $html = $this->actingAs($teacher)->get(route('studio.ai'))->assertOk()->getContent();
+        $html = $this->actingAs($teacher)->get(route('studio.ai.notebook', ['notebookId' => $notebook->id]))->assertOk()->getContent();
 
         foreach (['sources', 'chat', 'studio'] as $tab) {
             $this->assertStringContainsString("@click=\"mobileTab = '{$tab}'\"", $html);
@@ -94,8 +110,9 @@ class WorkspacePageTest extends TestCase
         $subject = Subject::factory()->create();
         $this->enableAiTools($subject);
         $teacher = User::factory()->teacher($subject)->create();
+        $notebook = Notebook::factory()->create(['subject_id' => $subject->id, 'owner_id' => $teacher->id]);
 
-        $html = $this->actingAs($teacher)->get(route('studio.ai'))->assertOk()->getContent();
+        $html = $this->actingAs($teacher)->get(route('studio.ai.notebook', ['notebookId' => $notebook->id]))->assertOk()->getContent();
 
         $this->assertStringContainsString(
             '<div class="flex min-w-0 flex-1 flex-col h-full min-h-0">',
@@ -103,7 +120,7 @@ class WorkspacePageTest extends TestCase
         );
     }
 
-    public function test_reopening_workspace_reuses_same_notebook(): void
+    public function test_reopening_index_does_not_create_notebooks(): void
     {
         $subject = Subject::factory()->create();
         $this->enableAiTools($subject);
@@ -112,7 +129,20 @@ class WorkspacePageTest extends TestCase
         $this->actingAs($teacher)->get(route('studio.ai'))->assertOk();
         $this->actingAs($teacher)->get(route('studio.ai'))->assertOk();
 
-        $this->assertSame(1, Notebook::query()->where('owner_id', $teacher->id)->count());
+        $this->assertSame(0, Notebook::query()->where('owner_id', $teacher->id)->count());
+    }
+
+    public function test_workspace_top_bar_links_back_to_index(): void
+    {
+        $subject = Subject::factory()->create();
+        $this->enableAiTools($subject);
+        $teacher = User::factory()->teacher($subject)->create();
+        $notebook = Notebook::factory()->create(['subject_id' => $subject->id, 'owner_id' => $teacher->id]);
+
+        $html = $this->actingAs($teacher)->get(route('studio.ai.notebook', ['notebookId' => $notebook->id]))->assertOk()->getContent();
+
+        $this->assertStringContainsString(route('studio.ai'), $html);
+        $this->assertStringContainsString(e($notebook->title), $html);
     }
 
     public function test_student_cannot_open_workspace(): void
@@ -186,7 +216,7 @@ class WorkspacePageTest extends TestCase
             'user_id' => $teacher->id,
             'provider_key' => 'openrouter',
             'model' => 'self-model-visible',
-            'purpose' => 'chat',
+            'purpose' => 'self_chat_visible',
             'total_tokens' => 100,
             'is_success' => true,
         ]);
@@ -195,14 +225,15 @@ class WorkspacePageTest extends TestCase
             'user_id' => $otherTeacher->id,
             'provider_key' => 'openrouter',
             'model' => 'other-model-hidden',
-            'purpose' => 'chat',
+            'purpose' => 'other_chat_hidden',
             'total_tokens' => 100,
             'is_success' => true,
         ]);
 
         $this->actingAs($teacher)
             ->get(route('studio.ai.activity'))
-            ->assertSee('self-model-visible')
+            ->assertSee('Self Chat Visible')
+            ->assertDontSee('Other Chat Hidden')
             ->assertDontSee('other-model-hidden');
     }
 }

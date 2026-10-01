@@ -52,6 +52,9 @@
                 <div class="flex flex-wrap gap-1.5">
                     <span class="chip chip-neutral">Hôm nay {{ $counts['ai_today'] }}</span>
                     <span class="tnum chip chip-neutral">{{ number_format($counts['ai_tokens']) }} token</span>
+                    @if ($counts['ai_cost_micros'] > 0)
+                        <span class="tnum chip chip-neutral">~${{ number_format($counts['ai_cost_micros'] / 1000000, 4) }}</span>
+                    @endif
                     @if ($counts['ai_errors'] > 0)
                         <span class="chip chip-signal">{{ $counts['ai_errors'] }} lỗi</span>
                     @endif

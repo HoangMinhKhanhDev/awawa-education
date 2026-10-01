@@ -3,6 +3,7 @@
 namespace App\Livewire\Admin\AiProviders;
 
 use App\Models\AiProvider;
+use App\Services\Ai\AiManager;
 use App\Services\Ai\AiProviderProbe;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Gate;
@@ -142,6 +143,8 @@ class Index extends Component
         }
 
         $provider->save();
+
+        AiManager::flushCandidates();
 
         if (! AiProvider::query()->where('is_default', true)->exists()) {
             $provider->forceFill(['is_default' => true])->save();
@@ -400,6 +403,8 @@ class Index extends Component
             $this->makeDefault($provider->getKey());
         }
 
+        AiManager::flushCandidates();
+
         $this->showForm = false;
         $this->resetForm();
 
@@ -413,6 +418,8 @@ class Index extends Component
 
         AiProvider::query()->whereKeyNot($provider->id)->update(['is_default' => false]);
         $provider->forceFill(['is_default' => true, 'is_enabled' => true])->save();
+
+        AiManager::flushCandidates();
 
         session()->flash('status', "Đã đặt {$provider->label} làm nhà cung cấp mặc định.");
     }
@@ -430,6 +437,8 @@ class Index extends Component
 
         $provider->forceFill(['is_enabled' => ! $provider->is_enabled])->save();
 
+        AiManager::flushCandidates();
+
         session()->flash('status', 'Đã cập nhật trạng thái nhà cung cấp.');
     }
 
@@ -445,6 +454,8 @@ class Index extends Component
         }
 
         $provider->delete();
+
+        AiManager::flushCandidates();
 
         session()->flash('status', 'Đã xóa nhà cung cấp.');
     }

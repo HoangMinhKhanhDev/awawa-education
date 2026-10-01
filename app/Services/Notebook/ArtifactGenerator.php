@@ -7,7 +7,9 @@ use App\Enums\ArtifactType;
 use App\Enums\Difficulty;
 use App\Enums\QuestionType;
 use App\Models\Notebook;
+use App\Services\Ai\AiException;
 use App\Services\Ai\AiManager;
+use App\Services\Ai\AiResult;
 use App\Support\TrueFalseClusterMerger;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -33,6 +35,12 @@ class ArtifactGenerator
      * nhà cung cấp miễn phí chậm nhất, và 3.000 token đã đủ một tài liệu tóm tắt.
      */
     private const TOKENS_PER_PROSE = 3000;
+
+    /**
+     * Số câu đúng/sai rời rạc gom thành một chùm, nên phải nạp dự trữ số câu thô
+     * này lần số chùm cần có trước khi gom.
+     */
+    private const LOOSE_TRUE_FALSE_PER_CLUSTER = 4;
 
     public function __construct(
         protected AiManager $ai,
@@ -75,42 +83,51 @@ class ArtifactGenerator
     }
 
     /**
+     * Trần số câu mỗi phần của đề thi: validation ở Studio và ô nhập trên giao
+     * diện cùng lấy con số này. Cố ý không bám theo `questionsPerAiCall()` — đề
+     * vượt ngân sách một lần gọi vẫn được chia nhiều đợt soạn rồi ghép lại, nên
+     * đây là giới hạn sản phẩm chứ không phải giới hạn kỹ thuật.
+     */
+    public static function maxQuestionsPerSection(): int
+    {
+        return 50;
+    }
+
+    /**
      * @param  array<string, mixed>  $params
      * @return array{title: string, payload: array|null, text: string|null, provider: string, model: string, tokens: int}
      */
-    public function generate(Notebook $notebook, ArtifactType $type, array $params, ?int $subjectId = null, ?int $userId = null): array
+    public function generate(Notebook $notebook, ArtifactType $type, array $params, ?int $subjectId = null, ?int $userId = null, ?callable $onProgress = null): array
     {
         $instruction = trim((string) ($params['instruction'] ?? ''));
 
         $pinned = $this->ai->pinnedSelection($notebook->settings['ai_provider'] ?? null, $notebook->settings['ai_model'] ?? null);
 
         if ($type === ArtifactType::Exam && $this->examNeedsChunking($params)) {
-            return $this->generateChunkedExam($notebook, $params, $instruction, $pinned, $subjectId, $userId);
+            return $this->generateChunkedExam($notebook, $params, $instruction, $pinned, $subjectId, $userId, $onProgress);
         }
 
         $decoded = null;
         $result = null;
         $lastError = null;
         $titleInstruction = $instruction;
+        $baseInstruction = $this->buildInstruction($notebook, $type, $instruction, $params, strictJson: $type->isJson());
 
         // Lần 1 soạn bình thường; nếu JSON hỏng thì yêu cầu lại lần 2 với chỉ dẫn gọn.
+        // Query tìm nguồn giữ nguyên bản gốc để ngữ cảnh giống hệt vòng đầu.
         foreach ([0, 1] as $round) {
+            $roundInstruction = $round === 1
+                ? $this->buildInstruction($notebook, $type, $instruction, $params, strictJson: $type->isJson())
+                : $baseInstruction;
+
             $messages = $this->composer->artifactMessages(
                 $notebook,
-                $this->buildInstruction($notebook, $type, $instruction, $params, strictJson: $type->isJson()),
+                $roundInstruction,
                 $this->schemaHint($type),
+                retrievalQuery: $baseInstruction,
             );
 
-            $result = $this->ai->chat($messages, [
-                'purpose' => AiPurpose::Artifact,
-                'subject_id' => $subjectId,
-                'user_id' => $userId,
-                'provider_key' => $pinned['provider_key'],
-                'model' => $pinned['model'],
-                'temperature' => $round === 1 ? 0.2 : 0.5,
-                'max_tokens' => $this->maxTokensFor($type, $params),
-                'timeout' => $this->timeout(),
-            ]);
+            $result = $this->chatJson($messages, $pinned, $subjectId, $userId, $this->maxTokensFor($type, $params), $type->isJson());
 
             if (! $type->isJson()) {
                 break;
@@ -200,7 +217,7 @@ class ArtifactGenerator
      * @param  array<string, mixed>  $pinned
      * @return array{title: string, payload: array|null, text: string|null, provider: string, model: string, tokens: int}
      */
-    protected function generateChunkedExam(Notebook $notebook, array $params, string $instruction, array $pinned, ?int $subjectId, ?int $userId): array
+    protected function generateChunkedExam(Notebook $notebook, array $params, string $instruction, array $pinned, ?int $subjectId, ?int $userId, ?callable $onProgress = null): array
     {
         $sections = max(1, (int) ($params['exam_sections'] ?? 2));
         $perSection = max(1, (int) ($params['exam_questions_per_section'] ?? 5));
@@ -237,6 +254,10 @@ class ArtifactGenerator
             $partInstruction .= "\nĐánh số và đặt tên các phần đúng theo toàn đề (VD: đợt gồm phần 2 và 3 thì đặt PHẦN II, PHẦN III). Không soạn phần ngoài danh sách.";
 
             $decoded = $this->requestJsonPart($notebook, $partInstruction, $params, $expected, $pinned, $subjectId, $userId);
+
+            if ($onProgress !== null) {
+                $onProgress($partIndex + 1, $partCount);
+            }
 
             if (isset($decoded['title']) && is_string($decoded['title']) && trim($decoded['title']) !== '') {
                 $titles[] = trim($decoded['title']);
@@ -394,6 +415,61 @@ class ArtifactGenerator
     }
 
     /**
+     * Gọi AI để lấy JSON, ưu tiên chế độ JSON của provider để bớt lỗi parse.
+     *
+     * Provider nào không hỗ trợ `response_format` sẽ trả 400: thử lại một lần
+     * không kèm chế độ đó thay vì báo hỏng luôn. Nhiệt độ giữ 0.5 cả hai vòng
+     * vì vòng lại cần cách viết khác, hạ xuống 0.2 chỉ lặp lại đúng lỗi cũ.
+     *
+     * @param  array<int, array{role: string, content: string}>  $messages
+     * @param  array<string, mixed>  $pinned
+     */
+    protected function chatJson(array $messages, array $pinned, ?int $subjectId, ?int $userId, int $maxTokens, bool $jsonMode = true): AiResult
+    {
+        $options = [
+            'purpose' => AiPurpose::Artifact,
+            'subject_id' => $subjectId,
+            'user_id' => $userId,
+            'provider_key' => $pinned['provider_key'],
+            'model' => $pinned['model'],
+            'temperature' => 0.5,
+            'max_tokens' => $maxTokens,
+            'timeout' => $this->timeout(),
+        ];
+
+        if ($jsonMode) {
+            $options['response_format'] = ['type' => 'json_object'];
+        }
+
+        try {
+            return $this->ai->chat($messages, $options);
+        } catch (AiException $exception) {
+            if (! self::rejectsJsonMode($exception)) {
+                throw $exception;
+            }
+
+            unset($options['response_format']);
+
+            return $this->ai->chat($messages, $options);
+        }
+    }
+
+    /**
+     * Provider có từ chối chế độ JSON không. Chỉ thử lại khi lỗi 400 nhắc tới
+     * response_format/json, còn lỗi khác (key sai, hết lượt, timeout) thì giữ
+     * nguyên để tầng trên xử lý.
+     */
+    protected static function rejectsJsonMode(AiException $exception): bool
+    {
+        $message = mb_strtolower($exception->getMessage());
+
+        return str_contains($message, '(400)')
+            && (str_contains($message, 'response_format')
+                || str_contains($message, 'json_object')
+                || str_contains($message, 'json mode'));
+    }
+
+    /**
      * Gọi AI một đợt với tối đa một lần thử lại khi JSON hỏng hoặc thiếu câu.
      *
      * @param  array<string, mixed>  $params
@@ -403,24 +479,21 @@ class ArtifactGenerator
     protected function requestJsonPart(Notebook $notebook, string $instruction, array $params, int $expected, array $pinned, ?int $subjectId, ?int $userId): array
     {
         $lastError = null;
+        $baseInstruction = $this->buildInstruction($notebook, ArtifactType::Exam, $instruction, $params, strictJson: true);
 
         foreach ([0, 1] as $round) {
+            $roundInstruction = $round === 1
+                ? $this->buildInstruction($notebook, ArtifactType::Exam, $instruction, $params, strictJson: true)
+                : $baseInstruction;
+
             $messages = $this->composer->artifactMessages(
                 $notebook,
-                $this->buildInstruction($notebook, ArtifactType::Exam, $instruction, $params, strictJson: true),
+                $roundInstruction,
                 $this->schemaHint(ArtifactType::Exam),
+                retrievalQuery: $baseInstruction,
             );
 
-            $result = $this->ai->chat($messages, [
-                'purpose' => AiPurpose::Artifact,
-                'subject_id' => $subjectId,
-                'user_id' => $userId,
-                'provider_key' => $pinned['provider_key'],
-                'model' => $pinned['model'],
-                'temperature' => $round === 1 ? 0.2 : 0.5,
-                'max_tokens' => self::maxTokensForCount($expected),
-                'timeout' => $this->timeout(),
-            ]);
+            $result = $this->chatJson($messages, $pinned, $subjectId, $userId, self::maxTokensForCount($expected));
 
             try {
                 $decoded = $this->decodeJson($result->text);
@@ -1009,6 +1082,13 @@ class ArtifactGenerator
     }
 
     /**
+     * Chuẩn hoá đề thi: mỗi phần giữ đúng số câu đã hứa, không hơn.
+     *
+     * Câu thô phải nạp dự trữ `LOOSE_TRUE_FALSE_PER_CLUSTER` lần số câu mỗi phần
+     * vì `TrueFalseClusterMerger` gom 4 câu đúng/sai rời rạc thành một chùm: cắt
+     * trước khi gom thì mất câu hợp lệ, còn cắt sau khi gom thì mỗi chùm là một
+     * phần tử nên không bao giờ cắt giữa chùm.
+     *
      * @param  array<string, mixed>  $decoded
      * @param  array<string, mixed>  $params
      * @return array<string, mixed>
@@ -1036,7 +1116,11 @@ class ArtifactGenerator
                 continue;
             }
 
-            $questions = $this->normalizeQuestions($this->listFrom(['questions' => $section['questions'] ?? $section]), $params);
+            $questions = $this->normalizeQuestions(
+                $this->listFrom(['questions' => $section['questions'] ?? $section]),
+                $params,
+                $perSection * self::LOOSE_TRUE_FALSE_PER_CLUSTER,
+            );
 
             if ($questions === []) {
                 continue;

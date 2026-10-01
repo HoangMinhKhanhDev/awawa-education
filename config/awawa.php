@@ -144,6 +144,11 @@ return [
         'history_messages' => (int) env('NOTEBOOK_HISTORY_MESSAGES', 6),
         'max_notebooks' => (int) env('NOTEBOOK_MAX_NOTEBOOKS', 20),
 
+        // Số tin nhắn gần nhất vẽ lên màn hình chat. Tin cũ hơn vẫn trong database
+        // và vẫn gửi cho AI theo `history_messages`, chỉ không render để mỗi
+        // request Livewire không phải parse Markdown lại cả cuộc trò chuyện dài.
+        'chat_render_limit' => (int) env('NOTEBOOK_CHAT_RENDER_LIMIT', 50),
+
         // Trần token cho câu trả lời của một lần soạn. Nhà cung cấp miễn phí chậm
         // theo tỉ lệ gần như tuyến tính với số token sinh ra, nên hạ trần này là
         // cách rút ngắn thời gian chờ rõ rệt nhất.
@@ -171,6 +176,16 @@ return [
             'base_url' => env('TAVILY_BASE_URL', 'https://api.tavily.com'),
             'api_key' => env('TAVILY_API_KEY'),
             'max_results' => (int) env('TAVILY_MAX_RESULTS', 8),
+        ],
+
+        // Nhà cung cấp tìm kiếm web đang dùng: tavily hoặc exa. Admin đổi trong
+        // trang Tích hợp mà không cần sửa .env.
+        'web_search_provider' => env('WEB_SEARCH_PROVIDER', 'tavily'),
+
+        'exa' => [
+            'base_url' => env('EXA_BASE_URL', 'https://api.exa.ai'),
+            'api_key' => env('EXA_API_KEY'),
+            'max_results' => (int) env('EXA_MAX_RESULTS', 8),
         ],
     ],
 

@@ -3,6 +3,7 @@
 namespace App\Livewire\Admin;
 
 use App\Models\NotebookSetting;
+use App\Services\Notebook\ExaClient;
 use App\Services\Notebook\TavilyClient;
 use App\Support\NotebookConfig;
 use Illuminate\Contracts\View\View;
@@ -13,6 +14,12 @@ class Integrations extends Component
     public string $tavilyApiKey = '';
 
     public bool $tavilyConfigured = false;
+
+    public string $exaApiKey = '';
+
+    public bool $exaConfigured = false;
+
+    public string $webSearchProvider = 'tavily';
 
     public bool $aiStream = true;
 
@@ -29,6 +36,8 @@ class Integrations extends Component
         $this->guard();
 
         $this->tavilyConfigured = filled(NotebookConfig::tavilyKey());
+        $this->exaConfigured = filled(NotebookConfig::exaKey());
+        $this->webSearchProvider = NotebookConfig::webSearchProvider();
         $this->aiStream = NotebookConfig::streamEnabled();
         $this->maxPromptChars = NotebookConfig::maxPromptChars();
         $this->maxSources = NotebookConfig::maxSources();
@@ -47,6 +56,8 @@ class Integrations extends Component
 
         $this->validate([
             'tavilyApiKey' => ['nullable', 'string', 'max:300'],
+            'exaApiKey' => ['nullable', 'string', 'max:300'],
+            'webSearchProvider' => ['required', 'in:tavily,exa'],
             'maxPromptChars' => ['required', 'integer', 'min:10000', 'max:2000000'],
             'maxSources' => ['required', 'integer', 'min:1', 'max:100'],
             'maxFileMegabytes' => ['required', 'integer', 'min:1', 'max:100'],
@@ -59,6 +70,12 @@ class Integrations extends Component
             NotebookSetting::set('tavily_api_key', $this->tavilyApiKey, true);
         }
 
+        if (filled($this->exaApiKey)) {
+            NotebookSetting::set('exa_api_key', $this->exaApiKey, true);
+        }
+
+        NotebookSetting::set('web_search_provider', $this->webSearchProvider);
+
         NotebookSetting::set('ai_stream', $this->aiStream ? '1' : '0');
         NotebookSetting::set('notebook_max_prompt_chars', (string) $this->maxPromptChars);
         NotebookSetting::set('notebook_max_sources', (string) $this->maxSources);
@@ -66,7 +83,9 @@ class Integrations extends Component
         NotebookSetting::set('notebook_max_source_chars', (string) $this->maxSourceChars);
 
         $this->tavilyApiKey = '';
+        $this->exaApiKey = '';
         $this->tavilyConfigured = filled(NotebookConfig::tavilyKey());
+        $this->exaConfigured = filled(NotebookConfig::exaKey());
 
         session()->flash('integrations_status', 'Đã lưu cấu hình tích hợp.');
     }
@@ -90,6 +109,28 @@ class Integrations extends Component
             session()->flash('integrations_status', 'Tavily kết nối thành công.');
         } catch (\Throwable $exception) {
             session()->flash('integrations_error', 'Tavily lỗi: '.$exception->getMessage());
+        }
+    }
+
+    public function clearExa(): void
+    {
+        $this->guard();
+
+        NotebookSetting::forget('exa_api_key');
+        $this->exaConfigured = false;
+
+        session()->flash('integrations_status', 'Đã xóa Exa API key.');
+    }
+
+    public function testExa(ExaClient $client): void
+    {
+        $this->guard();
+
+        try {
+            $client->search('kiểm tra kết nối', 1);
+            session()->flash('integrations_status', 'Exa kết nối thành công.');
+        } catch (\Throwable $exception) {
+            session()->flash('integrations_error', 'Exa lỗi: '.$exception->getMessage());
         }
     }
 

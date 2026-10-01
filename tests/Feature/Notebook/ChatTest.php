@@ -253,6 +253,10 @@ class ChatTest extends TestCase
             ->assertSet('streaming', false);
 
         Http::assertSent(function (HttpRequest $request): bool {
+            if (! str_ends_with($request->url(), '/chat/completions')) {
+                return true;
+            }
+
             $body = $request->data();
 
             $this->assertIsArray($body);
@@ -471,5 +475,85 @@ class ChatTest extends TestCase
         $this->actingAs($other);
 
         Livewire::test(Chat::class, ['notebookId' => $this->notebook->id])->assertForbidden();
+    }
+
+    public function test_suggestion_sends_immediately(): void
+    {
+        $this->fakeAnswer('Tóm tắt xong.');
+
+        Livewire::test(Chat::class, ['notebookId' => $this->notebook->id])
+            ->call('askSuggestion', 'Tóm tắt các ý chính trong nguồn')
+            ->call('streamAnswer');
+
+        $this->assertDatabaseHas('notebook_messages', [
+            'notebook_id' => $this->notebook->id,
+            'role' => 'user',
+            'content' => 'Tóm tắt các ý chính trong nguồn',
+        ]);
+        $this->assertDatabaseHas('notebook_messages', [
+            'notebook_id' => $this->notebook->id,
+            'role' => 'assistant',
+            'content' => 'Tóm tắt xong.',
+        ]);
+    }
+
+    public function test_long_conversation_renders_only_the_recent_window(): void
+    {
+        config()->set('awawa.notebook.chat_render_limit', 4);
+
+        for ($i = 1; $i <= 12; $i++) {
+            NotebookMessage::create([
+                'notebook_id' => $this->notebook->id,
+                'role' => 'user',
+                'content' => sprintf('Tin nhắn số %02d', $i),
+            ]);
+        }
+
+        // Sàn tối thiểu 10 tin nên 12 tin chỉ hiện 10 tin cuối.
+        $component = Livewire::test(Chat::class, ['notebookId' => $this->notebook->id]);
+
+        $component->assertSee('Tin nhắn số 12')->assertDontSee('Tin nhắn số 01')->assertSee('Xem thêm tin nhắn cũ hơn');
+
+        $component->call('loadMore')->assertSee('Tin nhắn số 01')->assertDontSee('Xem thêm tin nhắn cũ hơn');
+    }
+
+    public function test_assistant_message_stores_rendered_html_once(): void
+    {
+        $this->fakeAnswer('**Đáp án** [1]');
+
+        Livewire::test(Chat::class, ['notebookId' => $this->notebook->id])
+            ->set('prompt', 'Hỏi gì đó')
+            ->call('send')
+            ->call('streamAnswer');
+
+        $message = NotebookMessage::query()
+            ->where('notebook_id', $this->notebook->id)
+            ->where('role', 'assistant')
+            ->firstOrFail();
+
+        $this->assertStringContainsString('<strong>Đáp án</strong>', $message->rendered_html);
+
+        // Đổi HTML đã lưu rồi render lại: phải dùng lại, không tính lại.
+        $message->forceFill(['rendered_html' => '<p>Đã sửa tay</p>'])->save();
+
+        Livewire::test(Chat::class, ['notebookId' => $this->notebook->id])->assertSee('Đã sửa tay', false);
+    }
+
+    public function test_message_without_stored_html_is_backfilled_on_render(): void
+    {
+        $message = NotebookMessage::create([
+            'notebook_id' => $this->notebook->id,
+            'role' => 'assistant',
+            'content' => '**Tin cũ**',
+        ]);
+
+        $before = $message->updated_at;
+
+        Livewire::test(Chat::class, ['notebookId' => $this->notebook->id])->assertSee('<strong>Tin cũ</strong>', false);
+
+        $message->refresh();
+
+        $this->assertStringContainsString('<strong>Tin cũ</strong>', $message->rendered_html);
+        $this->assertTrue($message->updated_at->equalTo($before));
     }
 }

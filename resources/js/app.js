@@ -77,6 +77,20 @@ darkQuery.addEventListener('change', () => {
     }
 });
 
+// Khẳng định lại theme đúng sau navigate và khi quay lại tab (bfcache restore
+// không chạy lại script). Hàm này hội tụ về cùng một giá trị nên gọi thừa
+// cũng không gây nháy thêm — ngược lại nó sửa mọi lệch pha nếu có.
+function reassertTheme() {
+    applyTheme(normalizePreference(storedTheme()));
+}
+
+document.addEventListener('livewire:navigated', reassertTheme);
+window.addEventListener('pageshow', (event) => {
+    if (event.persisted) {
+        reassertTheme();
+    }
+});
+
 function urlBase64ToUint8Array(base64String) {
     const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
     const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');

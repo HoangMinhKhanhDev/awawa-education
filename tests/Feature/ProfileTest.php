@@ -161,4 +161,89 @@ class ProfileTest extends TestCase
         Livewire::test(Info::class)
             ->assertSee('Đang ôn bất đẳng thức');
     }
+
+    public function test_teacher_can_pick_an_accent_color(): void
+    {
+        $subject = Subject::factory()->create();
+        $teacher = User::factory()->teacher($subject)->create();
+        $this->actingAs($teacher);
+
+        Livewire::test(ProfileShow::class)
+            ->call('saveAccent', 'violet')
+            ->assertHasNoErrors();
+
+        $this->assertSame('violet', $teacher->fresh()->accent);
+    }
+
+    public function test_teacher_can_pick_a_custom_hex_color(): void
+    {
+        $subject = Subject::factory()->create();
+        $teacher = User::factory()->teacher($subject)->create();
+        $this->actingAs($teacher);
+
+        Livewire::test(ProfileShow::class)
+            ->call('saveAccent', '#A3B59A')
+            ->assertHasNoErrors();
+
+        $this->assertSame('#a3b59a', $teacher->fresh()->accent);
+
+        $html = $this->get(route('dashboard'))->assertOk()->getContent();
+
+        $this->assertStringContainsString('--color-brand-500: #a3b59a', $html);
+        $this->assertStringContainsString('--color-brand-600:', $html);
+    }
+
+    public function test_teacher_can_reset_accent_to_default(): void
+    {
+        $subject = Subject::factory()->create();
+        $teacher = User::factory()->teacher($subject)->create(['accent' => 'rose']);
+        $this->actingAs($teacher);
+
+        Livewire::test(ProfileShow::class)
+            ->call('saveAccent', '')
+            ->assertHasNoErrors();
+
+        $this->assertNull($teacher->fresh()->accent);
+
+        $html = $this->get(route('dashboard'))->assertOk()->getContent();
+
+        $this->assertStringNotContainsString('--color-brand-600:', $html);
+    }
+
+    public function test_accent_color_rejects_unknown_values(): void
+    {
+        $subject = Subject::factory()->create();
+        $teacher = User::factory()->teacher($subject)->create();
+        $this->actingAs($teacher);
+
+        Livewire::test(ProfileShow::class)
+            ->call('saveAccent', 'hong-neon')
+            ->assertHasErrors('accent');
+
+        $this->assertNull($teacher->fresh()->accent);
+    }
+
+    public function test_layout_emits_brand_overrides_for_custom_accent(): void
+    {
+        $subject = Subject::factory()->create();
+        $teacher = User::factory()->teacher($subject)->create(['accent' => 'emerald']);
+        $this->actingAs($teacher);
+
+        $html = $this->get(route('dashboard'))->assertOk()->getContent();
+
+        $this->assertStringContainsString('--color-brand-600: #059669', $html);
+        // Ghi đè nằm thẳng trên thẻ <html> để tồn tại xuyên suốt wire:navigate.
+        $this->assertStringContainsString('<html lang="vi" class="h-full" style="--color-brand-', $html);
+    }
+
+    public function test_layout_emits_no_override_for_default_accent(): void
+    {
+        $subject = Subject::factory()->create();
+        $teacher = User::factory()->teacher($subject)->create();
+        $this->actingAs($teacher);
+
+        $html = $this->get(route('dashboard'))->assertOk()->getContent();
+
+        $this->assertStringNotContainsString('--color-brand-600:', $html);
+    }
 }

@@ -15,18 +15,40 @@
     <div class="panel panel-pad space-y-5">
         <div class="flex items-center justify-between gap-3">
             <div>
-                <h3 class="text-[15px] font-semibold text-ink dark:text-white">Tavily (tìm nguồn web)</h3>
-                <p class="mt-0.5 text-sm text-ink-soft dark:text-slate-400">Dùng cho tính năng “Tìm trên web” trong Notebook.</p>
+                <h3 class="text-[15px] font-semibold text-ink dark:text-white">Tìm nguồn web</h3>
+                <p class="mt-0.5 text-sm text-ink-soft dark:text-slate-400">Dùng cho tính năng “Tìm trên web” trong Notebook. Giáo viên không thấy mục này.</p>
             </div>
-            <span class="chip {{ $tavilyConfigured ? 'chip-success' : 'chip-neutral' }}">{{ $tavilyConfigured ? 'Đã cấu hình' : 'Chưa cấu hình' }}</span>
         </div>
 
-        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div>
+            <span class="label">Nhà cung cấp đang dùng</span>
+            <div class="flex gap-4">
+                <label class="flex cursor-pointer items-center gap-2 text-sm text-ink-soft dark:text-slate-300">
+                    <input type="radio" value="tavily" wire:model="webSearchProvider" class="h-4 w-4 border-rule-strong text-brand-600 focus:ring-brand-500">
+                    Tavily
+                    <span class="chip {{ $tavilyConfigured ? 'chip-success' : 'chip-neutral' }}">{{ $tavilyConfigured ? 'Đã cấu hình' : 'Chưa cấu hình' }}</span>
+                </label>
+                <label class="flex cursor-pointer items-center gap-2 text-sm text-ink-soft dark:text-slate-300">
+                    <input type="radio" value="exa" wire:model="webSearchProvider" class="h-4 w-4 border-rule-strong text-brand-600 focus:ring-brand-500">
+                    Exa
+                    <span class="chip {{ $exaConfigured ? 'chip-success' : 'chip-neutral' }}">{{ $exaConfigured ? 'Đã cấu hình' : 'Chưa cấu hình' }}</span>
+                </label>
+            </div>
+            @error('webSearchProvider') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
+        </div>
+
+        <div class="grid gap-4 sm:grid-cols-2">
             <div>
                 <label class="label" for="int-tavily">Tavily API key (để trống nếu giữ nguyên)</label>
                 <input id="int-tavily" type="password" class="input" wire:model="tavilyApiKey" autocomplete="off" placeholder="tvly-...">
                 @error('tavilyApiKey') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
             </div>
+            <div>
+                <label class="label" for="int-exa">Exa API key (để trống nếu giữ nguyên)</label>
+                <input id="int-exa" type="password" class="input" wire:model="exaApiKey" autocomplete="off" placeholder="exa-...">
+                @error('exaApiKey') <p class="mt-1.5 text-[13px] text-signal dark:text-red-400">{{ $message }}</p> @enderror
+            </div>
+        </div>
             <div>
                 <label class="label" for="int-max">Giới hạn ký tự nguồn mỗi lần gọi AI</label>
                 <input id="int-max" type="number" class="input tnum" min="10000" max="2000000" step="10000" wire:model="maxPromptChars">
@@ -59,8 +81,15 @@
                 <span wire:loading.remove wire:target="testTavily">Kiểm tra Tavily</span>
                 <span wire:loading wire:target="testTavily">Đang kiểm tra…</span>
             </button>
+            <button type="button" wire:click="testExa" class="btn btn-outline" wire:loading.attr="disabled" wire:target="testExa">
+                <span wire:loading.remove wire:target="testExa">Kiểm tra Exa</span>
+                <span wire:loading wire:target="testExa">Đang kiểm tra…</span>
+            </button>
             @if ($tavilyConfigured)
                 <button type="button" wire:click="clearTavily" class="btn btn-ghost text-signal">Xóa Tavily key</button>
+            @endif
+            @if ($exaConfigured)
+                <button type="button" wire:click="clearExa" class="btn btn-ghost text-signal">Xóa Exa key</button>
             @endif
             <button type="button" wire:click="save" class="btn btn-primary" wire:loading.attr="disabled" wire:target="save">
                 <span wire:loading.remove wire:target="save">Lưu cấu hình</span>

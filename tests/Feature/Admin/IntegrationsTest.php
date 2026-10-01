@@ -62,4 +62,39 @@ class IntegrationsTest extends TestCase
 
         Livewire::test(Integrations::class)->assertForbidden();
     }
+
+    public function test_super_admin_can_save_exa_key_and_pick_provider(): void
+    {
+        $admin = User::factory()->superAdmin()->create();
+        $this->actingAs($admin);
+
+        Livewire::test(Integrations::class)
+            ->set('exaApiKey', 'exa-secret')
+            ->set('webSearchProvider', 'exa')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertSame('exa-secret', NotebookSetting::get('exa_api_key'));
+        $this->assertSame('exa', NotebookSetting::get('web_search_provider'));
+        $this->assertSame('exa', NotebookConfig::webSearchProvider());
+
+        $raw = DB::table('notebook_settings')->where('key', 'exa_api_key')->value('value');
+
+        $this->assertNotSame('exa-secret', $raw);
+    }
+
+    public function test_web_search_provider_falls_back_to_tavily(): void
+    {
+        $this->assertSame('tavily', NotebookConfig::webSearchProvider());
+
+        NotebookSetting::set('web_search_provider', 'exa');
+        NotebookSetting::flushMemo();
+
+        $this->assertSame('exa', NotebookConfig::webSearchProvider());
+
+        NotebookSetting::set('web_search_provider', 'lạ');
+        NotebookSetting::flushMemo();
+
+        $this->assertSame('tavily', NotebookConfig::webSearchProvider());
+    }
 }

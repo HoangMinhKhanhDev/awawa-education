@@ -55,6 +55,8 @@ class Stats extends Component
             'ai_errors' => AiUsageLog::query()->where('is_success', false)->count(),
             'ai_tokens' => (int) AiUsageLog::query()->sum('total_tokens'),
             'ai_today' => AiUsageLog::query()->whereDate('created_at', today())->count(),
+            'ai_cost_micros' => (int) AiUsageLog::query()->sum('cost_micros'),
+            'ai_cached_tokens' => (int) AiUsageLog::query()->sum('cached_prompt_tokens'),
         ]);
 
         return view('livewire.admin.stats', [
