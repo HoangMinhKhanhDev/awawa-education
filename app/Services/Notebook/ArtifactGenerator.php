@@ -32,8 +32,12 @@ class ArtifactGenerator
      * chứ không phải 150. Trần tính thiếu thì model bị cắt giữa chừng, app phải
      * gọi lại lần hai với cùng giới hạn, vẫn thiếu, rồi báo "AI chỉ soạn được
      * 8/10 câu" — mất đôi thời gian và vẫn hỏng. Số này để dư một chút cho
-     * câu dài (tự luận, đúng/sai, giải thích dài) và chỉ còn ý nghĩa khi
-     * `tokenCap()` cho phép.
+     * câu dài (tự luận, đúng/sai, giải thích dài).
+     *
+     * Đây là mức *dự trù* cho một lần soạn, không phải trần: nó cộng dồn theo
+     * số câu thật nên không bao giờ cắt ngang nội dung. Trần thật là
+     * `tokenCap()`, nhưng trần đó chỉ quyết định chia bao nhiêu đợt gọi AI, xem
+     * `questionsPerAiCall()`.
      */
     private const TOKENS_PER_QUESTION = 350;
 
@@ -56,8 +60,12 @@ class ArtifactGenerator
     ) {}
 
     /**
-     * Trần token cho một lần soạn, lấy từ cấu hình để admin chỉnh được theo nhà
-     * cung cấp đang dùng.
+     * Trần token cho một đợt gọi AI, lấy từ cấu hình để admin chỉnh được theo
+     * nhà cung cấp đang dùng.
+     *
+     * Trần này *không* giới hạn nội dung một đợt được viết bao nhiêu token — mọi
+     * trần khác đều bỏ (xem `maxTokensFor()`). Nó chỉ quyết định một đợt gói được
+     * mấy câu, đề dài hơn thì tự chia đợt, xem `questionsPerAiCall()`.
      */
     public static function tokenCap(): int
     {
@@ -572,6 +580,9 @@ class ArtifactGenerator
     /**
      * Ngân sách token cho câu trả lời, tăng theo số câu để đề lớn không bị cắt cụt.
      *
+     * Không còn trần cứng: ngân sách cộng dồn theo số câu thật nên model có thể
+     * viết cho hết đề mà không bị cắt giữa chừng.
+     *
      * @param  array<string, mixed>  $params
      */
     protected function maxTokensFor(ArtifactType $type, array $params): int
@@ -591,7 +602,7 @@ class ArtifactGenerator
 
     protected static function maxTokensForCount(int $questions): int
     {
-        return min(self::tokenCap(), self::TOKEN_OVERHEAD + max(1, $questions) * self::TOKENS_PER_QUESTION);
+        return self::TOKEN_OVERHEAD + max(1, $questions) * self::TOKENS_PER_QUESTION;
     }
 
     protected function examNeedsChunking(array $params): bool

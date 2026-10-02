@@ -431,15 +431,14 @@ class AiJsonResilienceTest extends TestCase
         $generator = app(ArtifactGenerator::class);
         $maxTokens = new \ReflectionMethod($generator, 'maxTokensFor');
 
-        $cap = ArtifactGenerator::tokenCap();
-
         foreach ([5, 10, 13] as $questions) {
             $budget = $maxTokens->invoke($generator, ArtifactType::Exam, [
                 'exam_sections' => 1,
                 'exam_questions_per_section' => $questions,
             ]);
 
-            $this->assertLessThanOrEqual($cap, $budget, 'Trần token không được vượt trần cấu hình.');
+            // Ngân sách phải vượt được con số câu, không bị trần nào chặn lại.
+            $this->assertSame(1200 + $questions * 350, $budget, 'Ngân sách phải cộng dồn theo số câu, không đặt trần.');
 
             // Đo thực tế trên host: ~337 token/câu. Cần dư tối thiểu 300/câu để
             // câu cuối không bị cắt.
@@ -460,10 +459,13 @@ class AiJsonResilienceTest extends TestCase
         $method = new \ReflectionMethod($generator, 'maxTokensFor');
 
         $small = $method->invoke($generator, ArtifactType::Exam, ['exam_sections' => 1, 'exam_questions_per_section' => 5]);
-        $big = $method->invoke($generator, ArtifactType::Exam, ['exam_sections' => 3, 'exam_questions_per_section' => 10]);
+        $big = $method->invoke($generator, ArtifactType::Exam, ['exam_sections' => 4, 'exam_questions_per_section' => 15]);
 
         $this->assertGreaterThan($small, $big);
-        $this->assertLessThanOrEqual(ArtifactGenerator::tokenCap(), $big);
+
+        // Khong con tran cap: ngan sach cong don theo so cau that nen de lon
+        // hon ca `tokenCap()` van chay duoc, khong bi cat giua chung.
+        $this->assertGreaterThan(ArtifactGenerator::tokenCap(), $big);
     }
 
     public function test_deliver_exam_makes_the_exam_visible_to_students(): void
