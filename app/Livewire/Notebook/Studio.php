@@ -17,11 +17,8 @@ use App\Services\Notebook\ArtifactPublisher;
 use App\Services\Notebook\ArtifactRefiner;
 use App\Support\BackgroundProcess;
 use App\Support\TrueFalseClusterMerger;
-use Illuminate\Bus\UniqueLock;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Bus;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -239,22 +236,25 @@ class Studio extends Component
     }
 
     /**
-     * Giao việc soạn ra ngoài web request để bấm "Tạo" là thấy màn "đang soạn"
-     * ngay, kể cả trên shared hosting chặn `proc_open`.
+     * Giao việc soạn ra ngoài phần chờ của trình duyệt để bấm "Tạo" là thấy màn
+     * "đang soạn" ngay.
      *
-     * Bốn tầng theo thứ tự ưu tiên, xem `BackgroundProcess`:
+     * Ba tầng theo thứ tự ưu tiên, xem `BackgroundProcess`:
      *   1. tiến trình con nếu hosting cho phép `proc_open`;
-     *   2. gửi response trước rồi soạn nốt nếu chạy FastCGI — tầng nhanh nhất
-     *      trên shared hosting vì bắt đầu ngay, không chờ cron;
-     *   3. hàng chờ cron — chậm hơn một nhịp cron nhưng sống được trên mọi SAPI
-     *      và là tầng duy nhất thử lại được lỗi hạ tầng;
-     *   4. chạy ngay trong request — tab hiện spinner suốt lúc soạn nhưng chạy
-     *      được trên mọi SAPI, kể cả CGI không có FastCGI.
+     *   2. gửi response trước rồi soạn nốt nếu chạy FastCGI;
+     *   3. chạy ngay trong request — tab hiện spinner suốt lúc soạn, chạy được
+     *      trên mọi SAPI.
      *
-     * Cấu hình sai đã bị `generate()` chặn ngay lúc bấm "Tạo" nên xếp hàng không
-     * phải đợi đến lúc mới đổ lỗi. `dispatch()->afterResponse()` không dùng
-     * được vì Laravel vẫn chạy job đồng bộ trong chính request đó.
-     * Xem `test_poll_never_calls_the_ai_from_the_web_request`.
+     * Vì sao không xếp vào hàng đời nữa: đo trên host, LiteSpeed không có
+     * `fastcgi_finish_request` và PHP-FPM chặn `proc_open`, nên tầng 1 và 2 không
+     * dùng được. Trước đây mọi lần bấm "Tạo" đều rơi thẳng vào hàng đời, không
+     * có worker cầm, phải chờ đủ `QUEUE_RESCUE_AFTER_SECONDS` rồi mới tự soạn —
+     * đề mất 3-5 phút dù mỗi lần gọi AI chỉ mất chừng 10 giây. Trần 360 giây
+     * của host dư cho một đề thi hợp lệ, nên tầng 3 là đường đi thực tế.
+     *
+     * Cấu hình sai đã bị `generate()` chặn ngay lúc bấm "Tạo". `dispatch()
+     * ->afterResponse()` không dùng được vì Laravel vẫn chạy job đồng bộ trong
+     * chính request đó. Xem `test_poll_never_calls_the_ai_from_the_web_request`.
      */
     protected function startGeneration(NotebookArtifact $artifact, BackgroundProcess $backgroundProcess): void
     {
@@ -290,29 +290,14 @@ class Studio extends Component
             return;
         }
 
-        // Tầng 3: hàng chờ. Chậm hơn một nhịp cron nhưng chạy được cả khi không
-        // có FastCGI, và là tầng duy nhất thử lại được lỗi mạng, máy chủ lỗi
-        // hay lần bị giới hạn lượt gọi, thay vì bắt giáo viên bấm "Tạo lại".
-        $payload['_generation_runner'] = 'queue';
+        // Tầng 3: chạy ngay trong request. Tab hiện spinner suốt lúc soạn, nhưng
+        // bắt đầu tức thì, không phải chờ worker nào cả.
+        $payload['_generation_runner'] = 'request';
         $artifact->update(['payload' => $payload]);
 
-        if ($this->queueGeneration($artifact)) {
-            $this->generating = true;
-            $this->error = null;
-
-            return;
-        }
-
-        // Tầng cuối: chạy ngay trong request. Tab hiện spinner suốt lúc soạn và
-        // đóng tab giữa chừng sẽ làm dở việc (bộ dọn treo sẽ đánh dấu sau đó),
-        // nhưng chạy được trên mọi SAPI kể cả khi không có proc_open lẫn FastCGI.
-        // Giới hạn 360 giây của host đủ cho đề thi lớn nhất (tối đa ~3 phút).
         Log::info('Studio generation running inside the web request.', ['sapi' => php_sapi_name()]);
 
-        @set_time_limit(0);
-        @ini_set('memory_limit', (string) config('awawa.notebook.generation_memory', '1024M'));
-
-        (new GenerateArtifact($artifact->id))->handle(app(ArtifactGenerator::class));
+        $this->runGenerationSynchronously($artifact->id);
 
         $artifact->refresh();
         $this->generating = $artifact->isGenerating();
@@ -320,54 +305,16 @@ class Studio extends Component
     }
 
     /**
-     * Xếp việc soạn vào hàng chờ, trả về false khi hàng chờ không nhận việc được để
-     * `startGeneration` rơi về tầng sau.
-     *
-     * Tự giành khoá chống soạn trùng rồi mới xếp, thay vì gọi `dispatch()`: hàm đó
-     * trả về `PendingDispatch` và chỉ gửi job khi đối tượng đó bị huỷ, nên không cho
-     * biết khoá đã giành được hay chưa. Giữ khoá trong tay thì nhả được khi xếp
-     * hàng hỏng, không thì giáo viên bấm "Tạo lại" cũng không xếp nổi cho tới hết
-     * `uniqueFor`.
+     * Soạn nội dung ngay trong tiến trình hiện tại. `rescued` đánh dấu để job còn
+     * nằm trong hàng đời tự bỏ qua, xem `GenerateArtifact::handle()`.
      */
-    protected function queueGeneration(NotebookArtifact $artifact): bool
+    protected function runGenerationSynchronously(int $artifactId, bool $rescued = false): void
     {
-        $job = new GenerateArtifact($artifact->id);
-        $uniqueLock = new UniqueLock(Cache::store());
+        @set_time_limit(0);
+        @ini_set('memory_limit', (string) config('awawa.notebook.generation_memory', '1024M'));
 
-        if (! $uniqueLock->acquire($job)) {
-            // Đã có việc soạn cho artefact này trong hàng đời, đừng chạy thêm.
-            Log::info('Việc soạn nội dung đã có trong hàng đời, bỏ qua lần xếp mới.', [
-                'artifact_id' => $artifact->id,
-            ]);
-
-            return true;
-        }
-
-        try {
-            Bus::dispatch($job);
-        } catch (\Throwable $exception) {
-            $uniqueLock->release($job);
-
-            Log::warning('Không xếp hàng được việc soạn nội dung.', [
-                'artifact_id' => $artifact->id,
-                'exception' => $exception->getMessage(),
-            ]);
-
-            return false;
-        }
-
-        // Mốc để trừ với `_claimed_at` ra số giây chờ cron. Chỉ ghi khi artefact
-        // còn đang soạn: worker xong rất nhanh thì không chạm `updated_at` của
-        // bản đã xong (kẻo kích hoạt lại thông báo "Đã soạn xong").
-        $fresh = NotebookArtifact::query()->find($artifact->id);
-
-        if ($fresh !== null && $fresh->isGenerating()) {
-            $payload = $fresh->payload ?? [];
-            $payload['_dispatched_at'] = now()->toIso8601String();
-            $fresh->update(['payload' => $payload]);
-        }
-
-        return true;
+        $job = new GenerateArtifact($artifactId, rescued: $rescued);
+        $job->handle(app(ArtifactGenerator::class));
     }
 
     /**
@@ -394,12 +341,15 @@ class Studio extends Component
     }
 
     /**
-     * Số giây chờ trước khi coi một việc trong hàng đời là bị kẹt.
+     * Số giây chờ trước khi coi một việc trong hàng đời là bị kẹt, rồi tự soạn nốt.
      *
-     * Cron trên Hostinger chạy mỗi phút, nên đợi quá ba nhịp thì gần như chắc
-     * chắn là worker không chạy chứ không phải chỉ chậm.
+     * Còn 60 giây vì đây chỉ là lưới an toàn cho job do các bản deploy trước
+     * đã xếp vào hàng đời: `startGeneration` không còn xếp việc mới vào đây nữa.
+     * Khi đó phải chờ đủ một nhịp cron rồi mới tự soạn, thay vì ba nhịp như
+     * trước đây. Trước đây 180 giây là nguyên nhân trực tiếp khiến đề mất 3-5
+     * phút vì không worker nào chạm tới job.
      */
-    private const QUEUE_RESCUE_AFTER_SECONDS = 180;
+    private const QUEUE_RESCUE_AFTER_SECONDS = 60;
 
     /**
      * Tự soạn nốt việc nằm trong hàng đời mà không worker nào nhận.

@@ -1,9 +1,10 @@
 import { registerSW } from 'virtual:pwa-register';
 
-// Không đăng ký service worker ở môi trường local để tránh cache bản cũ khi phát triển.
+// Chỉ đăng ký service worker ở bản PROD đã build: ở dev không có file sw.js
+// (gây 404) và cache cũ còn phục vụ asset cũ đè lên blade mới.
 const isLocalhost = ['localhost', '127.0.0.1', '::1', ''].includes(window.location.hostname);
 
-if (! isLocalhost && 'serviceWorker' in navigator) {
+if (import.meta.env.PROD && ! isLocalhost && 'serviceWorker' in navigator) {
     registerSW({ immediate: true });
 }
 

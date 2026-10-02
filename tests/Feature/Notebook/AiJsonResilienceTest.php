@@ -360,7 +360,9 @@ class AiJsonResilienceTest extends TestCase
     {
         // Ép ngân sách một lần gọi về 32 câu để đề 40 câu phải chia đợt,
         // bất kể NOTEBOOK_MAX_ARTIFACT_TOKENS ngoài .env là bao nhiêu.
-        config()->set('awawa.notebook.max_artifact_tokens', 6000);
+        // 1.200 token phần mở đầu + 32 × 350 token/câu = 12.400.
+        config()->set('awawa.notebook.max_artifact_tokens', 12400);
+        $this->assertSame(32, ArtifactGenerator::questionsPerAiCall());
 
         $makeQuestions = fn (int $from, int $count): array => array_map(
             fn (int $i): array => [
@@ -416,6 +418,42 @@ class AiJsonResilienceTest extends TestCase
         Http::assertSentCount(2);
     }
 
+    /**
+     * Hồi quy cho lỗi "AI chỉ soạn được 8/10 câu" trên production.
+     *
+     * Đo từ `ai_usage_logs`: một đề 10 câu bị cắt đúng ở trần 2.700 token và chỉ
+     * ra được 8 câu, tức thực tế mỗi câu mất ~337 token chứ không phải 150. Trần
+     * tính thiếu thì model bị cắt giữa chừng, app gọi lại lần hai với cùng giới
+     * hạn, vẫn thiếu, rồi báo lỗi — mất đôi thời gian và vẫn hỏng.
+     */
+    public function test_token_budget_leaves_room_for_a_full_exam(): void
+    {
+        $generator = app(ArtifactGenerator::class);
+        $maxTokens = new \ReflectionMethod($generator, 'maxTokensFor');
+
+        $cap = ArtifactGenerator::tokenCap();
+
+        foreach ([5, 10, 13] as $questions) {
+            $budget = $maxTokens->invoke($generator, ArtifactType::Exam, [
+                'exam_sections' => 1,
+                'exam_questions_per_section' => $questions,
+            ]);
+
+            $this->assertLessThanOrEqual($cap, $budget, 'Trần token không được vượt trần cấu hình.');
+
+            // Đo thực tế trên host: ~337 token/câu. Cần dư tối thiểu 300/câu để
+            // câu cuối không bị cắt.
+            $this->assertGreaterThanOrEqual(
+                $questions * 300,
+                $budget,
+                "Đề {$questions} câu phải còn dư chỗ cho câu dài, nếu không sẽ thiếu câu.",
+            );
+        }
+
+        // Một đề nhỏ phải nằm gọn trong một lần gọi: không chunking.
+        $this->assertGreaterThanOrEqual(10, ArtifactGenerator::questionsPerAiCall());
+    }
+
     public function test_max_tokens_grows_with_the_exam_size(): void
     {
         $generator = app(ArtifactGenerator::class);
@@ -425,7 +463,7 @@ class AiJsonResilienceTest extends TestCase
         $big = $method->invoke($generator, ArtifactType::Exam, ['exam_sections' => 3, 'exam_questions_per_section' => 10]);
 
         $this->assertGreaterThan($small, $big);
-        $this->assertLessThanOrEqual(8000, $big);
+        $this->assertLessThanOrEqual(ArtifactGenerator::tokenCap(), $big);
     }
 
     public function test_deliver_exam_makes_the_exam_visible_to_students(): void

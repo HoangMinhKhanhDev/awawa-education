@@ -202,6 +202,10 @@ class ExamArtifactTest extends TestCase
         // Ngân sách một lần gọi đủ cho 70 câu nên đề này không bị chia đợt.
         config()->set('awawa.notebook.max_artifact_tokens', 20000);
 
+        // 1.200 token mở đầu + 70 × 350 token/câu = 25.700, đủ cho một lần gọi.
+        config()->set('awawa.notebook.max_artifact_tokens', 25700);
+        $this->assertGreaterThanOrEqual(70, ArtifactGenerator::questionsPerAiCall());
+
         $this->fakeExamJson([
             ['title' => 'PHẦN I', 'questions' => $this->essayQuestions(1, 35)],
             ['title' => 'PHẦN II', 'questions' => $this->essayQuestions(36, 35)],
@@ -255,7 +259,9 @@ class ExamArtifactTest extends TestCase
     {
         // Ép ngân sách một lần gọi về 32 câu nên đề 1 phần × 50 câu phải chia
         // 2 đợt, bất kể NOTEBOOK_MAX_ARTIFACT_TOKENS ngoài .env là bao nhiêu.
-        config()->set('awawa.notebook.max_artifact_tokens', 6000);
+        // 1.200 token mở đầu + 32 × 350 token/câu = 12.400.
+        config()->set('awawa.notebook.max_artifact_tokens', 12400);
+        $this->assertSame(32, ArtifactGenerator::questionsPerAiCall());
 
         $max = ArtifactGenerator::maxQuestionsPerSection();
 
@@ -293,7 +299,7 @@ class ExamArtifactTest extends TestCase
 
     public function test_chunked_exam_reports_progress_after_each_part(): void
     {
-        config()->set('awawa.notebook.max_artifact_tokens', 6000);
+        config()->set('awawa.notebook.max_artifact_tokens', 12400);
 
         $max = ArtifactGenerator::maxQuestionsPerSection();
 
@@ -357,6 +363,107 @@ class ExamArtifactTest extends TestCase
         // rõ ràng, thay vì im lặng lưu bản nháp cụt như trước.
         $this->assertSame('failed', $artifact->status);
         $this->assertStringContainsString('1/10 câu', (string) $artifact->failedReason());
+    }
+
+    public function test_short_exam_is_completed_by_supplement_instead_of_failing(): void
+    {
+        $short = function (): array {
+            return [
+                ['title' => 'PHẦN I', 'questions' => [
+                    $this->question('Câu 1', 'essay'),
+                    $this->question('Câu 2', 'essay'),
+                    $this->question('Câu 3', 'essay'),
+                    $this->question('Câu 4', 'essay'),
+                ]],
+                ['title' => 'PHẦN II', 'questions' => [
+                    $this->question('Câu 5', 'essay'),
+                    $this->question('Câu 6', 'essay'),
+                    $this->question('Câu 7', 'essay'),
+                    $this->question('Câu 8', 'essay'),
+                ]],
+            ];
+        };
+
+        $sequence = Http::sequence();
+        $sequence->push($this->examResponse($short()));
+        $sequence->push($this->examResponse($short()));
+        // Đợt bù: chỉ 2 câu còn thiếu, mỗi phần một câu.
+        $sequence->push($this->examResponse([
+            ['title' => 'PHẦN I', 'questions' => [$this->question('Câu bù 9', 'essay')]],
+            ['title' => 'PHẦN II', 'questions' => [$this->question('Câu bù 10', 'essay')]],
+        ]));
+
+        Http::fake(['openrouter.ai/*' => $sequence]);
+
+        $artifact = $this->artifactOf($this->generateExam([
+            'examSections' => 2,
+            'examQuestionsPerSection' => 5,
+            'examTotalPoints' => 10,
+        ]))->fresh();
+
+        $this->assertSame('draft', $artifact->status);
+
+        $sections = $artifact->payload['sections'];
+
+        $this->assertCount(5, $sections[0]['questions']);
+        $this->assertCount(5, $sections[1]['questions']);
+        $this->assertSame('Câu bù 9', $sections[0]['questions'][4]['content']);
+        $this->assertSame('Câu bù 10', $sections[1]['questions'][4]['content']);
+        Http::assertSentCount(3);
+    }
+
+    public function test_supplement_ignores_duplicate_questions_and_gives_up(): void
+    {
+        $short = [
+            ['title' => 'PHẦN I', 'questions' => [
+                $this->question('Câu 1', 'essay'),
+                $this->question('Câu 2', 'essay'),
+                $this->question('Câu 3', 'essay'),
+                $this->question('Câu 4', 'essay'),
+            ]],
+            ['title' => 'PHẦN II', 'questions' => [
+                $this->question('Câu 5', 'essay'),
+                $this->question('Câu 6', 'essay'),
+                $this->question('Câu 7', 'essay'),
+                $this->question('Câu 8', 'essay'),
+            ]],
+        ];
+
+        $sequence = Http::sequence();
+        $sequence->push($this->examResponse($short));
+        $sequence->push($this->examResponse($short));
+        // Đợt bù trả lại đúng câu đã có: phải bỏ qua chứ không ghép trùng,
+        // hết cách thì báo hỏng thay vì gọi mãi.
+        $sequence->push($this->examResponse($short));
+
+        Http::fake(['openrouter.ai/*' => $sequence]);
+
+        $artifact = $this->artifactOf($this->generateExam([
+            'examSections' => 2,
+            'examQuestionsPerSection' => 5,
+            'examTotalPoints' => 10,
+        ]))->fresh();
+
+        $this->assertSame('failed', $artifact->status);
+        $this->assertStringContainsString('8/10 câu', (string) $artifact->failedReason());
+        Http::assertSentCount(3);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $sections
+     * @return array<string, mixed>
+     */
+    private function examResponse(array $sections): array
+    {
+        return [
+            'model' => 'openrouter/free',
+            'choices' => [['message' => ['content' => json_encode([
+                'title' => 'Đề kiểm tra',
+                'description' => 'Đề do AI soạn',
+                'sections' => $sections,
+            ], JSON_UNESCAPED_UNICODE)]]],
+            'usage' => ['total_tokens' => 50],
+        ];
     }
 
     public function test_incomplete_first_attempt_is_retried_before_failing(): void

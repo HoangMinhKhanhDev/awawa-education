@@ -26,8 +26,16 @@ class ArtifactGenerator
 
     /**
      * Token trung bình cho một câu hỏi kèm lựa chọn, đáp án và giải thích.
+     *
+     * Đo trên host (bảng `ai_usage_logs`): một đề 10 câu bị cắt đúng ở trần
+     * cũ 2.700 token và chỉ ra được 8 câu, tức thực tế mỗi câu mất ~337 token
+     * chứ không phải 150. Trần tính thiếu thì model bị cắt giữa chừng, app phải
+     * gọi lại lần hai với cùng giới hạn, vẫn thiếu, rồi báo "AI chỉ soạn được
+     * 8/10 câu" — mất đôi thời gian và vẫn hỏng. Số này để dư một chút cho
+     * câu dài (tự luận, đúng/sai, giải thích dài) và chỉ còn ý nghĩa khi
+     * `tokenCap()` cho phép.
      */
-    private const TOKENS_PER_QUESTION = 150;
+    private const TOKENS_PER_QUESTION = 350;
 
     /**
      * Ngân sách cho văn bản tự do (tài liệu, đề cương, bản tin). Không bị ràng buộc
@@ -113,6 +121,10 @@ class ArtifactGenerator
         $titleInstruction = $instruction;
         $baseInstruction = $this->buildInstruction($notebook, $type, $instruction, $params, strictJson: $type->isJson());
 
+        // Giữ lại bản thiếu nhiều nhất: nếu cả hai vòng soạn đầy đều thiếu thì
+        // soạn bù phần còn thiếu thay vì vứt toàn bộ rồi báo hỏng.
+        $bestPartial = null;
+
         // Lần 1 soạn bình thường; nếu JSON hỏng thì yêu cầu lại lần 2 với chỉ dẫn gọn.
         // Query tìm nguồn giữ nguyên bản gốc để ngữ cảnh giống hệt vòng đầu.
         foreach ([0, 1] as $round) {
@@ -145,6 +157,17 @@ class ArtifactGenerator
 
                 if ($shortfall !== null) {
                     $lastError = new RuntimeException($shortfall);
+                    $actual = $this->countPayloadQuestions($type, $payload);
+
+                    if ($bestPartial === null || $actual > $bestPartial['actual']) {
+                        $bestPartial = [
+                            'payload' => $payload,
+                            'decoded' => $decoded,
+                            'actual' => $actual,
+                            'tokens' => $result->totalTokens(),
+                        ];
+                    }
+
                     $instruction .= "\n".$shortfall.' Hãy tạo lại đầy đủ, không rút gọn, không gộp phần.';
 
                     continue;
@@ -174,7 +197,376 @@ class ArtifactGenerator
             ];
         }
 
+        // Hai vòng soạn đầy đều thiếu mà JSON vẫn parse được: soạn bù đúng phần
+        // còn thiếu rồi ghép vào, thay vì vứt toàn bộ. Thường gặp khi provider
+        // giới hạn độ dài đầu ra nên vòng nào cũng bị cắt ở cùng một chỗ.
+        if ($bestPartial !== null && ($type === ArtifactType::Questions || $type === ArtifactType::Exam)) {
+            $completed = $this->supplementToComplete(
+                $notebook, $type, $params, $bestPartial, $baseInstruction,
+                $pinned, $subjectId, $userId, true,
+            );
+
+            if ($completed !== null) {
+                return [
+                    'title' => $this->titleFrom($notebook, $type, $titleInstruction, $params, $bestPartial['decoded']),
+                    'payload' => $completed['payload'],
+                    'text' => null,
+                    'provider' => $completed['provider'],
+                    'model' => $completed['model'],
+                    'tokens' => $completed['tokens'],
+                ];
+            }
+        }
+
         throw $lastError ?? new RuntimeException('AI không trả về nội dung hợp lệ.');
+    }
+
+    /**
+     * Đếm số câu đã có trong payload để biết còn thiếu bao nhiêu.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    protected function countPayloadQuestions(ArtifactType $type, array $payload): int
+    {
+        if ($type === ArtifactType::Questions) {
+            return count((array) ($payload['items'] ?? []));
+        }
+
+        if ($type !== ArtifactType::Exam) {
+            return 0;
+        }
+
+        $total = 0;
+
+        foreach ((array) ($payload['sections'] ?? []) as $section) {
+            $total += count((array) ($section['questions'] ?? []));
+        }
+
+        return $total;
+    }
+
+    /**
+     * Soạn bù phần còn thiếu rồi ghép vào bản dở, tối đa 2 đợt.
+     *
+     * Trả về null khi không bù được gì (provider lỗi nặng, JSON hỏng hoàn
+     * toàn) để bên gọi giữ nguyên lỗi gốc. Mỗi đợt chỉ xin đúng số còn thiếu
+     * nên vừa rẻ vừa lọt qua trần đầu ra của provider — nguyên nhân phổ biến
+     * nhất khiến cả hai vòng soạn đầy đều cụt ở cùng một chỗ.
+     *
+     * @param  array{payload: array<string, mixed>, decoded: array<string, mixed>|null, actual: int, tokens: int}  $partial
+     * @return array{payload: array<string, mixed>, tokens: int, provider: string, model: string}|null
+     */
+    protected function supplementToComplete(
+        Notebook $notebook,
+        ArtifactType $type,
+        array $params,
+        array $partial,
+        string $baseInstruction,
+        array $pinned,
+        ?int $subjectId,
+        ?int $userId,
+    ): ?array {
+        $payload = $partial['payload'];
+        $tokens = $partial['tokens'];
+        $provider = '';
+        $model = '';
+
+        $sections = max(1, (int) ($params['exam_sections'] ?? 2));
+        $perSection = max(1, (int) ($params['exam_questions_per_section'] ?? 5));
+        $pointsPerQuestion = self::examPointsPerQuestion(
+            $sections,
+            $perSection,
+            (float) ($params['exam_total_points'] ?? 10),
+        );
+
+        for ($round = 0; $round < 2; $round++) {
+            $targets = [];
+
+            if ($type === ArtifactType::Questions) {
+                $expected = max(1, (int) ($params['count'] ?? 5));
+                $have = count((array) ($payload['items'] ?? []));
+                $need = $expected - $have;
+
+                if ($need <= 0) {
+                    break;
+                }
+
+                $existing = [];
+
+                foreach (array_values((array) ($payload['items'] ?? [])) as $index => $item) {
+                    if (! is_array($item)) {
+                        continue;
+                    }
+
+                    $existing[] = 'Câu '.($index + 1).': '.mb_substr(trim((string) ($item['content'] ?? '')), 0, 200);
+                }
+
+                $needText = "còn thiếu {$need} câu hỏi nữa";
+            } else {
+                $needs = [];
+                $needLines = [];
+                $existing = [];
+                $number = 0;
+
+                foreach (array_values((array) ($payload['sections'] ?? [])) as $sectionIndex => $section) {
+                    if (! is_array($section)) {
+                        continue;
+                    }
+
+                    $title = trim((string) ($section['title'] ?? '')) !== ''
+                        ? trim((string) $section['title'])
+                        : 'Phần '.($sectionIndex + 1);
+                    $have = 0;
+
+                    foreach ((array) ($section['questions'] ?? []) as $question) {
+                        if (! is_array($question)) {
+                            continue;
+                        }
+
+                        $number++;
+                        $have++;
+                        $existing[] = $title.' — Câu '.$number.': '.mb_substr(trim((string) ($question['content'] ?? '')), 0, 200);
+                    }
+
+                    $missing = $perSection - $have;
+
+                    if ($missing > 0) {
+                        $needs[] = [$sectionIndex, $missing];
+                        $needLines[] = "{$title}: thiếu {$missing} câu";
+                    }
+                }
+
+                // Model có thể làm rơi cả phần: tạo chỗ cho đủ số phần đã hứa.
+                for ($sectionIndex = count((array) ($payload['sections'] ?? [])); $sectionIndex < $sections; $sectionIndex++) {
+                    $needs[] = [$sectionIndex, $perSection];
+                    $needLines[] = 'Phần '.($sectionIndex + 1).': thiếu '.$perSection.' câu';
+                }
+
+                $need = array_sum(array_column($needs, 1));
+
+                if ($need <= 0) {
+                    break;
+                }
+
+                $needText = 'còn thiếu '.implode(', ', $needLines);
+                $targets = $needs;
+            }
+
+            $pool = $this->fetchSupplementPool(
+                $notebook, $type, $params, $baseInstruction, $needText, $existing, $need,
+                $pinned, $subjectId, $userId,
+            );
+
+            if ($pool === null || $pool['questions'] === []) {
+                return null;
+            }
+
+            $tokens += $pool['tokens'];
+            $provider = $pool['provider'];
+            $model = $pool['model'];
+
+            if ($type === ArtifactType::Questions) {
+                $fresh = self::dropDuplicateQuestions($pool['questions'], (array) ($payload['items'] ?? []));
+
+                if ($fresh === []) {
+                    return null;
+                }
+
+                $payload['items'] = array_merge((array) ($payload['items'] ?? []), $fresh);
+            } else {
+                $existing = [];
+
+                foreach ((array) ($payload['sections'] ?? []) as $section) {
+                    foreach ((array) ($section['questions'] ?? []) as $question) {
+                        $existing[] = $question;
+                    }
+                }
+
+                $fresh = self::dropDuplicateQuestions($pool['questions'], $existing);
+
+                if ($fresh === []) {
+                    return null;
+                }
+
+                foreach ($fresh as $question) {
+                    foreach ($targets as &$target) {
+                        if ($target[1] <= 0) {
+                            continue;
+                        }
+
+                        [$sectionIndex] = $target;
+
+                        if (! isset($payload['sections'][$sectionIndex]) || ! is_array($payload['sections'][$sectionIndex])) {
+                            $payload['sections'][$sectionIndex] = [
+                                'title' => 'Phần '.($sectionIndex + 1),
+                                'instructions' => '',
+                                'questions' => [],
+                            ];
+                        }
+
+                        $question['points'] = $pointsPerQuestion;
+                        $payload['sections'][$sectionIndex]['questions'][] = $this->normalizeAnswers($question);
+                        $target[1]--;
+                        unset($target);
+
+                        break;
+                    }
+
+                    unset($target);
+                }
+
+                ksort($payload['sections']);
+                $payload['sections'] = array_values($payload['sections']);
+            }
+
+            if ($this->completenessError($type, $payload, $params) === null) {
+                break;
+            }
+        }
+
+        if ($this->completenessError($type, $payload, $params) !== null) {
+            return null;
+        }
+
+        return ['payload' => $payload, 'tokens' => $tokens, 'provider' => $provider, 'model' => $model];
+    }
+
+    /**
+     * Xin AI soạn bù một đợt rồi chuẩn hoá thành danh sách câu phẳng.
+     *
+     * @param  array<int, string>  $existing
+     * @return array{questions: array<int, array<string, mixed>>, tokens: int, provider: string, model: string}|null
+     */
+    protected function fetchSupplementPool(
+        Notebook $notebook,
+        ArtifactType $type,
+        array $params,
+        string $baseInstruction,
+        string $needText,
+        array $existing,
+        int $totalNeed,
+        array $pinned,
+        ?int $subjectId,
+        ?int $userId,
+    ): ?array {
+        $instruction = 'Đợt trước đã soạn được một phần nhưng '.$needText.'. '
+            .'KHÔNG soạn lại phần đã có.'."\n\nPHẦN ĐÃ CÓ (chỉ để tránh trùng, không soạn lại):\n"
+            .($existing === [] ? '(trống)' : implode("\n", $existing));
+
+        $messages = $this->composer->artifactMessages(
+            $notebook,
+            $instruction,
+            $this->schemaHint($type),
+            retrievalQuery: $baseInstruction,
+        );
+
+        try {
+            $result = $this->chatJson($messages, $pinned, $subjectId, $userId, self::maxTokensForCount($totalNeed), true);
+            $decoded = $this->decodeJson($result->text);
+        } catch (RuntimeException) {
+            return null;
+        }
+
+        $pool = [];
+
+        foreach ($this->fragmentQuestionGroups($decoded, $type) as $group) {
+            $normalized = $this->normalizeQuestions($group['questions'], $params, $totalNeed);
+            $pool = array_merge($pool, TrueFalseClusterMerger::merge($normalized, $group['instructions']));
+        }
+
+        $pool = array_values(array_slice($pool, 0, $totalNeed));
+
+        if ($pool === []) {
+            return null;
+        }
+
+        return [
+            'questions' => $pool,
+            'tokens' => $result->totalTokens(),
+            'provider' => $result->providerKey,
+            'model' => $result->model,
+        ];
+    }
+
+    /**
+     * Tách JSON bổ sung thành các nhóm theo phần, giữ đúng thứ tự model trả về.
+     * Model có thể trả phẳng thay vì chia phần thì gói chung một nhóm.
+     *
+     * @param  array<string, mixed>  $decoded
+     * @return array<int, array{instructions: string, questions: array<int, mixed>}>
+     */
+    protected function fragmentQuestionGroups(array $decoded, ArtifactType $type): array
+    {
+        if ($type !== ArtifactType::Exam) {
+            return [['instructions' => '', 'questions' => $this->listFrom($decoded)]];
+        }
+
+        $rawSections = $decoded['sections'] ?? null;
+
+        if (! is_array($rawSections) || $rawSections === []) {
+            return [['instructions' => '', 'questions' => $this->listFrom($decoded)]];
+        }
+
+        $groups = [];
+
+        foreach ($rawSections as $section) {
+            if (! is_array($section)) {
+                continue;
+            }
+
+            $groups[] = [
+                'instructions' => (string) ($section['instructions'] ?? ''),
+                'questions' => $this->listFrom(['questions' => $section['questions'] ?? $section]),
+            ];
+        }
+
+        return $groups === [] ? [['instructions' => '', 'questions' => []]] : $groups;
+    }
+
+    /**
+     * Dấu vân tay nội dung để phát hiện câu trùng: AI đôi khi trả lại câu đã
+     * có thay vì câu mới, ghép vào sẽ thành đề trùng câu.
+     */
+    protected static function questionFingerprint(array $question): string
+    {
+        $text = mb_strtolower(trim((string) ($question['content'] ?? $question['front'] ?? $question['label'] ?? '')));
+        $text = (string) preg_replace('/\s+/u', ' ', $text);
+
+        return $text;
+    }
+
+    /**
+     * Bỏ câu AI trả lại mà nội dung đã có sẵn, tránh đề bị trùng câu.
+     *
+     * @param  array<int, array<string, mixed>>  $pool
+     * @param  array<int, array<string, mixed>>  $existing
+     * @return array<int, array<string, mixed>>
+     */
+    protected static function dropDuplicateQuestions(array $pool, array $existing): array
+    {
+        $seen = [];
+
+        foreach ($existing as $item) {
+            if (is_array($item)) {
+                $seen[self::questionFingerprint($item)] = true;
+            }
+        }
+
+        return array_values(array_filter($pool, function ($question) use (&$seen): bool {
+            if (! is_array($question)) {
+                return false;
+            }
+
+            $fingerprint = self::questionFingerprint($question);
+
+            if ($fingerprint === '' || isset($seen[$fingerprint])) {
+                return false;
+            }
+
+            $seen[$fingerprint] = true;
+
+            return true;
+        }));
     }
 
     /**
@@ -480,6 +872,7 @@ class ArtifactGenerator
     {
         $lastError = null;
         $baseInstruction = $this->buildInstruction($notebook, ArtifactType::Exam, $instruction, $params, strictJson: true);
+        $bestPart = null;
 
         foreach ([0, 1] as $round) {
             $roundInstruction = $round === 1
@@ -506,6 +899,11 @@ class ArtifactGenerator
 
                 if ($actual < $expected) {
                     $lastError = new RuntimeException("AI chỉ soạn được {$actual}/{$expected} câu ở đợt này.");
+
+                    if ($bestPart === null || $actual > $bestPart['actual']) {
+                        $bestPart = ['decoded' => $decoded, 'actual' => $actual, 'tokens' => $result->totalTokens()];
+                    }
+
                     $instruction .= "\nĐợt trước chỉ được {$actual}/{$expected} câu. Hãy tạo lại đầy đủ, không rút gọn.";
                 } else {
                     $decoded['_tokens'] = $result->totalTokens();
@@ -519,7 +917,133 @@ class ArtifactGenerator
             }
         }
 
+        // Cả hai đợt đều thiếu mà JSON vẫn parse được: soạn bù đúng số còn thiếu
+        // rồi để vòng ghép ngoài chia lại vào các phần, thay vì vứt cả đợt.
+        if ($bestPart !== null) {
+            $completed = $this->supplementPartToExpected(
+                $notebook, $params, $bestPart, $expected, $baseInstruction,
+                $pinned, $subjectId, $userId,
+            );
+
+            if ($completed !== null) {
+                return $completed;
+            }
+        }
+
         throw $lastError ?? new RuntimeException('AI không trả về nội dung hợp lệ.');
+    }
+
+    /**
+     * Soạn bù cho một đợt của đề lớn, tối đa 2 đợt nhỏ. Câu bù nối vào cuối để
+     * vòng ghép ngoài chia lại đúng phần theo thứ tự.
+     *
+     * @param  array{decoded: array<string, mixed>, actual: int, tokens: int}  $part
+     * @return array<string, mixed>|null
+     */
+    protected function supplementPartToExpected(
+        Notebook $notebook,
+        array $params,
+        array $part,
+        int $expected,
+        string $baseInstruction,
+        array $pinned,
+        ?int $subjectId,
+        ?int $userId,
+    ): ?array {
+        $decoded = $part['decoded'];
+        $tokens = $part['tokens'];
+        $provider = '';
+        $model = '';
+
+        $rawSections = $decoded['sections'] ?? null;
+
+        if (! is_array($rawSections) || $rawSections === []) {
+            $flat = $this->listFrom($decoded);
+
+            if ($flat === []) {
+                return null;
+            }
+
+            $decoded['sections'] = [['title' => 'Phần', 'instructions' => '', 'questions' => $flat]];
+        }
+
+        for ($round = 0; $round < 2; $round++) {
+            $actual = 0;
+            $existing = [];
+            $number = 0;
+
+            foreach (array_values((array) $decoded['sections']) as $section) {
+                if (! is_array($section)) {
+                    continue;
+                }
+
+                foreach (array_values((array) ($section['questions'] ?? [])) as $question) {
+                    if (! is_array($question)) {
+                        continue;
+                    }
+
+                    $number++;
+                    $actual++;
+                    $existing[] = 'Câu '.$number.': '.mb_substr(trim((string) ($question['content'] ?? '')), 0, 200);
+                }
+            }
+
+            $need = $expected - $actual;
+
+            if ($need <= 0) {
+                break;
+            }
+
+            $pool = $this->fetchSupplementPool(
+                $notebook, ArtifactType::Exam, $params, $baseInstruction,
+                "đợt này còn thiếu {$need} câu", $existing, $need,
+                $pinned, $subjectId, $userId,
+            );
+
+            if ($pool === null || $pool['questions'] === []) {
+                return null;
+            }
+
+            $tokens += $pool['tokens'];
+            $provider = $pool['provider'];
+            $model = $pool['model'];
+
+            $existing = [];
+
+            foreach ((array) $decoded['sections'] as $section) {
+                foreach ((array) ($section['questions'] ?? []) as $question) {
+                    $existing[] = $question;
+                }
+            }
+
+            $fresh = self::dropDuplicateQuestions($pool['questions'], $existing);
+
+            if ($fresh === []) {
+                return null;
+            }
+
+            $lastIndex = count($decoded['sections']) - 1;
+            $decoded['sections'][$lastIndex]['questions'] = array_merge(
+                (array) ($decoded['sections'][$lastIndex]['questions'] ?? []),
+                $fresh,
+            );
+        }
+
+        $actual = 0;
+
+        foreach ((array) $decoded['sections'] as $section) {
+            $actual += count((array) ($section['questions'] ?? []));
+        }
+
+        if ($actual < $expected) {
+            return null;
+        }
+
+        $decoded['_tokens'] = $tokens;
+        $decoded['_provider'] = $provider;
+        $decoded['_model'] = $model;
+
+        return $decoded;
     }
 
     protected function toRoman(int $number): string

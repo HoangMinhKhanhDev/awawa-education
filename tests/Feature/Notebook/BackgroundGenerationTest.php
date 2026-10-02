@@ -135,11 +135,11 @@ class BackgroundGenerationTest extends TestCase
      * đời. Xếp hàng để được thử lại thật, và sống được cả khi giáo viên đóng tab
      * ngay sau khi bấm "Tạo".
      */
-    public function test_generation_is_queued_when_neither_child_processes_nor_fastcgi_exist(): void
+    public function test_generation_runs_in_the_request_when_no_background_option_is_available(): void
     {
         Queue::fake();
         Http::preventStrayRequests();
-        $this->fakeDocumentText();
+        $this->fakeDocumentText('Soạn ngay trong request.');
 
         $this->mock(BackgroundProcess::class, function ($mock): void {
             $mock->shouldReceive('phpBinary')->andReturn('/usr/bin/php');
@@ -149,20 +149,18 @@ class BackgroundGenerationTest extends TestCase
 
         $this->studio()
             ->call('generate')
-            ->assertSet('generating', true)
+            ->assertSet('generating', false)
             ->assertSet('error', null);
 
         $artifact = NotebookArtifact::query()->firstOrFail();
 
-        $this->assertSame('generating', $artifact->status);
-        $this->assertSame('queue', $artifact->payload['_generation_runner']);
+        // Hosting của ta khóa `proc_open` và không có FastCGI, nên tầng hàng đời là
+        // con đường duy nhất còn lại mà trước đây khiến mỗi đề mất 180 giây chờ
+        // worker. Giờ soạn thẳng trong request và không xếp hàng đợi.
+        $this->assertSame('draft', $artifact->status);
+        $this->assertSame('Soạn ngay trong request.', $artifact->text_content);
 
-        Queue::assertPushedOn(GenerateArtifact::QUEUE, GenerateArtifact::class, function (GenerateArtifact $job) use ($artifact): bool {
-            return $job->artifactId === $artifact->id && $job->connection === GenerateArtifact::CONNECTION;
-        });
-
-        // AI chỉ chạy ở worker, không chạy trong web request.
-        Http::assertNothingSent();
+        Queue::assertNothingPushed();
     }
 
     /**
@@ -475,17 +473,14 @@ class BackgroundGenerationTest extends TestCase
 
         $artifact = NotebookArtifact::query()->firstOrFail();
 
-        $this->assertSame('queue', $artifact->payload['_generation_runner']);
-
         // Artefact hỏng nhưng khoá chống soạn trùng vẫn còn giữ: lần bấm "Tạo lại"
-        // sau phải bị chặn chứ không xếp thêm việc.
+        // sau phải bị chặn chứ không soạn thêm lần nữa.
         $artifact->markStalled('Lỗi để kiểm thử.');
 
         Livewire::test(Studio::class, ['notebookId' => $this->notebook->id])
-            ->call('regenerate', $artifact->id)
-            ->assertSet('generating', true);
+            ->call('regenerate', $artifact->id);
 
-        Queue::assertPushedTimes(GenerateArtifact::class, 1);
+        Queue::assertNothingPushed();
     }
 
     /**
@@ -610,16 +605,13 @@ class BackgroundGenerationTest extends TestCase
 
         $this->mock(BackgroundProcess::class, function ($mock): void {
             $mock->shouldReceive('phpBinary')->andReturn('/usr/bin/php');
-            $mock->shouldReceive('start')->once()->andReturnFalse();
+            $mock->shouldReceive('start')->andReturnFalse();
             $mock->shouldReceive('defer')->andReturnFalse();
         });
 
-        $this->studio()->call('generate');
-
-        $artifact = NotebookArtifact::query()->firstOrFail();
-
-        $this->assertSame('queue', $artifact->payload['_generation_runner']);
-
+        // Job nằm trong hàng đời là trạng thái các bản deploy trước để lại:
+        // `startGeneration` không còn xếp việc mới vào hàng đời nữa.
+        $artifact = $this->queuedArtifact('queue', now()->subMinutes(10));
         $artifact->forceFill(['created_at' => now()->subMinutes(10)])->save();
 
         Livewire::test(Studio::class, ['notebookId' => $this->notebook->id])->call('poll');
@@ -641,13 +633,11 @@ class BackgroundGenerationTest extends TestCase
 
         $this->mock(BackgroundProcess::class, function ($mock): void {
             $mock->shouldReceive('phpBinary')->andReturn('/usr/bin/php');
-            $mock->shouldReceive('start')->once()->andReturnFalse();
+            $mock->shouldReceive('start')->andReturnFalse();
             $mock->shouldReceive('defer')->andReturnFalse();
         });
 
-        $this->studio()->call('generate');
-
-        $artifact = NotebookArtifact::query()->firstOrFail();
+        $artifact = $this->queuedArtifact('queue', now()->subSeconds(5));
 
         Livewire::test(Studio::class, ['notebookId' => $this->notebook->id])->call('poll');
 
@@ -669,13 +659,11 @@ class BackgroundGenerationTest extends TestCase
 
         $this->mock(BackgroundProcess::class, function ($mock): void {
             $mock->shouldReceive('phpBinary')->andReturn('/usr/bin/php');
-            $mock->shouldReceive('start')->once()->andReturnFalse();
+            $mock->shouldReceive('start')->andReturnFalse();
             $mock->shouldReceive('defer')->andReturnFalse();
         });
 
-        $this->studio()->call('generate');
-
-        $artifact = NotebookArtifact::query()->firstOrFail();
+        $artifact = $this->queuedArtifact('queue', now()->subMinutes(10));
 
         $payload = $artifact->payload;
         $payload['_claimed_at'] = now()->timestamp;
